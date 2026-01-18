@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import Table, MetaData, insert, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from core.db import get_db_connection
+from core.db import get_db_connection, engine
 from core.config import SYNC_BATCH_SIZE
 
 logger = logging.getLogger(__name__)
@@ -39,31 +39,31 @@ class PostgresIndexer:
         self.documents_table = Table(
             "documents",
             self.metadata,
-            autoload_with=lambda: get_db_connection(),
+            autoload_with=engine,
         )
 
         self.document_content_table = Table(
             "document_content",
             self.metadata,
-            autoload_with=lambda: get_db_connection(),
+            autoload_with=engine,
         )
 
         self.signatory_authorities_table = Table(
             "signatory_authorities",
             self.metadata,
-            autoload_with=lambda: get_db_connection(),
+            autoload_with=engine,
         )
 
         self.document_types_table = Table(
             "document_types",
             self.metadata,
-            autoload_with=lambda: get_db_connection(),
+            autoload_with=engine,
         )
 
         self.publication_blocks_table = Table(
             "publication_blocks",
             self.metadata,
-            autoload_with=lambda: get_db_connection(),
+            autoload_with=engine,
         )
 
     def batch_upsert_documents(
@@ -106,8 +106,6 @@ class PostgresIndexer:
 
             try:
                 with get_db_connection() as conn:
-                    trans = conn.begin()
-
                     try:
                         # Create INSERT statement with ON CONFLICT DO UPDATE
                         stmt = pg_insert(self.documents_table).values(records)
@@ -125,13 +123,13 @@ class PostgresIndexer:
                         )
 
                         conn.execute(stmt)
-                        trans.commit()
+                        conn.commit()
 
                         total_upserted += len(batch)
                         logger.debug(f"  Batch {i // self.batch_size + 1}: {len(batch)} documents")
 
                     except Exception as e:
-                        trans.rollback()
+                        conn.rollback()
                         logger.error(f"Error upserting batch: {e}")
                         raise
 
@@ -231,8 +229,6 @@ class PostgresIndexer:
             )
 
         with get_db_connection() as conn:
-            trans = conn.begin()
-
             try:
                 stmt = pg_insert(self.signatory_authorities_table).values(records)
 
@@ -247,13 +243,13 @@ class PostgresIndexer:
                 )
 
                 conn.execute(stmt)
-                trans.commit()
+                conn.commit()
 
                 logger.info(f"Upserted {len(records)} signatory authorities")
                 return len(records)
 
             except Exception as e:
-                trans.rollback()
+                conn.rollback()
                 logger.error(f"Error upserting signatory authorities: {e}")
                 raise
 
@@ -288,8 +284,6 @@ class PostgresIndexer:
             )
 
         with get_db_connection() as conn:
-            trans = conn.begin()
-
             try:
                 stmt = pg_insert(self.document_types_table).values(records)
 
@@ -304,13 +298,13 @@ class PostgresIndexer:
                 )
 
                 conn.execute(stmt)
-                trans.commit()
+                conn.commit()
 
                 logger.info(f"Upserted {len(records)} document types")
                 return len(records)
 
             except Exception as e:
-                trans.rollback()
+                conn.rollback()
                 logger.error(f"Error upserting document types: {e}")
                 raise
 
@@ -351,8 +345,6 @@ class PostgresIndexer:
 
         try:
             with get_db_connection() as conn:
-                trans = conn.begin()
-
                 try:
                     stmt = pg_insert(self.document_content_table).values(record)
 
@@ -369,11 +361,11 @@ class PostgresIndexer:
                     )
 
                     conn.execute(stmt)
-                    trans.commit()
+                    conn.commit()
                     return True
 
                 except Exception as e:
-                    trans.rollback()
+                    conn.rollback()
                     logger.error(f"Error upserting document content: {e}")
                     return False
 
