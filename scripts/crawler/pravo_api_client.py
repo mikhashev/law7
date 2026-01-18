@@ -165,7 +165,7 @@ class PravoApiClient:
         logger.info(f"Searching documents (page={page}, page_size={page_size})")
 
         params = {
-            "page": page,
+            "index": page,
             "pageSize": min(page_size, 1000),  # Max 1000 per page
         }
 
