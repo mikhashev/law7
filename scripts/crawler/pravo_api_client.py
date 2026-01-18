@@ -11,7 +11,7 @@ import requests
 
 from core.config import (
     PRAVO_API_BASE_URL,
-    PRAVO_API_MAX_RETRIES,
+    PRAVO_MAX_RETRIES,
     PRAVO_API_TIMEOUT,
     get_pravo_api_url,
 )
@@ -44,7 +44,7 @@ class PravoApiClient:
         """
         self.base_url = (base_url or PRAVO_API_BASE_URL).rstrip("/")
         self.timeout = timeout or PRAVO_API_TIMEOUT
-        self.max_retries = max_retries or PRAVO_API_MAX_RETRIES
+        self.max_retries = max_retries or PRAVO_MAX_RETRIES
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "Law7/0.1.0"})
 
