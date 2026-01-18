@@ -55,9 +55,63 @@ npx @modelcontextprotocol/inspector node dist/index.js
 
 ### 5. Add to Claude Code
 
+#### Quick Start:
 ```bash
-claude mcp add law7 -- node c:\Users\mike\Documents\law7\dist\index.js
+# Build the server
+npm run build
+
+# Add to Claude Desktop
+claude mcp add law7 --node c:\Users\mike\Documents\law7\dist\index.js
 ```
+
+#### Detailed Instructions:
+
+**Step 1: Build and Test the Server**
+```bash
+npm run build
+npm start
+```
+
+**Step 2: Add to Claude Desktop**
+
+**Option A: Via Claude Desktop UI:**
+1. Open Claude Desktop
+2. Go to **Settings** → **MCP Servers**
+3. Click **Add MCP Server**
+4. Enter:
+   - **Name**: `law7`
+   - **Command**: `node c:\Users\mike\Documents\law7\dist\index.js`
+5. Click **Add**
+
+**Option B: Via Claude Desktop config** (`C:\Users\<user>\.claude\config.json`):
+```json
+{
+  "mcpServers": [
+    {
+      "name": "law7",
+      "command": "node c:\\Users\\mike\\Documents\\law7\\dist\\index.js"
+    }
+  ]
+}
+```
+
+**Step 3: Test with Claude Desktop**
+
+Once added, the law7 MCP server should appear in your chat with these tools:
+- `list-countries` - List available countries
+- `get-statistics` - Get database statistics
+- `query-laws` - Search legal documents by text
+- `get-law` - Get specific document by eo_number
+
+**Example query:**
+```
+Can you search for documents about "трудовой договор" in Russia and show me the results?
+```
+
+**Troubleshooting:**
+- Ensure the server is running before adding to Claude Desktop
+- Check Claude Desktop logs for connection errors
+- Verify the path uses double backslashes (Windows)
 
 ## Project Structure
 
