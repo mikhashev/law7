@@ -14,7 +14,7 @@ loadEnv({ path: envPath });
 export const db = {
   user: process.env.DB_USER || 'laws_context7',
   host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
+  port: parseInt(process.env.DB_PORT || '5433'),
   database: process.env.DB_NAME || 'laws_context7',
   password: process.env.DB_PASSWORD || '',
   get connectionString(): string {
@@ -32,7 +32,7 @@ export const qdrant = {
 // Redis configuration
 export const redis = {
   host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
+  port: parseInt(process.env.REDIS_PORT || '6380'),
   password: process.env.REDIS_PASSWORD || '',
   ttl: parseInt(process.env.REDIS_TTL || '3600'), // 1 hour default
 };

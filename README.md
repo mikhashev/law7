@@ -23,6 +23,8 @@ Python Pipeline → PostgreSQL + Qdrant → TypeScript MCP Server → AI
 
 ## Quick Start
 
+> **Note**: Default ports are PostgreSQL **5433**, Redis **6380**, Qdrant **6333** (to avoid conflicts with ygbis).
+
 ### 1. Start Docker Services
 
 ```bash

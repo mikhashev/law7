@@ -16,7 +16,7 @@ load_dotenv(dotenv_path=env_path, encoding='utf-8')
 DB_USER = os.getenv("DB_USER", "laws_context7")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
+DB_PORT = int(os.getenv("DB_PORT", "5433"))
 DB_NAME = os.getenv("DB_NAME", "laws_context7")
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
