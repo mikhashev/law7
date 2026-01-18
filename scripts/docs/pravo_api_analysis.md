@@ -14,7 +14,10 @@
 | `/DocumentTypes` | GET | OK | Get document types |
 | `/SignatoryAuthorities` | GET | OK | Get signing authorities (organizations) |
 | `/Documents` | GET | OK | Search/get documents with pagination |
-| `/Document/{eoNumber}` | GET | UNKNOWN | Get document detail (may require different format) |
+| `/Document?eoNumber={id}` | GET | OK | Get extended document detail by eoNumber |
+| `/BlockStatistics/daily` | GET | OK | Get daily document count statistics by block |
+| `/BlockStatistics/weekly` | GET | OK | Get weekly document count statistics by block |
+| `/BlockStatistics/monthly` | GET | OK | Get monthly document count statistics by block |
 
 ---
 
@@ -115,12 +118,12 @@ Organizations that issue/sign documents. Very large dataset (700KB+).
 
 ## Pagination
 
-The `/Documents` endpoint supports pagination:
+**IMPORTANT:** The `/Documents` endpoint uses `index` (NOT `page`) for pagination.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `pageSize` | int | ? | Number of items per page |
-| `page` | int | 1 | Page number |
+| `pageSize` | int | ? | Number of items per page (valid: 10, 30, 100, 200, 300, etc.) |
+| `index` | int | 1 | Page number (1-indexed) |
 
 **Response:**
 ```json
@@ -136,7 +139,7 @@ The `/Documents` endpoint supports pagination:
 
 ## Search Parameters
 
-Based on API documentation and testing, likely parameters:
+Based on API documentation and testing:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -145,19 +148,31 @@ Based on API documentation and testing, likely parameters:
 | `endDate` | date | Filter by end date |
 | `docType` | string | Filter by document type |
 | `block` | string | Filter by publication block (president, government, etc.) |
-| `page` | int | Page number |
-| `pageSize` | int | Items per page |
+| `index` | int | Page number (1-indexed) - **NOT `page`** |
+| `pageSize` | int | Items per page (valid: 10, 30, 100, 200, 300, etc.) |
+| `category` | string | Filter by category (with block parameter) |
+| `signatoryAuthority` | string | Filter by signatory authority ID |
+| `documentType` | string | Filter by document type ID |
+
+**Note:** All parameters are optional.
 
 ---
 
 ## Document Text Access
 
-**Finding:** The `/Document/{eoNumber}` endpoint returns HTML (404) instead of JSON.
+**Document Detail Endpoint:** `/api/Document?eoNumber={eoNumber}`
 
-**Alternative:** Document text is likely accessed via:
-1. PDF download: `http://publication.pravo.gov.ru/api/Document/{eoNumber}?downloadType=pdf`
+This endpoint returns extended document information including:
+- Document type details
+- Signatory authority details
+- All document fields
+
+**Note:** The endpoint uses a query parameter (`?eoNumber=`), NOT a path parameter.
+
+**Alternative:** Document text access methods:
+1. PDF download: Use the document's eoNumber to construct PDF URL
 2. HTML view: Document page on the website
-3. Need further investigation via browser DevTools
+3. Need further investigation for actual PDF/HTML download URLs
 
 ---
 

@@ -242,29 +242,53 @@ class PravoApiClient:
         """
         Get detailed information about a specific document.
 
-        Note: This endpoint may return HTML instead of JSON.
-        The exact format needs to be determined from API documentation.
+        Uses the endpoint: /api/Document?eoNumber={eo_number}
 
         Args:
             eo_number: Document eoNumber (e.g., "0001202601170001")
 
         Returns:
-            Document detail or None if not found
+            Document detail with extended information (documentType, signatoryAuthorities)
 
         Example:
             >>> client = PravoApiClient()
             >>> detail = client.get_document_detail("0001202601170001")
+            >>> print(detail['documentType']['name'])
         """
         logger.info(f"Fetching document detail: {eo_number}")
 
         try:
-            # Try the documented endpoint first
-            result = self._make_request(f"Document/{eo_number}")
+            params = {"eoNumber": eo_number}
+            result = self._make_request("Document", params=params)
             return result
         except requests.RequestException as e:
             logger.warning(f"Failed to fetch document detail: {e}")
-            logger.info("Note: Document detail endpoint may require different format")
             return None
+
+    def get_block_statistics(
+        self, period: str = "daily"
+    ) -> List[Dict[str, Any]]:
+        """
+        Get document count statistics by publication block.
+
+        Args:
+            period: Time period - "daily", "weekly", or "monthly"
+
+        Returns:
+            List of block statistics with document counts
+
+        Example:
+            >>> client = PravoApiClient()
+            >>> stats = client.get_block_statistics("daily")
+            >>> for stat in stats:
+            ...     print(f"{stat['block']}: {stat['documentsCount']}")
+        """
+        logger.info(f"Fetching block statistics: {period}")
+
+        endpoint = f"BlockStatistics/{period}"
+        result = self._make_request(endpoint)
+
+        return result if isinstance(result, list) else []
 
     def close(self):
         """Close the HTTP session."""
