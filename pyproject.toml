@@ -13,12 +13,21 @@ psycopg2-binary = "^2.9.9"
 requests = "^2.31.0"
 beautifulsoup4 = "^4.12.3"
 pdfplumber = "^0.11.4"
-sentence-transformers = "^3.3.1"
+sentence-transformers = "^5.0.0"
 qdrant-client = "^1.12.1"
 tqdm = "^4.66.4"
 python-dotenv = "^1.0.1"
 pytesseract = "^0.3.13"
 Pillow = "^11.1.0"
+torch = [
+    {version = "^2.0.0", source = "pytorch", markers = "sys_platform == 'linux'"},
+    {version = "^2.0.0", markers = "sys_platform == 'darwin' and platform_machine == 'arm64'"},
+    {version = "^2.0.0", source = "pytorch", markers = "sys_platform == 'win32'"},
+]
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu124"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"

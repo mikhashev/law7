@@ -51,6 +51,30 @@ chore(deps): upgrade sentence-transformers to v3.3.1
 
 See [README.md](README.md) for setup instructions.
 
+### Dependency Management Rules
+
+**CRITICAL**: Always use `poetry` for dependency management, never `pip` directly.
+
+```bash
+# ✅ CORRECT - Use Poetry
+poetry add package-name
+poetry run pip install package-name
+poetry install
+
+# ❌ WRONG - Never use pip directly outside of Poetry
+pip install package-name
+python -m pip install package-name
+```
+
+**Why?** This project uses Poetry for dependency management. Installing packages with `pip` directly bypasses Poetry's virtual environment and can cause version conflicts.
+
+**Special case for PyTorch with CUDA support**:
+```bash
+# For CUDA-enabled PyTorch, use Poetry's pip wrapper:
+poetry run pip uninstall torch -y
+poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+```
+
 ## AI Assistant Tools
 
 This project is designed to work with AI assistants and MCP (Model Context Protocol) tools.

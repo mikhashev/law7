@@ -5,6 +5,7 @@ Based on ygbis patterns for batch processing and error handling.
 """
 import hashlib
 import logging
+import uuid
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -66,6 +67,7 @@ class EmbeddingsGenerator:
     def encode(
         self,
         text: Union[str, List[str]],
+        prompt_name: Optional[str] = None,
         show_progress: bool = False,
     ) -> np.ndarray:
         """
@@ -73,6 +75,8 @@ class EmbeddingsGenerator:
 
         Args:
             text: Single text string or list of strings
+            prompt_name: Named prompt from sentence-transformers (for USER2-base, etc.)
+                       Options: "search_query", "search_document", "classification", "clustering"
             show_progress: Show progress bar for batch processing
 
         Returns:
@@ -83,6 +87,10 @@ class EmbeddingsGenerator:
             >>> embeddings = generator.encode(["трудовой кодекс", "семейный кодекс"])
             >>> print(embeddings.shape)
             (2, 768)
+
+            For USER2-base with prompts:
+            >>> query_emb = generator.encode(["трудовой договор"], prompt_name="search_query")
+            >>> doc_emb = generator.encode(["Трудовой кодекс..."], prompt_name="search_document")
         """
         if isinstance(text, str):
             text = [text]
@@ -95,14 +103,15 @@ class EmbeddingsGenerator:
             # Return zeros for empty input
             return np.zeros((len(text), self.vector_size), dtype=np.float32)
 
-        # Check cache
+        # Check cache (note: cache key should include prompt_name)
         embeddings = np.zeros((len(text), self.vector_size), dtype=np.float32)
         cache_hits = []
 
         for i, (idx, txt) in enumerate(zip(valid_indices, valid_texts)):
             text_hash = self._get_text_hash(txt)
-            if text_hash in self._cache:
-                embeddings[idx] = self._cache[text_hash]
+            cache_key = f"{prompt_name}:{text_hash}" if prompt_name else text_hash
+            if cache_key in self._cache:
+                embeddings[idx] = self._cache[cache_key]
                 cache_hits.append(i)
 
         # Encode non-cached texts
@@ -112,12 +121,17 @@ class EmbeddingsGenerator:
         ]
 
         if remaining_texts:
-            remaining_embeddings = self.model.encode(
-                remaining_texts,
-                batch_size=self.batch_size,
-                show_progress_bar=show_progress,
-                convert_to_numpy=True,
-            )
+            encode_kwargs = {
+                "batch_size": self.batch_size,
+                "show_progress_bar": show_progress,
+                "convert_to_numpy": True,
+            }
+
+            # Add prompt_name for models that support it (USER2-base, etc.)
+            if prompt_name:
+                encode_kwargs["prompt_name"] = prompt_name
+
+            remaining_embeddings = self.model.encode(remaining_texts, **encode_kwargs)
             remaining_embeddings = remaining_embeddings.astype(np.float32)
 
             # Update cache and results
@@ -126,7 +140,8 @@ class EmbeddingsGenerator:
                 if i not in cache_hits:
                     embeddings[idx] = remaining_embeddings[j]
                     text_hash = self._get_text_hash(txt)
-                    self._cache[text_hash] = remaining_embeddings[j]
+                    cache_key = f"{prompt_name}:{text_hash}" if prompt_name else text_hash
+                    self._cache[cache_key] = remaining_embeddings[j]
                     j += 1
 
         return embeddings
@@ -241,9 +256,11 @@ class EmbeddingsGenerator:
 
         results = []
         for i, (chunk_text, embedding) in enumerate(zip(chunks, embeddings)):
+            # Generate a proper UUID for chunk_id (Qdrant requires UUID or unsigned integer)
             chunk_hash = self._get_text_hash(chunk_text)
+            chunk_uuid = uuid.uuid5(uuid.NAMESPACE_X500, f"{chunk_hash}_{i}")
             results.append({
-                "chunk_id": f"{chunk_hash[:8]}_{i}",
+                "chunk_id": str(chunk_uuid),
                 "chunk_text": chunk_text,
                 "chunk_index": i,
                 "embedding": embedding.tolist(),
