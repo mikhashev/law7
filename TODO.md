@@ -49,10 +49,12 @@ echo "EMBEDDING_MODEL=intfloat/multilingual-e5-large" >> .env
 poetry run python scripts/sync/content_sync.py --recreate-collection
 ```
 
-### OCR Enhancement (Optional)
+### OCR Enhancement (See question)
 - [ ] Install Tesseract OCR for scanned PDFs
 - [ ] Test OCR quality on Russian legal documents
 - [ ] Add OCR fallback for documents with short API metadata
+
+Question: Can we use https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B or from ollama running loccaly for this ?
 
 ## Low Priority
 

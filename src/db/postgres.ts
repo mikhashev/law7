@@ -153,7 +153,7 @@ export async function getDocumentsByEoNumbers(eoNumbers: string[]): Promise<(Doc
 }
 
 /**
- * Search documents by text content
+ * Search documents by text content using full-text search
  */
 export async function searchDocuments(
   searchText: string,
@@ -168,10 +168,10 @@ export async function searchDocuments(
       dc.pdf_url,
       dc.html_url,
       dc.text_hash,
-      ts_rank(dc.text_search, plainto_tsquery('russian', $1)) as rank
+      ts_rank(to_tsvector('russian', dc.full_text), plainto_tsquery('russian', $1)) as rank
     FROM documents d
     LEFT JOIN document_content dc ON d.id = dc.document_id
-    WHERE dc.text_search @@ plainto_tsquery('russian', $1)
+    WHERE to_tsvector('russian', dc.full_text) @@ plainto_tsquery('russian', $1)
     ${countryId ? 'AND d.country_id = $2' : ''}
     ORDER BY rank DESC
     LIMIT $${countryId ? 3 : 2}
