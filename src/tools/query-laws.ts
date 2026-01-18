@@ -1,0 +1,132 @@
+/**
+ * Query Laws Tool
+ * Search for legal documents using semantic and keyword search
+ */
+
+import { z } from 'zod';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { search } from '../db/qdrant.js';
+import { searchDocuments } from '../db/postgres.js';
+import { config } from '../config.js';
+
+// Input schema for query-laws tool
+export const QueryLawsInputSchema = z.object({
+  country_id: z.number().optional().default(1).describe('Country ID (1=Russia)'),
+  query: z.string().describe('Search query for finding relevant legal documents'),
+  max_results: z.number().optional().default(10).describe('Maximum number of results to return'),
+  use_hybrid: z.boolean().optional().default(false).describe('Use hybrid search (keyword + semantic)'),
+});
+
+export type QueryLawsInput = z.infer<typeof QueryLawsInputSchema>;
+
+/**
+ * Format a document for output
+ */
+function formatDocument(doc: any): string {
+  const parts: string[] = [];
+
+  if (doc.complex_name) {
+    parts.push(`**${doc.complex_name}**`);
+  } else if (doc.title) {
+    parts.push(`**${doc.title}**`);
+  }
+
+  if (doc.name && doc.name !== doc.complex_name) {
+    parts.push(`*${doc.name}*`);
+  }
+
+  if (doc.document_date) {
+    const date = new Date(doc.document_date).toLocaleDateString('ru-RU');
+    parts.push(`Дата: ${date}`);
+  }
+
+  if (doc.document_number) {
+    parts.push(`Номер: ${doc.document_number}`);
+  }
+
+  if (doc.full_text) {
+    parts.push(`\nТекст:\n${doc.full_text}`);
+  }
+
+  if (doc.pdf_url) {
+    parts.push(`\nPDF: ${doc.pdf_url}`);
+  }
+
+  if (doc.html_url) {
+    parts.push(`HTML: ${doc.html_url}`);
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Execute the query-laws tool
+ */
+export async function executeQueryLaws(input: QueryLawsInput): Promise<string> {
+  const { country_id, query, max_results, use_hybrid } = input;
+
+  // For now, use keyword search since we don't have embedding generation in MCP server yet
+  // TODO: Add embedding generation for semantic search
+
+  const results = await searchDocuments(query, max_results, country_id);
+
+  if (results.length === 0) {
+    return `No documents found for query: "${query}"`;
+  }
+
+  let output = `Found ${results.length} document(s) for query: "${query}"\n\n`;
+
+  for (const doc of results) {
+    output += `---\n`;
+    output += `ID: ${doc.eo_number}\n`;
+    output += formatDocument(doc);
+    output += `\n\n`;
+  }
+
+  return output;
+}
+
+/**
+ * Tool definition for MCP server
+ */
+export const queryLawsTool: Tool = {
+  name: 'query-laws',
+  description: `Search for legal documents using full-text search.
+
+This tool searches through indexed legal documents to find relevant laws, decrees, and other legal documents.
+
+Args:
+  country_id: Country ID to search within (default: 1 for Russia)
+  query: Search query text (e.g., "трудовой договор", "налоги")
+  max_results: Maximum number of results to return (default: 10)
+  use_hybrid: Enable hybrid keyword + semantic search (default: false)
+
+Example:
+  Search for labor law documents:
+  { "country_id": 1, "query": "трудовой договор", "max_results": 5 }`,
+  inputSchema: {
+    type: 'object',
+    properties: {
+      country_id: {
+        type: 'number',
+        description: 'Country ID (1=Russia)',
+        default: 1,
+      },
+      query: {
+        type: 'string',
+        description: 'Search query for finding relevant legal documents',
+      },
+      max_results: {
+        type: 'number',
+        description: 'Maximum number of results to return',
+        default: 10,
+      },
+      use_hybrid: {
+        type: 'boolean',
+        description: 'Use hybrid search (keyword + semantic)',
+        default: false,
+      },
+    },
+    required: ['query'],
+  },
+};
