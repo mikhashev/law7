@@ -7,6 +7,7 @@ import logging
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 from crawler.pravo_api_client import PravoApiClient
 from core.config import INITIAL_SYNC_BLOCK, INITIAL_SYNC_START_DATE, SYNC_BATCH_SIZE
@@ -98,29 +99,21 @@ class InitialSyncService:
             logger.info("\n[Step 2] Syncing reference data...")
             self._sync_reference_data()
 
-            # Step 3: Fetch and sync documents by date range
-            logger.info("\n[Step 3] Syncing documents...")
-            documents = self.api_client.get_documents_by_date_range(
+            # Step 3: Stream and sync documents by date range (in batches)
+            logger.info("\n[Step 3] Syncing documents (streaming mode)...")
+            total_documents, total_upserted = self._stream_sync_documents(
                 start_date=start_date,
                 end_date=end_date,
                 block=block if block != "all" else None,
-                page_size=self.batch_size,
             )
 
-            if not documents:
+            if total_documents == 0:
                 logger.warning("No documents found for the specified date range")
                 stats["status"] = "completed"
                 return stats
 
-            stats["total_documents"] = len(documents)
-            stats["total_pages"] = (len(documents) + self.batch_size - 1) // self.batch_size
-
-            logger.info(f"Found {len(documents)} documents to sync")
-
-            # Step 4: Upsert documents to database
-            logger.info("\n[Step 4] Upserting documents to database...")
-            upserted_count = self.indexer.batch_upsert_documents(documents)
-            stats["upserted_count"] = upserted_count
+            stats["total_documents"] = total_documents
+            stats["upserted_count"] = total_upserted
 
             duration = (datetime.now() - start_time).total_seconds()
             stats["duration_seconds"] = duration
@@ -128,9 +121,10 @@ class InitialSyncService:
 
             logger.info("\n" + "="*60)
             logger.info("Sync completed successfully")
-            logger.info(f"Total documents: {len(documents)}")
-            logger.info(f"Upserted: {upserted_count}")
+            logger.info(f"Total documents: {total_documents}")
+            logger.info(f"Upserted: {total_upserted}")
             logger.info(f"Duration: {duration:.1f}s")
+            logger.info(f"Rate: {total_documents/duration:.1f} docs/sec")
             logger.info("="*60)
 
             return stats
@@ -150,6 +144,79 @@ class InitialSyncService:
 
         finally:
             self.api_client.close()
+
+    def _stream_sync_documents(
+        self,
+        start_date: str,
+        end_date: str,
+        block: Optional[str] = None,
+    ) -> tuple[int, int]:
+        """
+        Stream documents from API and upsert in batches.
+
+        Args:
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            block: Publication block code to filter
+
+        Returns:
+            Tuple of (total_documents_fetched, total_upserted)
+        """
+        all_documents = []
+        page = 1
+        total_fetched = 0
+        total_upserted = 0
+        batch_buffer = []
+
+        logger.info(f"Fetching documents from {start_date} to {end_date}")
+
+        while True:
+            # Fetch a page of documents
+            result = self.api_client.search_documents(
+                page=page,
+                page_size=self.batch_size,
+                start_date=start_date,
+                end_date=end_date,
+                block=block,
+            )
+
+            documents = result.get("items", [])
+            if not documents:
+                break
+
+            total_fetched += len(documents)
+            batch_buffer.extend(documents)
+
+            # Log progress
+            if page % 10 == 0 or page == 1:
+                logger.info(f"  Fetched page {page}: {len(documents)} documents (total: {total_fetched})")
+
+            # Upsert when buffer reaches batch size
+            while len(batch_buffer) >= self.batch_size:
+                batch = batch_buffer[:self.batch_size]
+                batch_buffer = batch_buffer[self.batch_size:]
+
+                upserted = self.indexer.batch_upsert_documents(batch)
+                total_upserted += upserted
+
+                logger.debug(f"  Upserted batch: {upserted} documents (progress: {total_upserted}/{total_fetched})")
+
+            # Check if we've fetched all pages
+            total_pages = result.get("pagesTotalCount", 1)
+            if page >= total_pages:
+                break
+
+            page += 1
+
+        # Upsert remaining documents in buffer
+        if batch_buffer:
+            upserted = self.indexer.batch_upsert_documents(batch_buffer)
+            total_upserted += upserted
+
+        logger.info(f"Total documents fetched: {total_fetched}")
+        logger.info(f"Total documents upserted: {total_upserted}")
+
+        return total_fetched, total_upserted
 
     def _sync_reference_data(self):
         """Sync reference data (signatory authorities, document types, etc.)."""
