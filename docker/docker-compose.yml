@@ -6,6 +6,8 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: laws-context7-postgres
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${DB_USER:-laws_context7}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
