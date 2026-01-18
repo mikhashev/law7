@@ -223,6 +223,13 @@ class ContentSyncService:
 
             # Generate embeddings
             if not skip_embeddings and doc.get("full_text"):
+                # Skip extremely long documents that cause performance issues
+                text_len = len(doc.get("full_text", ""))
+                if text_len > 100000:  # Skip documents over 100KB
+                    logger.warning(f"Skipping document {doc_id} - too long ({text_len:,} chars)")
+                    embeddings_generated += 0
+                    continue
+
                 chunks = self.embeddings_generator.encode_document_chunks(
                     {**doc, "id": doc_id},
                     text_field="full_text",
