@@ -108,8 +108,13 @@ The Russian legal data is sourced from the official [pravo.gov.ru](http://pravo.
 - `sqlalchemy` - Database ORM
 - `beautifulsoup4` - HTML parsing
 - `pdfplumber` - PDF text extraction
-- `sentence-transformers` - Embeddings
+- `sentence-transformers` - Embeddings (deepvk/USER2-base)
 - `qdrant-client` - Vector DB client
+- `torch` - PyTorch with CUDA support (for GPU acceleration)
+
+**Hardware Requirements for GPU Acceleration:**
+- NVIDIA GPU with CUDA support (tested on RTX 3060 12GB)
+- CUDA 12.x compatible drivers
 
 ## License
 

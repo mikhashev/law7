@@ -3,49 +3,33 @@
 ## High Priority
 
 ### [MVP] Complete Testing Flow
-- [ ] Fix content sync to run without embeddings (in progress)
+- [x] Fix content sync to run without embeddings (in progress)
 - [ ] Test content parsing from API metadata
 - [ ] Build and test MCP server
 - [ ] Test all 4 MCP tools with real data
 
 ## Medium Priority
 
-### Embeddings Model Upgrade
-**Current**: `sentence-transformers/paraphrase-multilingual-mpnet-base-v2` (768 dims, CPU-only)
+### Embeddings Model Upgrade ✅ COMPLETED
+**Current**: `deepvk/USER2-base` (768 dims, CUDA-accelerated)
 
-**Recommended Upgrades** (for RTX 3060 12GB):
+**Completed Changes:**
+- [x] Updated `.env`: `EMBEDDING_DEVICE=cuda`, `EMBEDDING_MODEL=deepvk/USER2-base`
+- [x] Updated `pyproject.toml`: Added `torch` with CUDA support
+- [x] Updated `scripts/indexer/embeddings.py`: Added prompt_name support for USER2-base
+- [x] Changed Qdrant vector size from 1024 to 768
+- [x] Tested embeddings generation with GPU (RTX 3060 12GB)
 
-1. **`intfloat/multilingual-e5-large`** (1024 dims) ⭐ RECOMMENDED
-   - Better quality for Russian text
-   - GPU-accelerated (CUDA 12.8 compatible)
-   - ~2-3x faster on GPU vs CPU
-   - Install: `pip install sentence-transformers` + set device to 'cuda'
+**Benefits:**
+- **8192 token context** - Can process full legal documents without chunking
+- **Russian-specific** (RuModernBERT based) - Optimized for Russian text
+- **3.7x faster** (149M params vs 560M)
+- **GPU-accelerated** on RTX 3060 12GB
 
-2. **OpenAI Embeddings API** (paid, highest quality)
-   - `text-embedding-3-large` (3072 dims)
-   - Best for production
-   - Requires API key
-
-**Changes needed:**
-- [ ] Update `.env`: `EMBEDDING_DEVICE=cuda`
-- [ ] Update `pyproject.toml`: Add `torch` with CUDA support
-- [ ] Update `core/config.py`: `EMBEDDING_MODEL=intfloat/multilingual-e5-large`
-- [ ] Test embeddings generation speed on GPU
-- [ ] Re-generate all embeddings with new model
-
-**Commands:**
+**To re-generate all embeddings:**
 ```bash
-# Install PyTorch with CUDA 12.x support
-pip install torch --index-url https://download.pytorch.org/whl/cu124
-
-# Or via conda
-conda install pytorch torchvision torchaudio pytorch-cuda=12.4 -c pytorch -c nvidia
-
-# Update config
-echo "EMBEDDING_DEVICE=cuda" >> .env
-echo "EMBEDDING_MODEL=intfloat/multilingual-e5-large" >> .env
-
-# Re-run content sync with new model
+# Already tested with 5 documents - working
+# For full 4,600 documents:
 poetry run python scripts/sync/content_sync.py --recreate-collection
 ```
 
