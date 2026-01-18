@@ -3,7 +3,10 @@ Content and Embeddings Sync Script for law7.
 Extracts document content and generates embeddings for semantic search.
 Based on ygbis patterns for batch processing and progress tracking.
 """
+import gc
 import logging
+import os
+import psutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +31,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def get_memory_usage_mb() -> float:
+    """Get current process memory usage in MB."""
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / 1024 / 1024
+
+def log_memory(message: str):
+    """Log current memory usage."""
+    mem_mb = get_memory_usage_mb()
+    logger.info(f"[MEMORY] {message}: {mem_mb:.1f} MB")
+
 
 class ContentSyncService:
     """
@@ -50,7 +63,9 @@ class ContentSyncService:
         self.skip_embeddings = skip_embeddings
 
         self.content_parser = PravoContentParser()
+        log_memory("Before loading model")
         self.embeddings_generator = None if skip_embeddings else EmbeddingsGenerator()
+        log_memory("After loading model")
         self.qdrant_indexer = None if skip_embeddings else QdrantIndexer()
         self.progress = ProgressTracker()
 
@@ -166,6 +181,7 @@ class ContentSyncService:
         logger.info("Fetching documents from PostgreSQL...")
         documents = self._fetch_documents(limit=limit)
         logger.info(f"Found {len(documents)} documents")
+        log_memory("After loading documents")
 
         if not documents:
             logger.warning("No documents found!")
@@ -181,7 +197,10 @@ class ContentSyncService:
         embeddings_generated = 0
         all_chunks = []
 
-        for doc in tqdm(documents, desc="Processing documents"):
+        for i, doc in enumerate(tqdm(documents, desc="Processing documents")):
+            # Log memory every 50 documents
+            if i % 50 == 0:
+                log_memory(f"After {i} documents")
             doc_id = doc["id"]
             doc_data = {
                 "eoNumber": doc["eo_number"],
@@ -210,15 +229,32 @@ class ContentSyncService:
                 )
                 all_chunks.extend(chunks)
                 embeddings_generated += len(chunks)
+                # Clear cache after each document to prevent memory buildup
+                self.embeddings_generator.clear_cache()
+                # Force garbage collection and GPU cache clearing
+                import gc as gc_module
+                gc_module.collect()
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except Exception:
+                    pass
 
                 # Upsert in batches with memory cleanup
                 if len(all_chunks) >= self.batch_size:
                     self.qdrant_indexer.upsert_embeddings(all_chunks)
                     all_chunks = []
-                    # Clear cache and force garbage collection to free RAM
-                    self.embeddings_generator.clear_cache()
-                    import gc
-                    gc.collect()
+                    # Extra memory cleanup
+                    gc_module.collect()
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    except Exception:
+                        pass
+                    log_memory(f"After batch upsert (chunks: {embeddings_generated})")
+                    logger.info(f"Batch complete. Total chunks: {embeddings_generated}")
 
         # Final batch
         if all_chunks and not skip_embeddings:
