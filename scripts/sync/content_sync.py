@@ -211,14 +211,21 @@ class ContentSyncService:
                 all_chunks.extend(chunks)
                 embeddings_generated += len(chunks)
 
-                # Upsert in batches
+                # Upsert in batches with memory cleanup
                 if len(all_chunks) >= self.batch_size:
                     self.qdrant_indexer.upsert_embeddings(all_chunks)
                     all_chunks = []
+                    # Clear cache and force garbage collection to free RAM
+                    self.embeddings_generator.clear_cache()
+                    import gc
+                    gc.collect()
 
         # Final batch
         if all_chunks and not skip_embeddings:
             self.qdrant_indexer.upsert_embeddings(all_chunks)
+            self.embeddings_generator.clear_cache()
+            import gc
+            gc.collect()
 
         duration = (datetime.now() - start_time).total_seconds()
 
