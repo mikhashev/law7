@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "laws-context7"
+version = "0.1.0"
+description = "Data pipeline for laws-context7 - crawls, parses, and indexes legal documents"
+authors = ["Your Name <you@example.com>"]
+packages = [{include = "scripts", from = "."}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pandas = "^2.2.2"
+sqlalchemy = "^2.0.29"
+psycopg2-binary = "^2.9.9"
+requests = "^2.31.0"
+beautifulsoup4 = "^4.12.3"
+pdfplumber = "^0.11.4"
+sentence-transformers = "^3.3.1"
+qdrant-client = "^1.12.1"
+tqdm = "^4.66.4"
+python-dotenv = "^1.0.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+black = "^24.10.0"
+ruff = "^0.8.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+.eggs/
+*.egg
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+postgres_data/
+qdrant_data/
+
+# Logs
+*.log
+
+# Poetry
+poetry.lock
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Virtual environments
+venv/
+env/
+ENV/
