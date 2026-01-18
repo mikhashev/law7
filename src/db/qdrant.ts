@@ -108,7 +108,7 @@ export async function upsert(points: Point[]): Promise<void> {
   const client = getClient();
 
   await client.upsert(config.qdrant.collectionName, {
-    upsert: points,
+    points: points,
   });
 }
 
@@ -144,19 +144,8 @@ export async function getPointCount(): Promise<number> {
  * Delete all points from the collection
  */
 export async function clearCollection(): Promise<void> {
-  const client = getClient();
-
-  // Delete all points by filtering for a condition that matches all
-  await client.delete(config.qdrant.collectionName, {
-    filter: {
-      must: [
-        {
-          key: 'document_id',
-          exists: true,
-        },
-      ],
-    },
-  });
+  // Delete and recreate collection (more efficient than filtering all points)
+  await recreateCollection();
 }
 
 /**

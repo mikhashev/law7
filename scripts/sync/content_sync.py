@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.config import EMBEDDING_BATCH_SIZE, SYNC_BATCH_SIZE
 from core.db import get_db_connection
 from indexer.embeddings import EmbeddingsGenerator
+from sqlalchemy import text
 from indexer.qdrant_indexer import QdrantIndexer
 from parser.html_parser import PravoContentParser
 from utils.progress import ProgressTracker
@@ -41,14 +42,16 @@ class ContentSyncService:
         self,
         batch_size: int = SYNC_BATCH_SIZE,
         embedding_batch_size: int = EMBEDDING_BATCH_SIZE,
+        skip_embeddings: bool = False,
     ):
         """Initialize the content sync service."""
         self.batch_size = batch_size
         self.embedding_batch_size = embedding_batch_size
+        self.skip_embeddings = skip_embeddings
 
         self.content_parser = PravoContentParser()
-        self.embeddings_generator = EmbeddingsGenerator()
-        self.qdrant_indexer = QdrantIndexer()
+        self.embeddings_generator = None if skip_embeddings else EmbeddingsGenerator()
+        self.qdrant_indexer = None if skip_embeddings else QdrantIndexer()
         self.progress = ProgressTracker()
 
     def _fetch_documents(
@@ -57,8 +60,6 @@ class ContentSyncService:
         country_id: int = 1,
     ) -> list:
         """Fetch documents from PostgreSQL."""
-        conn = get_db_connection()
-
         limit_clause = f"LIMIT {limit}" if limit else ""
         query = f"""
             SELECT
@@ -84,12 +85,10 @@ class ContentSyncService:
             {limit_clause}
         """
 
-        with conn.cursor() as cur:
-            cur.execute(query)
-            columns = [desc[0] for desc in cur.description]
-            results = cur.fetchall()
-
-        conn.close()
+        with get_db_connection() as conn:
+            result = conn.execute(text(query))
+            columns = result.keys()
+            results = result.fetchall()
 
         return [dict(zip(columns, row)) for row in results]
 
@@ -99,11 +98,9 @@ class ContentSyncService:
         content: dict,
     ):
         """Upsert document content to PostgreSQL."""
-        conn = get_db_connection()
-
-        query = """
+        query = text("""
             INSERT INTO document_content (document_id, full_text, raw_text, pdf_url, html_url, text_hash)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (:document_id, :full_text, :raw_text, :pdf_url, :html_url, :text_hash)
             ON CONFLICT (document_id) DO UPDATE
             SET
                 full_text = EXCLUDED.full_text,
@@ -112,20 +109,18 @@ class ContentSyncService:
                 html_url = EXCLUDED.html_url,
                 text_hash = EXCLUDED.text_hash,
                 updated_at = NOW()
-        """
+        """)
 
-        with conn.cursor() as cur:
-            cur.execute(query, (
-                document_id,
-                content.get("full_text"),
-                content.get("raw_text"),
-                content.get("pdf_url"),
-                content.get("html_url"),
-                content.get("text_hash"),
-            ))
+        with get_db_connection() as conn:
+            conn.execute(query, {
+                "document_id": document_id,
+                "full_text": content.get("full_text"),
+                "raw_text": content.get("raw_text"),
+                "pdf_url": content.get("pdf_url"),
+                "html_url": content.get("html_url"),
+                "text_hash": content.get("text_hash"),
+            })
             conn.commit()
-
-        conn.close()
 
     def run(
         self,
@@ -254,7 +249,7 @@ def main():
     parser.add_argument("--recreate-collection", action="store_true", help="Recreate Qdrant collection")
     args = parser.parse_args()
 
-    service = ContentSyncService()
+    service = ContentSyncService(skip_embeddings=args.skip_embeddings)
     stats = service.run(
         limit=args.limit,
         skip_content=args.skip_content,

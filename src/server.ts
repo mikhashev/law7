@@ -51,24 +51,36 @@ export function createServer(): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
+    if (!args) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error: No arguments provided for tool: ${name}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+
     try {
       let result: string;
 
       switch (name) {
         case 'query-laws':
-          result = await executeQueryLaws(args);
+          result = await executeQueryLaws(args as any);
           break;
 
         case 'get-law':
-          result = await executeGetLaw(args);
+          result = await executeGetLaw(args as any);
           break;
 
         case 'list-countries':
-          result = await executeListCountries(args);
+          result = await executeListCountries(args as any);
           break;
 
         case 'get-statistics':
-          result = await executeGetStatistics(args);
+          result = await executeGetStatistics(args as any);
           break;
 
         default:

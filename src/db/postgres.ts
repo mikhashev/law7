@@ -95,14 +95,14 @@ export async function query<T = any>(text: string, params?: any[]): Promise<T[]>
   const start = Date.now();
 
   try {
-    const res = await pool.query<T>(text, params);
+    const res = await pool.query(text, params);
     const duration = Date.now() - start;
 
     if (config.logging.level === 'debug') {
       console.log('Executed query', { text, duration, rows: res.rowCount });
     }
 
-    return res.rows;
+    return res.rows as T[];
   } catch (error) {
     console.error('Query error', { text, error });
     throw error;
