@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title></title>
+
+    <link rel="shortcut icon" href="/favicon/favicon.ico" />
+    <link rel="icon" sizes="16x16 32x32 64x64" href="/favicon/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="196x196" href="/favicon/favicon-192.png" />
+    <link rel="icon" type="image/png" sizes="160x160" href="/favicon/favicon-160.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon/favicon-96.png" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon/favicon-64.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon/favicon-16.png" />
+    <link rel="apple-touch-icon-precomposed" href="/favicon/favicon-57.png" />
+    <link rel="apple-touch-icon-precomposed" sizes="60x60" href="/favicon/favicon-60.png" />
+    <link rel="apple-touch-icon-precomposed" sizes="72x72" href="/favicon/favicon-72.png" />
+    <link rel="apple-touch-icon-precomposed" sizes="76x76" href="/favicon/favicon-76.png" />
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="/favicon/favicon-114.png" />
+    <link rel="apple-touch-icon-precomposed" sizes="120x120" href="/favicon/favicon-120.png" />
+    <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/favicon/favicon-144.png" />
+    <link rel="apple-touch-icon-precomposed" sizes="152x152" href="/favicon/favicon-152.png" />
+    <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/favicon/favicon-180.png" />
+    <link rel="apple-touch-icon" href="/favicon/favicon-57.png" />
+    <link rel="apple-touch-icon" sizes="60x60" href="/favicon/favicon-60.png" />
+    <link rel="apple-touch-icon" sizes="72x72" href="/favicon/favicon-72.png" />
+    <link rel="apple-touch-icon" sizes="76x76" href="/favicon/favicon-76.png" />
+    <link rel="apple-touch-icon" sizes="114x114" href="/favicon/favicon-114.png" />
+    <link rel="apple-touch-icon" sizes="120x120" href="/favicon/favicon-120.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/favicon/favicon-144.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/favicon/favicon-152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon/favicon-180.png" />
+    <meta name="msapplication-TileColor" content="#FFFFFF" />
+    <meta name="msapplication-TileImage" content="/favicon/favicon-144.png" />
+    <meta name="msapplication-config" content="/favicon/browserconfig.xml" />
+
+    <meta name="robots">
+    <meta name="keywords">
+    <meta name="description">
+
+    <script src="/app/bundle.js?v=JyS5_g04Nx1ex98yNLfNLYOOq07hWM0v9Lq1oq-A7iA"></script>
+    <script src="/lib/es6-shim/es6-shim.min.js"></script>
+    <script src="/lib/es6-promise/es6-promise.min.js"></script>
+    <script src="/lib/jquery/jquery.min.js"></script>
+    <link href="/lib/select2/css/select2.min.css" rel="stylesheet" />
+
+    <link href="/lib/select2-theme-bootstrap4/dist/select2-bootstrap.css" rel="stylesheet" />
+    <script src="/lib/select2/js/select2.min.js" defer></script>
+    <script src="/lib/select2/js/i18n/ru.js" defer></script>
+    <script src="/js/url-helper.js"></script>
+
+    <script type="text/javascript">EntryPoint.common()</script>
+
+    <link rel="stylesheet" href="/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/app/bundle.css?v=3JT2kB8CYknmAQZDHp_6Z9d2vIn_3kOsGh_x0SsMZSg" />
+    <link href="/lib/font-awesome/css/all.min.css" rel="stylesheet" />
+
+</head>
+<body>
+    <div class="page-container">
+        <div class="content-wrap">
+            <header>
+                <div class="header-container">
+                    <div class="container">
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="logo">
+                                    <a><img class="img-responsive" alt="Официальное опубликование правовых актов" src="/images/logo.png"></a>
+                                </div>
+                                <div class="site-title">Официальное опубликование правовых актов</div>
+                                <div class="site-titleES">ОФИЦИАЛЬНОЕ ОПУБЛИКОВАНИЕ</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="menu-button notforprint"></div>
+                <div class="mobile-menu notforprint">
+                    <i class="mobile-menu-close"></i>
+                    <div class="mobile-menu-container">
+                        <ul>
+
+<li>
+    <a title="На главную страницу портала" class="main-item with-icon" href="http://pravo.gov.ru">
+        <i class="icon icon-home"></i>
+    </a>
+</li>
+<li>
+    <a class="main-item " href=/documents/daily title="18 &#x44F;&#x43D;&#x432;&#x430;&#x440;&#x44F;">Сегодня</a>
+</li>
+<li>
+    <a class="main-item " href=/documents/weekly title="&#x422;&#x435;&#x43A;&#x443;&#x449;&#x430;&#x44F; &#x43D;&#x435;&#x434;&#x435;&#x43B;&#x44F;, &#x441; &#x43F;&#x43E;&#x43D;&#x435;&#x434;&#x435;&#x43B;&#x44C;&#x43D;&#x438;&#x43A;&#x430; &#x43F;&#x43E; &#x432;&#x43E;&#x441;&#x43A;&#x440;&#x435;&#x441;&#x435;&#x43D;&#x44C;&#x435; - c 12 &#x43F;&#x43E; 18 &#x44F;&#x43D;&#x432;&#x430;&#x440;&#x44F;">Неделя</a>
+</li>
+<li>
+    <a class="main-item " href=/documents/monthly title="&#x422;&#x435;&#x43A;&#x443;&#x449;&#x438;&#x439; &#x43C;&#x435;&#x441;&#x44F;&#x446; - &#x44F;&#x43D;&#x432;&#x430;&#x440;&#x44C;">Месяц</a>
+</li>
+<li>
+    <a class="main-item " href=/search>ПОИСК <i class="fa fa-search faright"></i></a>
+</li>
+<li>
+    <a class="main-item " href=/calendar>КАЛЕНДАРЬ ОПУБЛИКОВАНИЯ <i class="far fa-calendar-alt faright"></i></a>
+</li>                        </ul>
+                    </div>
+                </div>
+                <div class="top_menu notforprint" id="navbarSupportedContent">
+                    <div class="container">
+                        <div class="row">
+                            <ul class="float-left">
+
+<li>
+    <a title="На главную страницу портала" class="main-item with-icon" href="http://pravo.gov.ru">
+        <i class="icon icon-home"></i>
+    </a>
+</li>
+<li>
+    <a class="main-item " href=/documents/daily title="18 &#x44F;&#x43D;&#x432;&#x430;&#x440;&#x44F;">Сегодня</a>
+</li>
+<li>
+    <a class="main-item " href=/documents/weekly title="&#x422;&#x435;&#x43A;&#x443;&#x449;&#x430;&#x44F; &#x43D;&#x435;&#x434;&#x435;&#x43B;&#x44F;, &#x441; &#x43F;&#x43E;&#x43D;&#x435;&#x434;&#x435;&#x43B;&#x44C;&#x43D;&#x438;&#x43A;&#x430; &#x43F;&#x43E; &#x432;&#x43E;&#x441;&#x43A;&#x440;&#x435;&#x441;&#x435;&#x43D;&#x44C;&#x435; - c 12 &#x43F;&#x43E; 18 &#x44F;&#x43D;&#x432;&#x430;&#x440;&#x44F;">Неделя</a>
+</li>
+<li>
+    <a class="main-item " href=/documents/monthly title="&#x422;&#x435;&#x43A;&#x443;&#x449;&#x438;&#x439; &#x43C;&#x435;&#x441;&#x44F;&#x446; - &#x44F;&#x43D;&#x432;&#x430;&#x440;&#x44C;">Месяц</a>
+</li>
+<li>
+    <a class="main-item " href=/search>ПОИСК <i class="fa fa-search faright"></i></a>
+</li>
+<li>
+    <a class="main-item " href=/calendar>КАЛЕНДАРЬ ОПУБЛИКОВАНИЯ <i class="far fa-calendar-alt faright"></i></a>
+</li>                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </header>
+            <main>
+                <div class="overlay"></div>
+                
+<div class="container">
+    <h2>Страница не найдена</h2>
+    <ul class="list-unstyled">
+        <li><b>К сожалению, запрашиваемая Вами страница не найдена.</b></li>
+        <li>
+            Возможные причины:
+            <ul>
+                <li>Страница, которую вы запрашиваете, больше не существует на сайте.</li>
+                <li>Страница перемещена или переименована.</li>
+                <li>Адрес страницы указан с ошибкой.</li>
+            </ul>
+        </li>
+        <li>
+            Что делать:
+            <ul>
+                <li>Если вы вводили адрес вручную в адресной строке браузера, проверьте, всё ли вы написали правильно.</li>
+                <li>Попробуйте вернуться на главную страницу и повторить запрос.</li>
+                <li>Если вы уверены, что страница должна быть именно по указанному адресу, пожалуйста, обратитесь к администратору системы.</li>
+            </ul>
+        </li>
+
+    </ul>
+</div>
+
+
+
+            </main>
+        </div>
+        <footer class="notforprint">
+            <div class="footer">
+                <div class="footer-container">
+                    <div class="container">
+                        <div class="row">
+                            <div class="col-xs-12 col-sm-7 footer-certificates">
+
+                                <span class="footer-text">
+                                    <a href="http://pravo.gov.ru/upload/medialibrary/aea/aea92c7a1a0cb2c5e8c2104cf6aceaff.jpg" target="_blank">Свидетельство о&nbsp;регистрации СМИ №&nbsp;ФС77-47467</a>
+                                </span>
+                                <span class="footer-text" style="padding-left: 10px;">
+                                    <a href="http://pravo.gov.ru/upload/medialibrary/eaf/eafafedba15eba345ea36007b7bbd994.jpg" target="_blank">Электронный паспорт ФГИС №&nbsp;ФС77110096</a>
+                                </span>
+
+                            </div>
+                            <div class="col-xs-12 col-sm-5">
+
+                                <div class="footer-buttons">
+                                    <div class="soc-block soc-top">
+                                        <a class="footer-item" href="/rss" title="RSS каналы"><img class="footer-item-icon" alt="RSS каналы" src="/images/rss-logo.svg"></a>
+                                        <div class="line"></div>
+                                        <a class="footer-item" title="HTML конструктор" href="/HtmlConstructor"><img class="footer-item-icon" alt="HTML конструктор" src="/images/html-code.svg"></a>
+                                        <div class="line"></div>
+                                        <a class="footer-item" title="Открытые данные" href="/OpenData"><img class="footer-item-icon" alt="Открытые данные" src="/images/registry-editor.svg"></a>
+                                        <div class="line"></div>
+                                        <a class="footer-item" title="API интерфейс" href="/help"><img class="footer-item-icon" alt="API интерфейс" src="/images/api.svg"></a>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="/lib/jquery/jquery.min.js"></script>
+    <script src="/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script src="/js/site.js?v=R8u1rEpscBH6axYHCUUniS65iRQ4UBaenIV39gnO9wo"></script>
+    <script src="/js/menu.js?v=AbPet1jOZejrSykwqkhCRnsfF56meR48uMZ8ByrgbXE"></script>
+
+    <link href="/lib/bootstrap-datepicker/css/bootstrap-datepicker3.min.css" rel="stylesheet" />
+    <script src="/lib/bootstrap-datepicker/js/bootstrap-datepicker.js"></script>
+    <script src="/lib/bootstrap-datepicker/locales/bootstrap-datepicker.ru.min.js"></script>
+
+    
+</body>
+</html>

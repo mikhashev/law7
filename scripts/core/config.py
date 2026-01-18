@@ -23,7 +23,7 @@ DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NA
 # =============================================================================
 # Pravo.gov.ru API Configuration
 # =============================================================================
-PRAVO_API_BASE_URL = os.getenv("PRAVO_API_BASE_URL", "https://publication.pravo.gov.ru/api")
+PRAVO_API_BASE_URL = os.getenv("PRAVO_API_BASE_URL", "http://publication.pravo.gov.ru/api")
 PRAVO_API_TIMEOUT = int(os.getenv("PRAVO_API_TIMEOUT", "30"))
 PRAVO_MAX_RETRIES = int(os.getenv("PRAVO_MAX_RETRIES", "3"))
 
