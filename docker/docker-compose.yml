@@ -1,69 +1,69 @@
-# Docker Compose configuration for laws-context7
+# Docker Compose configuration for law7
 # Based on patterns from yandex-games-bi-suite
 version: '3.8'
 
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: laws-context7-postgres
+    container_name: law7-postgres
     env_file:
       - .env
     environment:
-      POSTGRES_USER: ${DB_USER:-laws_context7}
+      POSTGRES_USER: ${DB_USER:-law7}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME:-laws_context7}
+      POSTGRES_DB: ${DB_NAME:-law7}
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - law7_postgres_data:/var/lib/postgresql/data
       - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-laws_context7} -d ${DB_NAME:-laws_context7}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-law7} -d ${DB_NAME:-law7}"]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - laws-context7-network
+      - law7-network
 
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: laws-context7-qdrant
+    container_name: law7-qdrant
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - qdrant_data:/qdrant/storage
+      - law7_qdrant_data:/qdrant/storage
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - laws-context7-network
+      - law7-network
 
   redis:
     image: redis:7-alpine
-    container_name: laws-context7-redis
+    container_name: law7-redis
     ports:
       - "6380:6379"
     volumes:
-      - redis_data:/data
+      - law7_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
     networks:
-      - laws-context7-network
+      - law7-network
 
 volumes:
-  postgres_data:
+  law7_postgres_data:
     driver: local
-  qdrant_data:
+  law7_qdrant_data:
     driver: local
-  redis_data:
+  law7_redis_data:
     driver: local
 
 networks:
-  laws-context7-network:
+  law7-network:
     driver: bridge

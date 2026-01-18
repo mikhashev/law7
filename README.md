@@ -1,4 +1,4 @@
-# Laws-Context7
+# Law7
 
 An MCP (Model Context Protocol) server for querying legal documents from multiple countries, starting with the Russian Federation.
 
@@ -56,13 +56,13 @@ npx @modelcontextprotocol/inspector node dist/index.js
 ### 5. Add to Claude Code
 
 ```bash
-claude mcp add laws-context7 -- node c:\Users\mike\Documents\laws-context7\dist\index.js
+claude mcp add law7 -- node c:\Users\mike\Documents\law7\dist\index.js
 ```
 
 ## Project Structure
 
 ```
-laws-context7/
+law7/
 ├── src/                     # TypeScript - MCP Server (PUBLIC)
 │   ├── index.ts             # MCP server entry point
 │   ├── server.ts            # MCP server setup

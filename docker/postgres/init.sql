@@ -1,4 +1,4 @@
--- Laws-Context7 Database Schema
+-- Law7 Database Schema
 -- PostgreSQL 15+
 
 -- Enable required extensions
@@ -145,8 +145,8 @@ WHERE d.publication_date >= CURRENT_DATE - INTERVAL '30 days'
 ORDER BY d.publication_date DESC;
 
 -- Grant permissions (adjust username as needed)
--- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO laws_context7;
--- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO laws_context7;
+-- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO law7;
+-- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO law7;
 
 -- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()

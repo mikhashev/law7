@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "laws-context7"
+name = "law7"
 version = "0.1.0"
-description = "Data pipeline for laws-context7 - crawls, parses, and indexes legal documents"
+description = "Data pipeline for law7 - crawls, parses, and indexes legal documents"
 authors = ["Your Name <you@example.com>"]
 packages = [{include = "scripts", from = "."}]
 

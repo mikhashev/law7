@@ -1,5 +1,5 @@
 {
-  "name": "laws-context7",
+  "name": "law7",
   "version": "0.1.0",
   "description": "MCP server for querying legal documents from multiple countries",
   "type": "module",
@@ -15,7 +15,7 @@
     "laws",
     "legal",
     "russia",
-    "context7"
+    "law7"
   ],
   "author": "",
   "license": "MIT",

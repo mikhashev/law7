@@ -1,1 +1,1 @@
-# Laws-Context7 Sync Scripts
+# Law7 Sync Scripts

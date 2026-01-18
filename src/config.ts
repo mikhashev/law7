@@ -1,5 +1,5 @@
 /**
- * Laws-Context7 MCP Server Configuration
+ * Law7 MCP Server Configuration
  * TypeScript configuration for MCP server
  */
 
@@ -12,10 +12,10 @@ loadEnv({ path: envPath });
 
 // Database configuration
 export const db = {
-  user: process.env.DB_USER || 'laws_context7',
+  user: process.env.DB_USER || 'law7',
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5433'),
-  database: process.env.DB_NAME || 'laws_context7',
+  database: process.env.DB_NAME || 'law7',
   password: process.env.DB_PASSWORD || '',
   get connectionString(): string {
     return `postgresql://${this.user}:${this.password}@${this.host}:${this.port}/${this.database}`;
@@ -39,7 +39,7 @@ export const redis = {
 
 // MCP Server configuration
 export const server = {
-  name: process.env.MCP_SERVER_NAME || 'laws-context7',
+  name: process.env.MCP_SERVER_NAME || 'law7',
   version: process.env.MCP_SERVER_VERSION || '0.1.0',
 };
 
