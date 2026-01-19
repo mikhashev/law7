@@ -15,10 +15,11 @@
   - [x] Version manager: tracks and queries article version history
   - [x] Consolidation orchestrator: coordinates consolidation process
   - [x] Database schema: code_article_versions, amendment_applications, consolidated_codes
-- [ ] **IN PROGRESS**: Add actual code content and amendments
-  - [ ] Scrape HTML pages for detailed amendment text
-  - [ ] Import consolidated codes from commercial sources (fallback)
-  - [ ] Test consolidation with Labor Code (TK_RF)
+- [ ] **NEXT PHASE**: Update TypeScript models and MCP tools (Phase 7)
+  - [x] **COMPLETED**: HTML scraper for detailed amendment text
+  - [x] Extracts publication dates from text: "Дата опубликования: 29.12.2025"
+  - [x] Removes duplicate text from nested HTML elements
+  - [ ] Ready to fetch detailed amendment text for consolidation
 - [ ] Add remaining major Russian legal codes to the database
   - **Civil Code** (Гражданский кодекс) - Parts 1, 2, 3, 4
   - **Criminal Code** (Уголовный кодекс)

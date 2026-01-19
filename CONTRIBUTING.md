@@ -122,6 +122,54 @@ When developing with AI assistants (Claude Code, Cursor):
    npx @modelcontextprotocol/inspector node dist/index.js
    ```
 
+### Getting Context with Git
+
+**CRITICAL**: Before making any changes, AI assistants MUST check git history for context.
+
+```bash
+# Always check git status first
+git status
+
+# Review recent commit messages to understand patterns
+git log --oneline -20
+
+# See what changed in specific files
+git log --oneline -- <path-to-file>
+
+# View recent changes for context
+git diff HEAD~5
+```
+
+**Why?** Git history provides critical context:
+- **Recent changes** show what was just worked on
+- **Commit patterns** reveal project conventions (scopes, types)
+- **File history** indicates ownership and dependencies
+- **Uncommitted changes** show work in progress
+
+**Best practices for AI assistants**:
+1. Always check `git status` at the start of a session
+2. Review recent commits before suggesting changes
+3. Look at commit message patterns to match the project style
+4. Check if files are modified/deleted/added before editing them
+5. Understand what branch you're on (master vs feature branch)
+
+**Example workflow**:
+```bash
+# 1. Check current state
+git status
+# Output: Shows modified/new files, current branch
+
+# 2. Understand recent work
+git log --oneline -10
+# Output: Shows recent commits like "feat(parser): add technical metadata filtering"
+
+# 3. Check specific file history
+git log --oneline -- scripts/parser/html_scraper.py
+# Output: Shows evolution of the file
+
+# 4. Now make informed changes
+```
+
 ### API Research with AI
 
 When exploring new APIs or data sources:
