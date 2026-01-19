@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
-from core.config import DATABASE_URL
+from scripts.core.config import DATABASE_URL
 
 logger = logging.getLogger(__name__)
 

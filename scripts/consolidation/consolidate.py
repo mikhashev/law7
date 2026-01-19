@@ -17,10 +17,10 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 
-from amendment_parser import AmendmentParser, ParsedAmendment, parse_amendments_batch
-from core.db import get_db_connection
-from diff_engine import ArticleDiffEngine, ArticleSnapshot
-from version_manager import VersionManager
+from scripts.consolidation.amendment_parser import AmendmentParser, ParsedAmendment, parse_amendments_batch
+from scripts.core.db import get_db_connection
+from scripts.consolidation.diff_engine import ArticleDiffEngine, ArticleSnapshot
+from scripts.consolidation.version_manager import VersionManager
 
 logger = logging.getLogger(__name__)
 

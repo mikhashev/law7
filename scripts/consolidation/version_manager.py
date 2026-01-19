@@ -15,8 +15,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from core.db import get_db_connection, get_db_session
-from diff_engine import ArticleSnapshot
+from scripts.core.db import get_db_connection, get_db_session
+from scripts.consolidation.diff_engine import ArticleSnapshot
 
 logger = logging.getLogger(__name__)
 
