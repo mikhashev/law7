@@ -47,3 +47,6 @@ htmlcov/
 venv/
 env/
 ENV/
+
+# Media
+logo/

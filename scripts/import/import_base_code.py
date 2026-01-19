@@ -32,71 +32,157 @@ logger = logging.getLogger(__name__)
 
 
 # Code metadata for import
-# Priority: kremlin (official) -> pravo (official) -> consultant (reference)
+# Priority: kremlin (official) -> pravo (official) -> government (official)
+# Removed: consultant (paid subscription - no longer used)
 CODE_METADATA = {
+    # Multi-part codes
+    'GK_RF': {
+        'name': 'Гражданский кодекс',
+        'multi_part': True,
+        'parts': [
+            {
+                'code_id': 'GK_RF',
+                'part': '1',
+                'eo_number': '51-ФЗ',
+                'original_date': date(1994, 11, 30),
+                'kremlin_bank': '7279',
+                'pravo_nd': '102033239',
+            },
+            {
+                'code_id': 'GK_RF_2',
+                'part': '2',
+                'eo_number': '51-ФЗ',
+                'original_date': date(1994, 11, 30),
+                'kremlin_bank': '8804',
+                'pravo_nd': '102039276',
+            },
+            {
+                'code_id': 'GK_RF_3',
+                'part': '3',
+                'eo_number': '51-ФЗ',
+                'original_date': date(1994, 11, 30),
+                'kremlin_bank': '17547',
+                'pravo_nd': '102073578',
+            },
+            {
+                'code_id': 'GK_RF_4',
+                'part': '4',
+                'eo_number': '51-ФЗ',
+                'original_date': date(1994, 11, 30),
+                'kremlin_bank': '24743',
+                'pravo_nd': '102110716',
+            },
+        ],
+    },
+    'NK_RF': {
+        'name': 'Налоговый кодекс',
+        'multi_part': True,
+        'parts': [
+            {
+                'code_id': 'NK_RF',
+                'part': '1',
+                'eo_number': '146-ФЗ',
+                'original_date': date(2000, 7, 31),
+                'kremlin_bank': '12755',
+                'pravo_nd': '102054722',
+            },
+            {
+                'code_id': 'NK_RF_2',
+                'part': '2',
+                'eo_number': '146-ФЗ',
+                'original_date': date(2000, 7, 31),
+                'kremlin_bank': '15925',
+                'pravo_nd': '102067058',
+            },
+        ],
+    },
+    # Constitution (special case - different URL structure)
+    'KONST_RF': {
+        'name': 'Конституция Российской Федерации',
+        'eo_number': None,
+        'original_date': date(1993, 12, 12),
+        'kremlin_url': 'http://kremlin.ru/acts/constitution/item',
+        'pravo_nd': '102027595',
+        'is_constitution': True,
+    },
+    # Single-part codes
     'TK_RF': {
         'name': 'Трудовой кодекс',
         'eo_number': '197-ФЗ',
         'original_date': date(2001, 12, 30),
-        'consultant_url': 'https://www.consultant.ru/document/cons_doc_LAW_34683/',
         'kremlin_bank': '17706',
         'kremlin_url': 'http://www.kremlin.ru/acts/bank/17706',
-    },
-    'GK_RF': {
-        'name': 'Гражданский кодекс',
-        'eo_number': '51-ФЗ',
-        'original_date': date(1994, 11, 30),
-        'consultant_url': 'https://www.consultant.ru/document/cons_doc_LAW_5142/',
-        'kremlin_bank': '7279',
-        'kremlin_url': 'http://www.kremlin.ru/acts/bank/7279',
+        'pravo_nd': '102074279',
     },
     'UK_RF': {
         'name': 'Уголовный кодекс',
         'eo_number': '63-ФЗ',
         'original_date': date(1996, 5, 24),
-        'consultant_url': 'https://www.consultant.ru/document/cons_doc_LAW_10699/',
         'kremlin_bank': '9555',
         'kremlin_url': 'http://www.kremlin.ru/acts/bank/9555',
-    },
-    'NK_RF': {
-        'name': 'Налоговый кодекс',
-        'eo_number': '146-ФЗ',
-        'original_date': date(2000, 7, 31),
-        'consultant_url': 'https://www.consultant.ru/document/cons_doc_LAW_19671/',
-        'kremlin_bank': '12755',
-        'kremlin_url': 'http://www.kremlin.ru/acts/bank/12755',
+        'pravo_nd': '102041891',
     },
     'KoAP_RF': {
         'name': 'Кодекс Российской Федерации об административных правонарушениях',
         'eo_number': '195-ФЗ',
         'original_date': date(2001, 12, 30),
-        'consultant_url': 'https://www.consultant.ru/document/cons_doc_LAW_19702/',
         'kremlin_bank': '17704',
         'kremlin_url': 'http://www.kremlin.ru/acts/bank/17704',
+        'pravo_nd': '102074277',
+        'government_url': 'http://government.ru/docs/all/95-fz.html',
     },
     'SK_RF': {
         'name': 'Семейный кодекс',
         'eo_number': '223-ФЗ',
         'original_date': date(1995, 12, 29),
-        'consultant_url': 'https://www.consultant.ru/document/cons_doc_LAW_12940/',
         'kremlin_bank': '8671',
         'kremlin_url': 'http://www.kremlin.ru/acts/bank/8671',
+        'pravo_nd': '102038925',
     },
     'ZhK_RF': {
         'name': 'Жилищный кодекс',
         'eo_number': '188-ФЗ',
         'original_date': date(2004, 12, 29),
-        'consultant_url': 'https://www.consultant.ru/document/cons_doc_LAW_51057/',
         'kremlin_bank': '21918',
         'kremlin_url': 'http://www.kremlin.ru/acts/bank/21918',
+        'pravo_nd': '102090645',
     },
     'ZK_RF': {
         'name': 'Земельный кодекс',
         'eo_number': '136-ФЗ',
         'original_date': date(2001, 10, 25),
-        'consultant_url': 'https://www.consultant.ru/document/cons_doc_LAW_33773/',
         'kremlin_bank': '17478',
         'kremlin_url': 'http://www.kremlin.ru/acts/bank/17478',
+        'pravo_nd': '102073184',
+        'government_url': 'http://government.ru/docs/all/136-fz.html',
+    },
+    # Civil Procedure Code (available on kremlin.ru)
+    'GPK_RF': {
+        'name': 'Гражданский процессуальный кодекс',
+        'eo_number': '138-ФЗ',
+        'original_date': date(2002, 11, 14),
+        'kremlin_bank': '18837',
+        'kremlin_url': 'http://www.kremlin.ru/acts/bank/18837',
+        'pravo_nd': None,
+        'government_url': 'http://government.ru/docs/all/138-fz.html',
+    },
+    'APK_RF': {
+        'name': 'Арбитражный процессуальный кодекс',
+        'eo_number': '95-ФЗ',
+        'original_date': date(2002, 7, 24),
+        'kremlin_bank': '18937',
+        'kremlin_url': 'http://www.kremlin.ru/acts/bank/18937',
+        'pravo_nd': None,
+        'government_url': 'http://government.ru/docs/all/97382/',
+    },
+    'UPK_RF': {
+        'name': 'Уголовно-процессуальный кодекс',
+        'eo_number': '174-ФЗ',
+        'original_date': date(2001, 12, 18),
+        'kremlin_bank': '17643',
+        'kremlin_url': 'http://www.kremlin.ru/acts/bank/17643',
+        'pravo_nd': None,
+        'government_url': 'http://government.ru/docs/all/97184/',
     },
 }
 
@@ -409,18 +495,524 @@ class BaseCodeImporter:
             'source': 'kremlin.ru',
         }
 
-    def save_base_articles(self, code_id: str, articles: List[Dict[str, Any]]) -> int:
+    def import_code(self, code_id: str, source: str = 'auto') -> Dict[str, Any]:
+        """
+        Import a legal code from specified source.
+
+        Automatically falls back to alternative sources if the primary is unavailable:
+        - kremlin (official) -> pravo (official) -> consultant (reference)
+
+        Args:
+            code_id: Code identifier (e.g., 'TK_RF')
+            source: Source to import from ('auto', 'kremlin', 'pravo', 'consultant')
+
+        Returns:
+            Result dictionary
+        """
+        if code_id not in CODE_METADATA:
+            return {
+                'code_id': code_id,
+                'status': 'error',
+                'error': f'Unknown code_id: {code_id}'
+            }
+
+        metadata = CODE_METADATA[code_id]
+
+        # Handle multi-part codes
+        if metadata.get('multi_part'):
+            all_results = []
+            for part_metadata in metadata['parts']:
+                part_code_id = part_metadata['code_id']
+                logger.info(f"Importing part {part_metadata['part']} of {code_id} as {part_code_id}")
+
+                # Import each part separately
+                result = self._import_single_code(
+                    part_code_id, part_metadata, source
+                )
+                all_results.append(result)
+
+            # Return summary
+            successful = sum(1 for r in all_results if r['status'] == 'success')
+            total_articles = sum(r.get('articles_saved', 0) for r in all_results)
+
+            return {
+                'code_id': code_id,
+                'status': 'success' if successful > 0 else 'error',
+                'parts_total': len(all_results),
+                'parts_successful': successful,
+                'total_articles_saved': total_articles,
+                'results': all_results,
+            }
+
+        # Handle single-part codes
+        return self._import_single_code(code_id, metadata, source)
+
+    def _import_single_code(self, code_id: str, metadata: Dict[str, Any], source: str) -> Dict[str, Any]:
+        """
+        Import a single code (or one part of a multi-part code).
+
+        Args:
+            code_id: Code identifier
+            metadata: Metadata dictionary for this code
+            source: Source to import from
+
+        Returns:
+            Result dictionary
+        """
+        # Handle Constitution specially
+        if metadata.get('is_constitution'):
+            return self._import_constitution(code_id, metadata, source)
+
+        # Auto-determine best available source
+        if source == 'auto':
+            sources_to_try = ['kremlin', 'pravo', 'government']
+        else:
+            sources_to_try = [source]
+
+        # Try each source in priority order
+        for src in sources_to_try:
+            logger.info(f"Trying source: {src} for {code_id}")
+
+            if src == 'kremlin':
+                if metadata.get('kremlin_bank'):
+                    html_pages = self.fetch_kremlin_html_all_pages(metadata['kremlin_bank'])
+                    if html_pages:
+                        parsed = self.parse_kremlin_html(html_pages, code_id)
+                        articles = parsed.get('articles', [])
+                        if articles:
+                            # Articles from Kremlin already have full text
+                            saved = self.save_base_articles(code_id, articles, metadata)
+                            return {
+                                'code_id': code_id,
+                                'status': 'success',
+                                'pages_fetched': len(html_pages),
+                                'articles_found': len(articles),
+                                'articles_processed': len(articles),
+                                'articles_saved': saved,
+                                'source': 'kremlin',
+                            }
+
+            elif src == 'pravo':
+                if metadata.get('pravo_nd'):
+                    html_content = self.fetch_pravo_html(metadata['pravo_nd'])
+                    if html_content:
+                        parsed = self.parse_pravo_html(html_content, code_id)
+                        articles = parsed.get('articles', [])
+                        if articles:
+                            saved = self.save_base_articles(code_id, articles, metadata)
+                            return {
+                                'code_id': code_id,
+                                'status': 'success',
+                                'articles_found': len(articles),
+                                'articles_processed': len(articles),
+                                'articles_saved': saved,
+                                'source': 'pravo',
+                            }
+
+            elif src == 'government':
+                if metadata.get('government_url'):
+                    html_pages = self.fetch_government_html_all_pages(metadata['government_url'])
+                    if html_pages:
+                        parsed = self.parse_government_html(html_pages, code_id)
+                        articles = parsed.get('articles', [])
+                        if articles:
+                            saved = self.save_base_articles(code_id, articles, metadata)
+                            return {
+                                'code_id': code_id,
+                                'status': 'success',
+                                'pages_fetched': len(html_pages),
+                                'articles_found': len(articles),
+                                'articles_processed': len(articles),
+                                'articles_saved': saved,
+                                'source': 'government',
+                            }
+
+        # All sources failed
+        return {
+            'code_id': code_id,
+            'status': 'error',
+            'error': f'Failed to fetch from any source'
+        }
+
+    def _import_constitution(self, code_id: str, metadata: Dict[str, Any], source: str) -> Dict[str, Any]:
+        """
+        Import Constitution from available sources.
+
+        Args:
+            code_id: Code identifier (should be 'KONST_RF')
+            metadata: Metadata dictionary
+            source: Source to import from
+
+        Returns:
+            Result dictionary
+        """
+        # Determine sources to try based on preference
+        if source == 'auto':
+            sources_to_try = [
+                ('pravo', metadata.get('pravo_nd')),
+                ('kremlin', metadata.get('kremlin_url')),
+            ]
+        else:
+            # Single source specified
+            if source == 'pravo':
+                sources_to_try = [('pravo', metadata.get('pravo_nd'))]
+            else:
+                sources_to_try = [('kremlin', metadata.get('kremlin_url'))]
+
+        # Try each source
+        for src_name, src_value in sources_to_try:
+            if not src_value:
+                continue
+
+            try:
+                if src_name == 'pravo':
+                    logger.info(f"Fetching Constitution from pravo.gov.ru: {src_value}")
+                    html_content = self.fetch_pravo_html(src_value)
+                    if html_content:
+                        parsed = self.parse_pravo_html(html_content, code_id)
+                        articles = parsed.get('articles', [])
+                        if articles:
+                            saved = self.save_base_articles(code_id, articles, metadata)
+                            return {
+                                'code_id': code_id,
+                                'status': 'success',
+                                'articles_found': len(articles),
+                                'articles_processed': len(articles),
+                                'articles_saved': saved,
+                                'source': 'pravo',
+                            }
+
+                elif src_name == 'kremlin':
+                    logger.info(f"Fetching Constitution from kremlin.ru: {src_value}")
+                    response = self.session.get(src_value, timeout=self.timeout)
+                    response.raise_for_status()
+                    response.encoding = 'utf-8'
+
+                    parsed = self.parse_constitution(response.text, code_id)
+                    articles = parsed.get('articles', [])
+                    if articles:
+                        saved = self.save_base_articles(code_id, articles, metadata)
+                        return {
+                            'code_id': code_id,
+                            'status': 'success',
+                            'articles_found': len(articles),
+                            'articles_processed': len(articles),
+                            'articles_saved': saved,
+                            'source': 'kremlin',
+                        }
+
+            except Exception as e:
+                logger.warning(f"Failed to fetch from {src_name}: {e}")
+                continue
+
+        return {
+            'code_id': code_id,
+            'status': 'error',
+            'error': 'Failed to fetch from any available source',
+        }
+
+    def fetch_pravo_html(self, nd: str) -> Optional[str]:
+        """
+        Fetch HTML from pravo.gov.ru by document ID (nd).
+
+        Args:
+            nd: Document ID from pravo.gov.ru
+
+        Returns:
+            HTML content or None if failed
+        """
+        url = f"http://pravo.gov.ru/proxy/ips/?docbody=&nd={nd}"
+        try:
+            logger.info(f"Fetching from pravo.gov.ru: {url}")
+            response = self.session.get(url, timeout=self.timeout)
+            response.raise_for_status()
+            response.encoding = 'utf-8'
+            return response.text
+        except Exception as e:
+            logger.error(f"Failed to fetch from pravo.gov.ru: {e}")
+            return None
+
+    def parse_pravo_html(self, html: str, code_id: str) -> Dict[str, Any]:
+        """
+        Parse pravo.gov.ru HTML to extract articles.
+
+        Args:
+            html: HTML content
+            code_id: Code identifier
+
+        Returns:
+            Dictionary with articles list
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+
+        articles = []
+
+        # Pravo.gov.ru uses article headers like "Статья 1. Title"
+        # Look for article patterns
+        for element in soup.find_all(['h3', 'h4', 'p', 'div']):
+            text = element.get_text(strip=True)
+            article_match = re.match(r'^Статья\s+(\d+(?:[\.\-]\d+)*)\.?\s*(.+)$', text, re.IGNORECASE)
+
+            if article_match:
+                article_number = article_match.group(1).replace('.', '').replace('-', '')
+                article_title = text
+
+                # Find the article content (paragraphs following the header)
+                content_paragraphs = []
+                current_element = element.find_next_sibling(['p', 'div'])
+                while current_element:
+                    para_text = current_element.get_text(strip=True)
+                    # Stop at next article header
+                    if re.match(r'^Статья\s+\d+', para_text):
+                        break
+                    if para_text and len(para_text) > 5:
+                        content_paragraphs.append(para_text)
+                    current_element = current_element.find_next_sibling(['p', 'div'])
+
+                articles.append({
+                    'article_number': article_number,
+                    'article_title': article_title,
+                    'article_text': '\n\n'.join(content_paragraphs),
+                })
+
+        logger.info(f"Found {len(articles)} articles from pravo.gov.ru")
+        return {
+            'code_id': code_id,
+            'articles': articles,
+            'source': 'pravo.gov.ru',
+        }
+
+    def fetch_government_html(self, url: str) -> Optional[str]:
+        """
+        Fetch HTML from government.ru (single page).
+
+        Args:
+            url: Full URL to the document
+
+        Returns:
+            HTML content or None if failed
+        """
+        try:
+            logger.info(f"Fetching from government.ru: {url}")
+            response = self.session.get(url, timeout=self.timeout)
+            response.raise_for_status()
+            response.encoding = 'utf-8'
+            return response.text
+        except Exception as e:
+            logger.error(f"Failed to fetch from government.ru: {e}")
+            return None
+
+    def fetch_government_html_all_pages(self, url: str) -> List[str]:
+        """
+        Fetch ALL HTML pages from government.ru (handles pagination).
+
+        Args:
+            url: Full URL to the document
+
+        Returns:
+            List of HTML content strings (one per page), or empty list if failed
+        """
+        all_pages = []
+        page_num = 1
+
+        while True:
+            page_url = f"{url}?page={page_num}" if page_num > 1 else url
+            try:
+                logger.info(f"Fetching page {page_num}: {page_url}")
+                response = self.session.get(page_url, timeout=self.timeout)
+                response.raise_for_status()
+                response.encoding = 'utf-8'
+
+                # Check if this page has articles (look for article patterns in text)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                text = soup.get_text()
+                has_articles = bool(re.search(r'Статья\s+\d+', text))
+
+                if not has_articles:
+                    logger.info(f"Page {page_num} has no articles, stopping pagination")
+                    break
+
+                all_pages.append(response.text)
+                page_num += 1
+
+                # Sleep to avoid rate limiting (government.ru is sensitive)
+                time.sleep(3)
+
+                # Safety limit to prevent infinite loops
+                if page_num > 100:
+                    logger.warning(f"Reached page limit (100), stopping pagination")
+                    break
+
+            except Exception as e:
+                logger.error(f"Failed to fetch page {page_num}: {e}")
+                # If we got some pages, return them. If first page failed, return empty
+                if page_num > 1:
+                    break
+                return []
+
+        logger.info(f"Fetched {len(all_pages)} pages from government.ru")
+        return all_pages
+
+    def parse_government_html(self, html: str | List[str], code_id: str) -> Dict[str, Any]:
+        """
+        Parse government.ru HTML to extract articles.
+
+        Args:
+            html: HTML content (single page string or list of pages)
+            code_id: Code identifier
+
+        Returns:
+            Dictionary with articles list
+        """
+        # Handle multiple pages
+        if isinstance(html, list):
+            all_articles = []
+            for i, page_html in enumerate(html):
+                result = self._parse_single_government_page(page_html, code_id)
+                all_articles.extend(result.get('articles', []))
+            logger.info(f"Parsed {len(all_articles)} articles from {len(html)} pages")
+            return {
+                'code_id': code_id,
+                'articles': all_articles,
+                'source': 'government.ru',
+            }
+        else:
+            return self._parse_single_government_page(html, code_id)
+
+    def _parse_single_government_page(self, html: str, code_id: str) -> Dict[str, Any]:
+        """
+        Parse a single government.ru HTML page to extract articles.
+
+        Args:
+            html: HTML content
+            code_id: Code identifier
+
+        Returns:
+            Dictionary with articles list
+        """
+        # Similar structure to Kremlin parser
+        soup = BeautifulSoup(html, 'html.parser')
+
+        articles = []
+        current_article = None
+        current_paragraphs = []
+
+        for element in soup.find_all(['h3', 'h4', 'p', 'div']):
+            text = element.get_text(strip=True)
+
+            article_match = re.match(r'^Статья\s+(\d+(?:[\.\-]\d+)*)\.?\s*(.+)$', text, re.IGNORECASE)
+
+            if article_match:
+                # Save previous article
+                if current_article and current_paragraphs:
+                    current_article['article_text'] = '\n\n'.join(current_paragraphs)
+                    articles.append(current_article)
+
+                # Start new article
+                article_number = article_match.group(1).replace('.', '').replace('-', '')
+                article_title = text
+
+                current_article = {
+                    'article_number': article_number,
+                    'article_title': article_title,
+                    'article_text': '',
+                }
+                current_paragraphs = []
+
+            elif current_article and text:
+                paragraph_match = re.match(r'^(\d+)\.\s*(.+)$', text)
+                if paragraph_match:
+                    current_paragraphs.append(text)
+                elif text and not text.startswith('Раздел') and not text.startswith('Глава'):
+                    current_paragraphs.append(text)
+
+        # Don't forget the last article
+        if current_article and current_paragraphs:
+            current_article['article_text'] = '\n\n'.join(current_paragraphs)
+            articles.append(current_article)
+
+        return {
+            'code_id': code_id,
+            'articles': articles,
+            'source': 'government.ru',
+        }
+
+    def parse_constitution(self, html: str, code_id: str) -> Dict[str, Any]:
+        """
+        Parse Constitution HTML from kremlin.ru to extract articles.
+
+        The Constitution has a different structure with sections and chapters.
+
+        Args:
+            html: HTML content
+            code_id: Code identifier
+
+        Returns:
+            Dictionary with articles list
+        """
+        soup = BeautifulSoup(html, 'html.parser')
+
+        articles = []
+        current_article = None
+        current_paragraphs = []
+
+        # Constitution uses "Статья X" format
+        for element in soup.find_all(['h3', 'h4', 'p', 'div']):
+            text = element.get_text(strip=True)
+
+            article_match = re.match(r'^Статья\s+(\d+)\.?\s*(.+)$', text)
+
+            if article_match:
+                # Save previous article
+                if current_article and current_paragraphs:
+                    current_article['article_text'] = '\n\n'.join(current_paragraphs)
+                    articles.append(current_article)
+
+                # Start new article
+                article_number = article_match.group(1)
+                article_title = text
+
+                current_article = {
+                    'article_number': article_number,
+                    'article_title': article_title,
+                    'article_text': '',
+                }
+                current_paragraphs = []
+
+            elif current_article and text:
+                # Look for numbered paragraphs
+                paragraph_match = re.match(r'^(\d+)\.\s+(.+)$', text)
+                if paragraph_match:
+                    current_paragraphs.append(text)
+                elif len(text) > 10:
+                    current_paragraphs.append(text)
+
+        # Don't forget the last article
+        if current_article and current_paragraphs:
+            current_article['article_text'] = '\n\n'.join(current_paragraphs)
+            articles.append(current_article)
+
+        logger.info(f"Found {len(articles)} articles in Constitution")
+        return {
+            'code_id': code_id,
+            'articles': articles,
+            'source': 'kremlin.ru',
+        }
+
+    def save_base_articles(self, code_id: str, articles: List[Dict[str, Any]], metadata: Dict[str, Any]) -> int:
         """
         Save base articles to code_article_versions table.
 
         Args:
             code_id: Code identifier
             articles: List of article dictionaries
+            metadata: Metadata dictionary for this code
 
         Returns:
             Number of articles saved
         """
         saved = 0
+        original_date = metadata.get('original_date')
 
         for article in articles:
             try:
@@ -436,7 +1028,7 @@ class BaseCodeImporter:
                     existing = conn.execute(check_query, {
                         'code_id': code_id,
                         'article_number': article['article_number'],
-                        'version_date': CODE_METADATA[code_id]['original_date'],
+                        'version_date': original_date,
                     }).fetchone()
 
                     if existing:
@@ -473,14 +1065,14 @@ class BaseCodeImporter:
                     conn.execute(insert_query, {
                         'code_id': code_id,
                         'article_number': article['article_number'],
-                        'version_date': CODE_METADATA[code_id]['original_date'],
+                        'version_date': original_date,
                         'article_text': article['article_text'],
                         'article_title': article['article_title'],
-                        'amendment_eo_number': CODE_METADATA[code_id]['eo_number'],
-                        'amendment_date': CODE_METADATA[code_id]['original_date'],
-                        'is_current': True,  # Base version is current until amended
+                        'amendment_eo_number': metadata.get('eo_number'),
+                        'amendment_date': original_date,
+                        'is_current': True,
                         'is_repealed': False,
-                        'text_hash': '',  # Will be computed by database trigger if needed
+                        'text_hash': '',
                     })
                     conn.commit()
                     saved += 1
@@ -490,94 +1082,6 @@ class BaseCodeImporter:
                 logger.error(f"Failed to save article {article.get('article_number')}: {e}")
 
         return saved
-
-    def import_code(self, code_id: str, source: str = 'auto') -> Dict[str, Any]:
-        """
-        Import a legal code from specified source.
-
-        Automatically falls back to alternative sources if the primary is unavailable:
-        - kremlin (official) -> pravo (official) -> consultant (reference)
-
-        Args:
-            code_id: Code identifier (e.g., 'TK_RF')
-            source: Source to import from ('auto', 'kremlin', 'pravo', 'consultant')
-
-        Returns:
-            Result dictionary
-        """
-        if code_id not in CODE_METADATA:
-            return {
-                'code_id': code_id,
-                'status': 'error',
-                'error': f'Unknown code_id: {code_id}'
-            }
-
-        metadata = CODE_METADATA[code_id]
-
-        # Auto-determine best available source
-        if source == 'auto':
-            sources_to_try = ['kremlin', 'pravo', 'consultant']
-        else:
-            sources_to_try = [source]
-
-        # Try each source in priority order
-        for src in sources_to_try:
-            logger.info(f"Trying source: {src} for {code_id}")
-
-            if src == 'kremlin':
-                if metadata.get('kremlin_bank'):
-                    html_pages = self.fetch_kremlin_html_all_pages(metadata['kremlin_bank'])
-                    if html_pages:
-                        parsed = self.parse_kremlin_html(html_pages, code_id)
-                        articles = parsed.get('articles', [])
-                        if articles:
-                            # Articles from Kremlin already have full text
-                            saved = self.save_base_articles(code_id, articles)
-                            return {
-                                'code_id': code_id,
-                                'status': 'success',
-                                'pages_fetched': len(html_pages),
-                                'articles_found': len(articles),
-                                'articles_processed': len(articles),
-                                'articles_saved': saved,
-                                'source': 'kremlin',
-                            }
-
-            elif src == 'pravo':
-                # TODO: Implement pravo.gov.ru source
-                logger.info(f"Pravo source not yet implemented, skipping")
-                continue
-
-            elif src == 'consultant':
-                html = self.fetch_consultant_html(metadata['consultant_url'])
-                if html:
-                    parsed = self.parse_consultant_html(html, code_id)
-                    articles = parsed.get('articles', [])
-                    if articles:
-                        # Fetch full text for each article
-                        for i, article in enumerate(articles):
-                            article['article_text'] = self.fetch_article_text(
-                                article['article_url'],
-                                article['article_number']
-                            )
-                            time.sleep(0.3)
-
-                        saved = self.save_base_articles(code_id, articles)
-                        return {
-                            'code_id': code_id,
-                            'status': 'success',
-                            'articles_found': len(articles),
-                            'articles_processed': len(articles),
-                            'articles_saved': saved,
-                            'source': 'consultant',
-                        }
-
-        # All sources failed
-        return {
-            'code_id': code_id,
-            'status': 'error',
-            'error': f'Failed to fetch from any source'
-        }
 
     def close(self):
         """Close the HTTP session."""
@@ -607,9 +1111,9 @@ def main():
     )
     parser.add_argument(
         '--source',
-        choices=['auto', 'kremlin', 'pravo', 'consultant'],
+        choices=['auto', 'kremlin', 'pravo', 'government'],
         default='auto',
-        help='Source to import from (default: auto - tries kremlin, then pravo, then consultant)'
+        help='Source to import from (default: auto - tries kremlin, then pravo, then government)'
     )
     parser.add_argument(
         '--list',
@@ -640,8 +1144,17 @@ def main():
         print("-" * 60)
         for code_id, metadata in CODE_METADATA.items():
             print(f"  {code_id}: {metadata['name']}")
-            print(f"    EO Number: {metadata['eo_number']}")
-            print(f"    Original Date: {metadata['original_date']}")
+            if metadata.get('multi_part'):
+                parts = metadata.get('parts', [])
+                print(f"    Parts: {len(parts)} (multi-part code)")
+                for part in parts:
+                    print(f"      - Part {part['part']}: code_id={part['code_id']}, kremlin_bank={part.get('kremlin_bank')}")
+            else:
+                print(f"    EO Number: {metadata.get('eo_number')}")
+                print(f"    Original Date: {metadata.get('original_date')}")
+                print(f"    Sources: kremlin={bool(metadata.get('kremlin_bank'))}, "
+                      f"pravo={bool(metadata.get('pravo_nd'))}, "
+                      f"government={bool(metadata.get('government_url'))}")
             print()
         return
 
@@ -653,13 +1166,24 @@ def main():
             print(f"Import Results: {result['code_id']}")
             print(f"{'='*60}")
             print(f"Status: {result['status']}")
+
             if result['status'] == 'success':
-                if result.get('pages_fetched'):
-                    print(f"Pages Fetched: {result['pages_fetched']}")
-                print(f"Articles Found: {result['articles_found']}")
-                print(f"Articles Processed: {result.get('articles_processed', 0)}")
-                print(f"Articles Saved: {result['articles_saved']}")
-                print(f"Source: {result['source']}")
+                # Handle multi-part code results
+                if result.get('parts_total'):
+                    print(f"Parts: {result['parts_successful']}/{result['parts_total']} imported successfully")
+                    print(f"Total Articles Saved: {result['total_articles_saved']}")
+                    for i, part_result in enumerate(result.get('results', [])):
+                        print(f"  Part {i+1}: {part_result['code_id']} - "
+                              f"{part_result.get('articles_saved', 0)} articles "
+                              f"({part_result['source']})")
+                else:
+                    # Single-part code
+                    if result.get('pages_fetched'):
+                        print(f"Pages Fetched: {result['pages_fetched']}")
+                    print(f"Articles Found: {result['articles_found']}")
+                    print(f"Articles Processed: {result.get('articles_processed', 0)}")
+                    print(f"Articles Saved: {result['articles_saved']}")
+                    print(f"Source: {result['source']}")
             else:
                 print(f"Error: {result.get('error', 'Unknown error')}")
             print(f"{'='*60}")
