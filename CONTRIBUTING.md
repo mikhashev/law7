@@ -122,6 +122,29 @@ When developing with AI assistants (Claude Code, Cursor):
    npx @modelcontextprotocol/inspector node dist/index.js
    ```
 
+### API Research with AI
+
+When exploring new APIs or data sources:
+
+1. **Use AI to analyze API endpoints**:
+   - "Analyze the pravo.gov.ru API endpoints"
+   - Reference: [scripts/docs/pravo_api_analysis.md](scripts/docs/pravo_api_analysis.md)
+
+2. **Document findings in analysis docs**:
+   - Endpoint URLs and parameters
+   - Response structures
+   - Rate limits and timeouts
+   - Authentication requirements
+
+3. **Update code based on analysis**:
+   - Add new API client methods
+   - Update database schema for new fields
+   - Add error handling for edge cases
+
+**Key References**:
+- [TODO.md](TODO.md) - Project priorities and implementation status
+- [scripts/docs/pravo_api_analysis.md](scripts/docs/pravo_api_analysis.md) - pravo.gov.ru API documentation
+
 ## Project Plans
 
 Strategic planning documents are maintained in `.claude/plans/`:

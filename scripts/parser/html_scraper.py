@@ -113,6 +113,9 @@ class AmendmentHTMLScraper:
         # Get text while preserving some structure
         full_text = self._extract_text(main_content)
 
+        # Clean technical metadata (keep only valuable legal content)
+        full_text = self._clean_technical_metadata(full_text)
+
         # Extract article references
         articles_affected = self._extract_article_references(full_text)
 
@@ -275,6 +278,32 @@ class AmendmentHTMLScraper:
                 return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
 
         return None
+
+    def _clean_technical_metadata(self, text: str) -> str:
+        """
+        Remove technical metadata from scraped text.
+
+        Filters out non-legal content like publication numbers, dates,
+        page numbers, and navigation elements.
+
+        Args:
+            text: Raw scraped text
+
+        Returns:
+            Cleaned text with only valuable legal content
+        """
+        # Patterns to remove (technical metadata)
+        patterns_to_remove = [
+            r'Номер опубликования:\s*\d+',
+            r'Дата опубликования:\s*[\d.]+',
+            r'Страница\s+\d+\s+из\s+\d+',
+        ]
+
+        for pattern in patterns_to_remove:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+
+        # Clean up extra whitespace
+        return ' '.join(text.split()).strip()
 
     def scrape_amendment_batch(
         self,
