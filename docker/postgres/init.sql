@@ -201,6 +201,18 @@ INSERT INTO countries (code, name, native_name) VALUES
   ('ru', 'Russian Federation', 'Российская Федерация')
 ON CONFLICT (code) DO NOTHING;
 
+-- Insert consolidated codes metadata
+INSERT INTO consolidated_codes (code, name, short_name, description, original_eo_number, original_date) VALUES
+  ('GK_RF', 'Гражданский кодекс Российской Федерации', 'ГК РФ', 'Основной нормативный акт, регулирующий гражданские правоотношения', '51-ФЗ', '1994-11-30'),
+  ('UK_RF', 'Уголовный кодекс Российской Федерации', 'УК РФ', 'Основной нормативный акт, определяющий преступность и наказуемость деяний', '63-ФЗ', '1996-05-24'),
+  ('TK_RF', 'Трудовой кодекс Российской Федерации', 'ТК РФ', 'Кодекс законов, регулирующих трудовые отношения', '197-ФЗ', '2001-12-30'),
+  ('NK_RF', 'Налоговый кодекс Российской Федерации', 'НК РФ', 'Система законодательства о налогах и сборах', '146-ФЗ', '2000-07-31'),
+  ('KoAP_RF', 'Кодекс Российской Федерации об административных правонарушениях', 'КоАП РФ', 'Основной нормативный акт, регулирующий административную ответственность', '195-ФЗ', '2001-12-30'),
+  ('SK_RF', 'Семейный кодекс Российской Федерации', 'СК РФ', 'Кодекс, регулирующий семейные отношения', '223-ФЗ', '1995-12-29'),
+  ('ZhK_RF', 'Жилищный кодекс Российской Федерации', 'ЖК РФ', 'Кодекс, регулирующий жилищные отношения', '188-ФЗ', '2004-12-29'),
+  ('ZK_RF', 'Земельный кодекс Российской Федерации', 'ЗК РФ', 'Основной нормативный акт, регулирующий земельные отношения', '136-ФЗ', '2001-10-25')
+ON CONFLICT (code) DO NOTHING;
+
 -- Insert publication blocks (from API sample data)
 INSERT INTO publication_blocks (id, short_name, menu_name, code, description, weight, is_blocked, has_children, is_agencies_of_state_authorities, image_id) VALUES
   ('e94b6872-dcac-414f-b2f1-a538d13a12a0', 'Президент Российской Федерации', 'Президент Российской Федерации', 'president', 'Законы Российской Федерации о поправке к Конституции Российской Федерации, федеральные конституционные законы, федеральные законы, указы Президента Российской Федерации, распоряжения Президента Российской Федерации', 1000, false, false, false, '11f3a3c0-3cbc-4748-85e1-0df692e7138e'),
@@ -246,6 +258,102 @@ CREATE TRIGGER update_documents_updated_at BEFORE UPDATE ON documents
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_document_content_updated_at BEFORE UPDATE ON document_content
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- =============================================================================
+-- Consolidation Engine Tables
+-- =============================================================================
+
+-- Consolidated code article versions (snapshots for version history)
+CREATE TABLE IF NOT EXISTS code_article_versions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code_id VARCHAR(50) NOT NULL,  -- 'GK_RF', 'TK_RF', 'UK_RF', etc.
+  article_number VARCHAR(50) NOT NULL,  -- '123', '124', etc.
+  version_date DATE NOT NULL,  -- Effective date of this version
+  article_text TEXT NOT NULL,  -- Full article text
+  article_title TEXT,  -- Article title/heading
+
+  -- Amendment that created this version
+  amendment_eo_number VARCHAR(100),  -- Source amendment document
+  amendment_date DATE,  -- Date of amendment
+
+  -- Status tracking
+  is_current BOOLEAN DEFAULT TRUE,  -- Whether this is the current version
+  is_repealed BOOLEAN DEFAULT FALSE,  -- Whether article is repealed
+  repealed_date DATE,  -- When article was repealed
+
+  -- Change detection
+  text_hash VARCHAR(64),  -- Hash of article text for comparison
+
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  -- Unique constraint: one version per article per date
+  CONSTRAINT code_article_versions_unique UNIQUE (code_id, article_number, version_date)
+);
+
+-- Amendment applications (audit log for consolidation process)
+CREATE TABLE IF NOT EXISTS amendment_applications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  amendment_eo_number VARCHAR(100) NOT NULL,  -- The amendment document
+  code_id VARCHAR(50) NOT NULL,  -- Code being amended
+
+  -- What was changed
+  articles_affected TEXT[],  -- List of article numbers affected ['123', '456']
+  articles_added TEXT[],  -- Articles that were added
+  articles_modified TEXT[],  -- Articles that were modified
+  articles_repealed TEXT[],  -- Articles that were repealed
+
+  -- Change metadata
+  amendment_type VARCHAR(50),  -- 'addition', 'modification', 'repeal', 'mixed'
+  amendment_date DATE,  -- When amendment takes effect
+
+  -- Processing status
+  status VARCHAR(50) DEFAULT 'pending',  -- 'pending', 'applied', 'failed', 'conflict'
+  error_message TEXT,  -- Error details if failed
+  applied_at TIMESTAMP,  -- When application was processed
+
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Consolidated codes metadata (tracks base codes)
+CREATE TABLE IF NOT EXISTS consolidated_codes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code VARCHAR(50) UNIQUE NOT NULL,  -- 'GK_RF', 'TK_RF', etc.
+  name VARCHAR(500) NOT NULL,  -- Full name
+  short_name VARCHAR(100),  -- Short name (ГК РФ, ТК РФ)
+  description TEXT,
+
+  -- Original publication info
+  original_eo_number VARCHAR(100),  -- Original law number
+  original_date DATE,  -- Original publication date
+  official_url TEXT,  -- Link to official publication
+
+  -- Consolidation status
+  last_amended_date DATE,  -- Date of most recent amendment
+  total_amendments INTEGER DEFAULT 0,  -- Total amendments applied
+  is_consolidated BOOLEAN DEFAULT FALSE,  -- Whether consolidation is complete
+  last_consolidated_at TIMESTAMP,  -- When last consolidation ran
+
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexes for consolidation tables
+CREATE INDEX IF NOT EXISTS idx_code_article_versions_code_article ON code_article_versions(code_id, article_number);
+CREATE INDEX IF NOT EXISTS idx_code_article_versions_code_current ON code_article_versions(code_id, is_current);
+CREATE INDEX IF NOT EXISTS idx_code_article_versions_version_date ON code_article_versions(version_date);
+CREATE INDEX IF NOT EXISTS idx_code_article_versions_code_date ON code_article_versions(code_id, article_number, version_date);
+
+CREATE INDEX IF NOT EXISTS idx_amendment_applications_eo_number ON amendment_applications(amendment_eo_number);
+CREATE INDEX IF NOT EXISTS idx_amendment_applications_code_id ON amendment_applications(code_id);
+CREATE INDEX IF NOT EXISTS idx_amendment_applications_status ON amendment_applications(status);
+CREATE INDEX IF NOT EXISTS idx_amendment_applications_date ON amendment_applications(amendment_date);
+
+CREATE INDEX IF NOT EXISTS idx_consolidated_codes_code ON consolidated_codes(code);
+CREATE INDEX IF NOT EXISTS idx_consolidated_codes_consolidated ON consolidated_codes(is_consolidated);
+
+-- Trigger for consolidated_codes updated_at
+CREATE TRIGGER update_consolidated_codes_updated_at BEFORE UPDATE ON consolidated_codes
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =============================================================================
