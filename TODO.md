@@ -9,10 +9,17 @@
 - [ ] Test all 4 MCP tools with real data
 
 ### Data Coverage Check
-- [ ] Verify which Russian legal codes are in the database (2020-present only)
-- [ ] Check if major codes are missing: Civil Code, Criminal Code, Labor Code, Tax Code, etc.
-- [ ] Research if pravo.gov.ru API has documents before 2020
-- [ ] Consider alternative sources for older legal documents (consultantplus, garant)
+- [ ] **HIGH PRIORITY**: Add all major Russian legal codes to the database
+  - **Civil Code** (Гражданский кодекс) - Parts 1, 2, 3, 4
+  - **Criminal Code** (Уголовный кодекс)
+  - **Labor Code** (Трудовой кодекс) - Full text needed
+  - **Tax Code** (Налоговый кодекс) - Parts 1 and 2
+  - **Administrative Code** (КоАП об административных правонарушениях)
+  - **Family Code** (Семейный кодекс)
+  - **Land Code** (Земельный кодекс)
+- [ ] Check if codes can be imported from official sources (consultantplus, garant, etc.)
+- [ ] Research if pravo.gov.ru has any full code texts or only amendments
+- [ ] Document the source URLs for code imports
 
 ## Medium Priority
 
