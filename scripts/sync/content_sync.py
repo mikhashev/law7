@@ -196,17 +196,27 @@ class ContentSyncService:
         content_parsed = 0
         embeddings_generated = 0
         all_chunks = []
+        total_docs = len(documents)
 
         for i, doc in enumerate(tqdm(documents, desc="Processing documents")):
+            doc_id = doc["id"]
+            doc_type = doc.get("document_type_id")
+            title = doc.get("complex_name", doc.get("title", "Unknown"))[:50]  # Truncate for logging
+            full_text_len = len(doc.get("existing_full_text", ""))
+
+            # Log document info (first 5 and every 10 after)
+            if i < 5 or i % 10 == 0:
+                logger.info(f"[DOC {i+1}/{total_docs}] {title}...] ({full_text_len:,} chars, type: {doc_type})")
+
             # Log memory every 50 documents
             if i % 50 == 0:
                 log_memory(f"After {i} documents")
-            doc_id = doc["id"]
+
             doc_data = {
                 "eoNumber": doc["eo_number"],
                 "title": doc["title"],
                 "name": doc["name"],
-                "complexName": doc["complex_name"],
+                "complex_name": doc["complex_name"],
             }
 
             # Parse content (if not skipped)
@@ -226,7 +236,8 @@ class ContentSyncService:
                 # Skip extremely long documents that cause performance issues
                 text_len = len(doc.get("full_text", ""))
                 if text_len > 100000:  # Skip documents over 100KB
-                    logger.warning(f"Skipping document {doc_id} - too long ({text_len:,} chars)")
+                    title = doc.get("complex_name", doc.get("title", "Unknown"))[:50]
+                    logger.warning(f"[SKIPPED] {title}...} ({text_len:,} chars, type: {doc.get('document_type_id')})")
                     embeddings_generated += 0
                     continue
 
