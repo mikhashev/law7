@@ -121,3 +121,14 @@ When developing with AI assistants (Claude Code, Cursor):
    ```bash
    npx @modelcontextprotocol/inspector node dist/index.js
    ```
+
+## Project Plans
+
+Strategic planning documents are maintained in `.claude/plans/`:
+- [Consolidation Engine Plan](.claude/plans/snuggly-nibbling-lecun.md) - Database consolidation strategy
+
+When implementing major features, reference these plans for:
+- Architecture decisions
+- Implementation phases
+- Success criteria
+- Technical trade-offs

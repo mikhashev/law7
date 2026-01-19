@@ -136,6 +136,7 @@ law7/
 │   ├── crawler/             # Pravo.gov.ru API crawler
 │   ├── parser/              # PDF/HTML parsing
 │   ├── indexer/             # Embeddings and indexing
+│   ├── consolidation/       # Code consolidation engine
 │   └── sync/                # Sync scripts (initial, daily)
 │
 └── docker/                  # Docker services
