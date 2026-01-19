@@ -4,10 +4,15 @@
  */
 
 import { config as loadEnv } from 'dotenv';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-// Load environment variables from .env file
-const envPath = resolve(process.cwd(), '.env');
+// Get the directory where this script is located (works both in dev and compiled)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load environment variables from .env file (look in project root, not process.cwd())
+const envPath = resolve(__dirname, '..', '.env');
 loadEnv({ path: envPath });
 
 // Database configuration
@@ -16,8 +21,13 @@ export const db = {
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5433'),
   database: process.env.DB_NAME || 'law7',
-  password: process.env.DB_PASSWORD || '',
+  password: process.env.DB_PASSWORD || 'law7_dev',
   get connectionString(): string {
+    if (!this.password) {
+      console.error('[CONFIG] WARNING: DB_PASSWORD is not set! Database authentication will fail.');
+      console.error('[CONFIG] Current working directory:', process.cwd());
+      console.error('[CONFIG] DB config:', { user: this.user, host: this.host, port: this.port, database: this.database, password: '***' });
+    }
     return `postgresql://${this.user}:${this.password}@${this.host}:${this.port}/${this.database}`;
   }
 };
