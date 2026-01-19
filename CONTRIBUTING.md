@@ -170,6 +170,64 @@ git log --oneline -- scripts/parser/html_scraper.py
 # 4. Now make informed changes
 ```
 
+### Database Schema Verification with AI
+
+**CRITICAL**: Before making any database changes, AI assistants MUST check the actual database schema.
+
+```bash
+# Check the real database schema
+docker exec law7-postgres psql -U law7 -d law7 -c "\d table_name"
+
+# List all tables
+docker exec law7-postgres psql -U law7 -d law7 -c "\dt"
+
+# View table structure with column types
+docker exec law7-postgres psql -U law7 -d law7 -c "\d+ table_name"
+
+# Check indexes
+docker exec law7-postgres psql -U law7 -d law7 -c "\di"
+
+# View specific constraints
+docker exec law7-postgres psql -U law7 -d law7 -c "
+    SELECT column_name, data_type, is_nullable, column_default
+    FROM information_schema.columns
+    WHERE table_name = 'table_name'
+    ORDER BY ordinal_position;
+"
+```
+
+**Why?** Assumptions about database schema can lead to errors:
+- **Column names** may differ from expectations (snake_case vs camelCase)
+- **Data types** may be incompatible (text vs varchar, integer vs bigint)
+- **Constraints** may exist (NOT NULL, UNIQUE, FOREIGN KEY)
+- **Indexes** may affect query performance
+- **Missing columns** will cause runtime errors
+
+**Best practices for AI assistants**:
+1. Always check `\d table_name` before writing INSERT/UPDATE queries
+2. Verify column types match the data being inserted
+3. Check for required columns (NOT NULL constraints)
+4. Look for foreign key relationships before deleting data
+5. Test queries with `SELECT` before running `INSERT/UPDATE/DELETE`
+
+**Example workflow**:
+```bash
+# 1. Check schema before writing query
+docker exec law7-postgres psql -U law7 -d law7 -c "\d code_article_versions"
+# Output: Shows actual columns, types, and constraints
+
+# 2. Verify data compatibility
+docker exec law7-postgres psql -U law7 -d law7 -c "
+    SELECT column_name, data_type, character_maximum_length
+    FROM information_schema.columns
+    WHERE table_name = 'code_article_versions';
+"
+
+# 3. Write correct query based on actual schema
+# If article_number is varchar(20), don't insert integer
+# If version_date is date, don't insert datetime without casting
+```
+
 ### API Research with AI
 
 When exploring new APIs or data sources:
