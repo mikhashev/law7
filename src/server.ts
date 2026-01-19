@@ -16,6 +16,11 @@ import { getLawTool, executeGetLaw } from './tools/get-law.js';
 import { listCountriesTool, executeListCountries } from './tools/list-countries.js';
 import { getStatisticsTool, executeGetStatistics } from './tools/get-statistics.js';
 
+// Import consolidation tools
+import { getCodeStructureTool, executeGetCodeStructure } from './tools/get-code-structure.js';
+import { getArticleVersionTool, executeGetArticleVersion } from './tools/get-article-version.js';
+import { traceAmendmentHistoryTool, executeTraceAmendmentHistory } from './tools/trace-amendment-history.js';
+
 // Import config
 import { config } from './config.js';
 
@@ -43,6 +48,10 @@ export function createServer(): Server {
         getLawTool,
         listCountriesTool,
         getStatisticsTool,
+        // Consolidation tools
+        getCodeStructureTool,
+        getArticleVersionTool,
+        traceAmendmentHistoryTool,
       ],
     };
   });
@@ -81,6 +90,19 @@ export function createServer(): Server {
 
         case 'get-statistics':
           result = await executeGetStatistics(args as any);
+          break;
+
+        // Consolidation tools
+        case 'get-code-structure':
+          result = await executeGetCodeStructure(args as any);
+          break;
+
+        case 'get-article-version':
+          result = await executeGetArticleVersion(args as any);
+          break;
+
+        case 'trace-amendment-history':
+          result = await executeTraceAmendmentHistory(args as any);
           break;
 
         default:
