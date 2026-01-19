@@ -5,7 +5,7 @@
 ### [MVP] Complete Testing Flow
 - [x] Fix content sync to run without embeddings
 - [x] Build MCP server (7 tools implemented: query-laws, get-law, list-countries, get-statistics, get-code-structure, get-article-version, trace-amendment-history)
-- [ ] Test content parsing from API metadata
+- [x] Test content parsing from API metadata (test script: scripts/test_content_parsing.py)
 - [ ] Test all 7 MCP tools with real data
 
 ### Data Coverage Check
