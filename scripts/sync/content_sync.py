@@ -202,7 +202,7 @@ class ContentSyncService:
             doc_id = doc["id"]
             doc_type = doc.get("document_type_id")
             title = doc.get("complex_name", doc.get("title", "Unknown"))[:50]  # Truncate for logging
-            full_text_len = len(doc.get("existing_full_text", ""))
+            full_text_len = len(doc.get("existing_full_text") or "")
 
             # Log document info (first 5 and every 10 after)
             if i < 5 or i % 10 == 0:
@@ -229,7 +229,7 @@ class ContentSyncService:
                 elif doc.get("existing_full_text"):
                     doc["full_text"] = doc["existing_full_text"]
             else:
-                doc["full_text"] = doc.get("existing_full_text", "")
+                doc["full_text"] = doc.get("existing_full_text") or ""
 
             # Generate embeddings
             if not skip_embeddings and doc.get("full_text"):
@@ -237,7 +237,7 @@ class ContentSyncService:
                 text_len = len(doc.get("full_text", ""))
                 if text_len > 100000:  # Skip documents over 100KB
                     title = doc.get("complex_name", doc.get("title", "Unknown"))[:50]
-                    logger.warning(f"[SKIPPED] {title}...} ({text_len:,} chars, type: {doc.get('document_type_id')})")
+                    logger.warning(f"[SKIPPED] {title}... ({text_len:,} chars, type: {doc.get('document_type_id')})")
                     embeddings_generated += 0
                     continue
 

@@ -8,6 +8,12 @@
 - [ ] Build and test MCP server
 - [ ] Test all 4 MCP tools with real data
 
+### Data Coverage Check
+- [ ] Verify which Russian legal codes are in the database (2020-present only)
+- [ ] Check if major codes are missing: Civil Code, Criminal Code, Labor Code, Tax Code, etc.
+- [ ] Research if pravo.gov.ru API has documents before 2020
+- [ ] Consider alternative sources for older legal documents (consultantplus, garant)
+
 ## Medium Priority
 
 ### Embeddings Model Upgrade ✅ COMPLETED

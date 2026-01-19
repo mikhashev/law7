@@ -202,9 +202,13 @@ class EmbeddingsGenerator:
 
         chunks = []
         start = 0
+        min_progress = chunk_size // 4  # Minimum progress per iteration
+        no_progress_count = 0
+        max_no_progress = 3  # Switch to simple chunking after this many stalls
 
         while start < len(text):
             end = start + chunk_size
+            original_end = end
 
             # Try to break at sentence boundary
             if end < len(text):
@@ -214,6 +218,24 @@ class EmbeddingsGenerator:
                     if last_sep != -1:
                         end = last_sep + len(sep)
                         break
+
+            # Check if we're making meaningful progress
+            if end - start < min_progress:
+                no_progress_count += 1
+            else:
+                no_progress_count = 0
+
+            # If stuck multiple times, switch to simple fixed-size chunking
+            if no_progress_count >= max_no_progress:
+                # Fall back to simple chunking for the rest of the text
+                remaining_start = start
+                while remaining_start < len(text):
+                    chunk_end = min(remaining_start + chunk_size, len(text))
+                    chunk = text[remaining_start:chunk_end].strip()
+                    if chunk:
+                        chunks.append(chunk)
+                    remaining_start = chunk_end - overlap if chunk_end < len(text) else len(text)
+                break
 
             chunk = text[start:end].strip()
             if chunk:

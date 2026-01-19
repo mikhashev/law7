@@ -83,17 +83,23 @@ npm start
    - **Command**: `node c:\Users\mike\Documents\law7\dist\index.js`
 5. Click **Add**
 
-**Option B: Via Claude Desktop config** (`C:\Users\<user>\.claude\config.json`):
+**Option B: Via Claude Desktop config** (`C:\Users\<user>\AppData\Roaming\Claude\claude_desktop_config.json`):
+
+Add to the `mcpServers` object (note: it uses `command` + `args`, not a single `command` string):
+
 ```json
 {
-  "mcpServers": [
-    {
-      "name": "law7",
-      "command": "node c:\\Users\\mike\\Documents\\law7\\dist\\index.js"
+  "mcpServers": {
+    "law7": {
+      "command": "node",
+      "args": ["C:\\Users\\mike\\Documents\\law7\\dist\\index.js"],
+      "env": {}
     }
-  ]
+  }
 }
 ```
+
+**Important**: The `mcpServers` is an **object**, not an array. Each server is a key with `command` and `args` properties.
 
 **Step 3: Test with Claude Desktop**
 
