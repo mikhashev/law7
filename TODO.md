@@ -3,10 +3,10 @@
 ## High Priority
 
 ### [MVP] Complete Testing Flow
-- [x] Fix content sync to run without embeddings (in progress)
+- [x] Fix content sync to run without embeddings
+- [x] Build MCP server (7 tools implemented: query-laws, get-law, list-countries, get-statistics, get-code-structure, get-article-version, trace-amendment-history)
 - [ ] Test content parsing from API metadata
-- [ ] Build and test MCP server
-- [ ] Test all 4 MCP tools with real data
+- [ ] Test all 7 MCP tools with real data
 
 ### Data Coverage Check
 - [x] **COMPLETED**: Add consolidation engine infrastructure
@@ -15,11 +15,14 @@
   - [x] Version manager: tracks and queries article version history
   - [x] Consolidation orchestrator: coordinates consolidation process
   - [x] Database schema: code_article_versions, amendment_applications, consolidated_codes
-- [ ] **NEXT PHASE**: Update TypeScript models and MCP tools (Phase 7)
+- [x] **COMPLETED**: Update TypeScript models and MCP tools (Phase 7)
   - [x] **COMPLETED**: HTML scraper for detailed amendment text
   - [x] Extracts publication dates from text: "Дата опубликования: 29.12.2025"
   - [x] Removes duplicate text from nested HTML elements
-  - [ ] Ready to fetch detailed amendment text for consolidation
+  - [x] TypeScript MCP tools for consolidated code queries (get-code-structure, get-article-version, trace-amendment-history)
+- [ ] **NEXT PHASE**: Content importer for consolidated codes (Phase 8)
+  - [ ] Fetch original code from pravo.gov.ru for consolidation (consolidate.py line 92: TODO)
+  - [ ] Test consolidation with real data
 - [x] **COMPLETED**: Add remaining major Russian legal codes to the database
   - [x] **Civil Code** (Гражданский кодекс) - Parts 1, 2, 3, 4 - 1,732 articles
   - [x] **Criminal Code** (Уголовный кодекс) - 534 articles
@@ -52,10 +55,10 @@
 - [x] Version manager (`scripts/consolidation/version_manager.py`)
 - [x] Consolidation orchestrator (`scripts/consolidation/consolidate.py`)
 
-**Next Steps (Phase 7-8)**:
-- [ ] HTML scraper for detailed amendment text
-- [ ] Content importer for consolidated codes
-- [ ] TypeScript/MCP tools for consolidated code queries
+**Next Steps (Phase 8)**:
+- [x] HTML scraper for detailed amendment text (completed)
+- [x] TypeScript/MCP tools for consolidated code queries (completed)
+- [ ] Content importer for consolidated codes (fetch original code from pravo.gov.ru)
 - [ ] Test consolidation with real data
 
 **Benefits**:
