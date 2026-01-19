@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
+# Add scripts directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from crawler.pravo_api_client import PravoApiClient
 from core.config import INITIAL_SYNC_BLOCK, INITIAL_SYNC_START_DATE, SYNC_BATCH_SIZE
 from core.db import check_db_connection

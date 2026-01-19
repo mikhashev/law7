@@ -219,14 +219,22 @@ Args:
   include_amendment_chain: Include full amendment history (default: false)
 
 Available codes:
-  - GK_RF: Civil Code (Гражданский кодекс)
+  - KONST_RF: Constitution (Конституция Российской Федерации)
+  - GK_RF: Civil Code Part 1 (Гражданский кодекс)
+  - GK_RF_2: Civil Code Part 2 (Гражданский кодекс ч.2)
+  - GK_RF_3: Civil Code Part 3 (Гражданский кодекс ч.3)
+  - GK_RF_4: Civil Code Part 4 (Гражданский кодекс ч.4)
   - UK_RF: Criminal Code (Уголовный кодекс)
   - TK_RF: Labor Code (Трудовой кодекс)
-  - NK_RF: Tax Code (Налоговый кодекс)
+  - NK_RF: Tax Code Part 1 (Налоговый кодекс)
+  - NK_RF_2: Tax Code Part 2 (Налоговый кодекс ч.2)
   - KoAP_RF: Administrative Code (КоАП РФ)
   - SK_RF: Family Code (Семейный кодекс)
   - ZhK_RF: Housing Code (Жилищный кодекс)
   - ZK_RF: Land Code (Земельный кодекс)
+  - APK_RF: Arbitration Procedure Code (Арбитражный процессуальный кодекс)
+  - GPK_RF: Civil Procedure Code (Гражданский процессуальный кодекс)
+  - UPK_RF: Criminal Procedure Code (Уголовно-процессуальный кодекс)
 
 Examples:
   Get current article 80 of Labor Code:
