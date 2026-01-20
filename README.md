@@ -99,10 +99,6 @@ Can you search for documents about "трудовой договор" in Russia a
 
 </details>
 
-### ChatGPT and Other AI Assistants
-
-MCP support is coming to ChatGPT and other AI platforms. When available, installation will follow a similar pattern to Claude Desktop.
-
 ## Important Tips
 
 ### Add a Rule
@@ -247,37 +243,6 @@ npx @modelcontextprotocol/inspector node dist/index.js
 **Hardware Requirements for GPU Acceleration**:
 - NVIDIA GPU with CUDA support (tested on RTX 3060 12GB)
 - CUDA 12.x compatible drivers
-
-## Project Structure
-
-```
-law7/
-├── src/                     # TypeScript - MCP Server (PUBLIC)
-│   ├── index.ts             # MCP server entry point
-│   ├── server.ts            # MCP server setup
-│   ├── config.ts            # Configuration
-│   ├── tools/               # MCP tools
-│   ├── db/                  # Database clients
-│   └── models/              # Data models
-│
-├── scripts/                 # Python - Data Pipeline (PRIVATE)
-│   ├── core/                # Core utilities (config, db, batch_saver)
-│   ├── crawler/             # Pravo.gov.ru API crawler
-│   ├── parser/              # PDF/HTML parsing
-│   ├── indexer/             # Embeddings and indexing
-│   ├── consolidation/       # Code consolidation engine
-│   └── sync/                # Sync scripts (initial, daily)
-│
-├── docs/                    # Documentation
-│   ├── DATA_PIPELINE.md     # Data pipeline guide
-│   ├── VISION.md            # Future global architecture
-│   └── DISCLAIMER.md        # Legal disclaimer
-│
-└── docker/                  # Docker services
-    ├── docker-compose.yml   # PostgreSQL, Qdrant, Redis
-    └── postgres/
-        └── init.sql         # Database schema
-```
 
 ## More Documentation
 
