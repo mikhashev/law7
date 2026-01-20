@@ -955,22 +955,48 @@ class BaseCodeImporter:
         articles = []
         current_article = None
         current_paragraphs = []
+        seen_articles = set()  # Track seen articles to avoid duplicates
 
-        # Constitution uses "Статья X" format
-        for element in soup.find_all(['h3', 'h4', 'p', 'div']):
+        # Constitution uses "Статья X" format (articles 1-137 only)
+        # Only process h3 elements which contain article headings
+        # This avoids matching article references within article text
+        for element in soup.find_all('h3'):
             text = element.get_text(strip=True)
 
-            article_match = re.match(r'^Статья\s+(\d+)\.?\s*(.+)$', text)
+            # Match "Статья X" or "Статья X*" format
+            article_match = re.match(r'^Статья\s+(\d+)(\*?)$', text)
 
             if article_match:
+                article_number = article_match.group(1)
+                has_footnote = article_match.group(2)
+
+                # Only accept valid Constitution article numbers (1-137)
+                try:
+                    article_num = int(article_number)
+                    if article_num < 1 or article_num > 137:
+                        logger.debug(f"Skipping article {article_number} (out of range 1-137)")
+                        continue
+                except ValueError:
+                    continue
+
+                # Skip if we've already processed this article number
+                if article_number in seen_articles:
+                    logger.debug(f"Skipping duplicate article {article_number}")
+                    continue
+
+                # Debug: log what we're accepting
+                logger.debug(f"Accepting article {article_number}{'*' if has_footnote else ''}: {text[:80]}")
+
+                # Mark this article as seen
+                seen_articles.add(article_number)
+
                 # Save previous article
                 if current_article and current_paragraphs:
                     current_article['article_text'] = '\n\n'.join(current_paragraphs)
                     articles.append(current_article)
 
-                # Start new article
-                article_number = article_match.group(1)
-                article_title = text
+                # Start new article - remove "*" from title for consistency
+                article_title = f"Статья {article_number}" if has_footnote else text
 
                 current_article = {
                     'article_number': article_number,
@@ -979,13 +1005,20 @@ class BaseCodeImporter:
                 }
                 current_paragraphs = []
 
-            elif current_article and text:
-                # Look for numbered paragraphs
-                paragraph_match = re.match(r'^(\d+)\.\s+(.+)$', text)
-                if paragraph_match:
-                    current_paragraphs.append(text)
-                elif len(text) > 10:
-                    current_paragraphs.append(text)
+                # Get content following this heading (until next h3)
+                current_element = element.find_next_sibling()
+                while current_element:
+                    # Stop at next h3 (next article)
+                    if current_element.name == 'h3':
+                        break
+
+                    # Only collect text from p and div elements
+                    if current_element.name in ['p', 'div']:
+                        para_text = current_element.get_text(strip=True)
+                        if para_text and len(para_text) > 5:
+                            current_paragraphs.append(para_text)
+
+                    current_element = current_element.find_next_sibling()
 
         # Don't forget the last article
         if current_article and current_paragraphs:

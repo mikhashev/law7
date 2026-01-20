@@ -114,6 +114,13 @@ Question: Can we use https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B or from o
 - [ ] Add document comparison tool
 - [ ] Add date range filtering in query-laws tool
 
+### Code Import Issues
+- [ ] **Fix KoAP_RF (Administrative Code) import**
+  - **Issue**: Currently contains Budget Code (БК РФ) content instead of Administrative Code (КоАП РФ) content
+  - **Root cause**: pravo_nd (102074277) may be incorrect, or kremlin.ru source not accessible
+  - **Blocked**: kremlin.ru not responding from current network, pravo.gov.ru timing out
+  - **Action needed**: Retry when government sites accessible, or find correct official source URL
+
 ### Data Pipeline
 - [ ] **URGENT**: Fix historical sync date range filtering
   - **Issue**: `initial_sync.py --start-date 2011-01-01 --end-date 2022-08-28` doesn't filter by date

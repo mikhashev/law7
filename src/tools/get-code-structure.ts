@@ -181,7 +181,7 @@ export async function executeGetCodeStructure(input: GetCodeStructureInput): Pro
  */
 export const getCodeStructureTool: Tool = {
   name: 'get-code-structure',
-  description: `Retrieve the hierarchical structure of a consolidated Russian legal code.
+  description: `Retrieve the hierarchical structure of a consolidated legal code.
 
 This tool returns information about legal codes (Civil Code, Labor Code, etc.) including:
 - Code metadata (name, description, original publication)
@@ -189,12 +189,14 @@ This tool returns information about legal codes (Civil Code, Labor Code, etc.) i
 - Full list of articles with their current status
 - Historical version information
 
+The system currently supports consolidated codes from Russia (Phase 1). Multi-country support is planned for Phase 2.
+
 Args:
   code_id: Code ID (e.g., "GK_RF", "TK_RF"). If not provided, lists all available codes.
   include_articles: Include full list of articles (default: true)
   article_limit: Maximum number of articles to return (default: 100)
 
-Available codes:
+Available codes (Russia - Phase 1):
   - KONST_RF: Constitution (Конституция Российской Федерации)
   - GK_RF: Civil Code Part 1 (Гражданский кодекс)
   - GK_RF_2: Civil Code Part 2 (Гражданский кодекс ч.2)

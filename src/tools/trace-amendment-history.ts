@@ -229,7 +229,7 @@ export async function executeTraceAmendmentHistory(input: TraceAmendmentHistoryI
  */
 export const traceAmendmentHistoryTool: Tool = {
   name: 'trace-amendment-history',
-  description: `Track the amendment history for a Russian legal code or specific article.
+  description: `Track the amendment history for a consolidated legal code or specific article.
 
 This tool provides a complete history of amendments applied to a code or article,
 including:
@@ -238,13 +238,15 @@ including:
 - Articles affected by each amendment
 - Version history for specific articles
 
+Currently supports Russian legal codes (Phase 1). Multi-country amendment tracking planned for Phase 2.
+
 Args:
   code_id: Code ID (e.g., "GK_RF", "TK_RF")
   article_number: Article number (e.g., "123"). Optional - if not provided, shows history for entire code.
   include_details: Include detailed change information (default: true)
   limit: Maximum number of amendments to show (default: 50)
 
-Available codes:
+Available codes (Russia - Phase 1):
   - GK_RF: Civil Code (Гражданский кодекс)
   - UK_RF: Criminal Code (Уголовный кодекс)
   - TK_RF: Labor Code (Трудовой кодекс)

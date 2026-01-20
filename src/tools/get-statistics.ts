@@ -132,15 +132,17 @@ export const getStatisticsTool: Tool = {
 This tool returns aggregate statistics about the indexed legal documents,
 including document counts, coverage, and breakdown by category.
 
+Currently supports data from Russia (Phase 1). Multi-country statistics planned for Phase 2.
+
 Args:
-  country_id: Optional country ID to filter statistics
+  country_id: Optional country ID to filter statistics (default: all countries)
   include_vector_stats: Include vector database statistics (default: true)
 
-Example:
+Examples:
   Get overall statistics:
   { "include_vector_stats": true }
 
-  Get statistics for Russia only:
+  Get statistics for specific country:
   { "country_id": 1, "include_vector_stats": true }`,
   inputSchema: {
     type: 'object',

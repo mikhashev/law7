@@ -91,19 +91,30 @@ export async function executeQueryLaws(input: QueryLawsInput): Promise<string> {
  */
 export const queryLawsTool: Tool = {
   name: 'query-laws',
-  description: `Search for legal documents using full-text search.
+  description: `Search for INDIVIDUAL legal documents (laws, decrees, resolutions, court decisions, regulations) using full-text search.
 
-This tool searches through indexed legal documents to find relevant laws, decrees, and other legal documents.
+⚠️ IMPORTANT - Choose the RIGHT tool:
+❌ DO NOT use this for queries about specific code articles (e.g., "Constitution article 1", "Civil Code article 420")
+   → For consolidated legal codes with articles, use get-article-version instead
+❌ DO NOT use this for code structure or code listings
+   → Use get-code-structure instead
+✅ USE this for individual legal acts, court decisions, published documents
+   → Examples: "federal law about taxes", "presidential decree", "court decision N100"
+
+This tool searches the documents table which contains individual legal publications.
 
 Args:
-  country_id: Country ID to search within (default: 1 for Russia)
-  query: Search query text (e.g., "трудовой договор", "налоги")
+  country_id: Country ID to search within (default: 1)
+  query: Search query text (keywords or phrases)
   max_results: Maximum number of results to return (default: 10)
   use_hybrid: Enable hybrid keyword + semantic search (default: false)
 
-Example:
-  Search for labor law documents:
-  { "country_id": 1, "query": "трудовой договор", "max_results": 5 }`,
+Examples:
+  Search for documents about labor:
+  { "country_id": 1, "query": "labor contract", "max_results": 5 }
+
+  ❌ WRONG: "Constitution article 1" → Use get-article-version with code_id instead
+  ❌ WRONG: "Civil Code article 420" → Use get-article-version instead`,
   inputSchema: {
     type: 'object',
     properties: {

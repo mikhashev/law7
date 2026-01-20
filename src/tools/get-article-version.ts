@@ -204,47 +204,38 @@ export async function executeGetArticleVersion(input: GetArticleVersionInput): P
  */
 export const getArticleVersionTool: Tool = {
   name: 'get-article-version',
-  description: `Retrieve a specific article from a consolidated Russian legal code.
+  description: `Retrieve a specific article from a CONSOLIDATED legal code (Constitution, Civil Code, Labor Code, etc.).
 
-This tool returns the full text of an article, including:
+⚠️ IMPORTANT - Use this tool when query mentions:
+✅ Specific code articles (e.g., "Constitution article 1", "Civil Code article 420")
+✅ Code names like "Constitution", "Civil Code", "Labor Code", "Criminal Code", etc.
+✅ Article numbers with code references
+
+❌ DO NOT use for general document searches (federal laws, decrees, resolutions)
+   → Use query-laws instead for individual legal acts
+
+This tool returns the full text of an article from consolidated codes, including:
 - Article title and full text
 - Current/historical status
-- Amendment information
-- Optional amendment history
+- Amendment information (optional)
+
+First, use get-code-structure to list available codes, then query specific articles.
 
 Args:
-  code_id: Code ID (e.g., "GK_RF", "TK_RF")
-  article_number: Article number (e.g., "123", "80")
+  code_id: Code identifier (required - see get-code-structure for available codes)
+  article_number: Article number (required - e.g., "1", "80", "420")
   as_of_date: Query article as of specific date (YYYY-MM-DD). Optional.
   include_amendment_chain: Include full amendment history (default: false)
 
-Available codes:
-  - KONST_RF: Constitution (Конституция Российской Федерации)
-  - GK_RF: Civil Code Part 1 (Гражданский кодекс)
-  - GK_RF_2: Civil Code Part 2 (Гражданский кодекс ч.2)
-  - GK_RF_3: Civil Code Part 3 (Гражданский кодекс ч.3)
-  - GK_RF_4: Civil Code Part 4 (Гражданский кодекс ч.4)
-  - UK_RF: Criminal Code (Уголовный кодекс)
-  - TK_RF: Labor Code (Трудовой кодекс)
-  - NK_RF: Tax Code Part 1 (Налоговый кодекс)
-  - NK_RF_2: Tax Code Part 2 (Налоговый кодекс ч.2)
-  - KoAP_RF: Administrative Code (КоАП РФ)
-  - SK_RF: Family Code (Семейный кодекс)
-  - ZhK_RF: Housing Code (Жилищный кодекс)
-  - ZK_RF: Land Code (Земельный кодекс)
-  - APK_RF: Arbitration Procedure Code (Арбитражный процессуальный кодекс)
-  - GPK_RF: Civil Procedure Code (Гражданский процессуальный кодекс)
-  - UPK_RF: Criminal Procedure Code (Уголовно-процессуальный кодекс)
-
 Examples:
-  Get current article 80 of Labor Code:
+  Get Constitution article 1:
+  { "code_id": "KONST_RF", "article_number": "1" }
+
+  Get Labor Code article 80:
   { "code_id": "TK_RF", "article_number": "80" }
 
   Get article as of historical date:
-  { "code_id": "TK_RF", "article_number": "80", "as_of_date": "2020-01-01" }
-
-  Get article with full history:
-  { "code_id": "TK_RF", "article_number": "80", "include_amendment_chain": true }`,
+  { "code_id": "GK_RF", "article_number": "420", "as_of_date": "2020-01-01" }`,
   inputSchema: {
     type: 'object',
     properties: {
