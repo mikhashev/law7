@@ -16,7 +16,7 @@ AI assistants rely on outdated training data for laws:
 
 ## With Law7
 
-Law7 MCP pulls up-to-date, version-specific legal documents directly from official Russian government sources and places them into your AI conversation.
+Law7 MCP pulls up-to-date, version-specific legal documents directly from official government sources and places them into your AI conversation.
 
 Ask questions like:
 
@@ -51,7 +51,7 @@ Law7 fetches current legal documents right into your AI's context. No tab-switch
 npm run build
 
 # Add to Claude Desktop
-claude mcp add law7 --node c:\Users\mike\Documents\law7\dist\index.js
+claude mcp add law7 --node \path\to\folder\law7\dist\index.js
 ```
 
 </details>
@@ -68,23 +68,14 @@ npm start
 
 **Step 2: Add to Claude Desktop**
 
-Option A - Via Claude Desktop UI:
-1. Open Claude Desktop
-2. Go to **Settings** → **MCP Servers**
-3. Click **Add MCP Server**
-4. Enter:
-   - **Name**: `law7`
-   - **Command**: `node c:\Users\mike\Documents\law7\dist\index.js`
-5. Click **Add**
-
-Option B - Via config file (`C:\Users\<user>\AppData\Roaming\Claude\claude_desktop_config.json`):
+Option A - Via config file (`C:\Users\<user>\AppData\Roaming\Claude\claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
     "law7": {
       "command": "node",
-      "args": ["C:\\Users\\mike\\Documents\\law7\\dist\\index.js"],
+      "args": ["/path/to/folder/law7/dist/index.js"],
       "env": {}
     }
   }

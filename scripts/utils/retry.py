@@ -1,6 +1,6 @@
 """
 Retry utilities with exponential backoff pattern.
-Based on yandex-games-bi-suite retry pattern.
+Based on ygbis retry pattern.
 """
 import logging
 import time

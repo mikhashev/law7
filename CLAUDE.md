@@ -42,7 +42,7 @@ docker-compose logs -f postgres       # View logs
 docker-compose down                   # Stop services
 ```
 
-**Note**: Non-default ports are used to avoid conflicts with ygbis: PostgreSQL **5433**, Redis **6380**, Qdrant **6333**.
+**Note**: Non-default ports are used to avoid conflicts with other containers: PostgreSQL **5433**, Redis **6380**, Qdrant **6333**.
 
 ## Architecture
 

@@ -2,7 +2,7 @@
 name = "law7"
 version = "0.1.0"
 description = "Data pipeline for law7 - crawls, parses, and indexes legal documents"
-authors = ["Your Name <you@example.com>"]
+authors = ["Mike Shevchenko <legoogmiha@gmail.com>, Law7 Contributors"]
 packages = [{include = "scripts", from = "."}]
 
 [tool.poetry.dependencies]

@@ -1,6 +1,6 @@
 """
 Database connection utilities.
-Based on yandex-games-bi-suite database patterns.
+Based on ygbis database patterns.
 """
 import logging
 from contextlib import contextmanager

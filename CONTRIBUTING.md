@@ -111,7 +111,7 @@ When developing with AI assistants (Claude Code, Cursor):
    - "How do I use pg with connection pooling?" → Check Context7 for `pg` docs
    - "Sentence transformers batch processing" → Check Context7
 
-2. **Reference ygbis patterns** from `C:\Users\mike\Documents\yandex-games-bi-suite`:
+2. **Reference ygbis patterns** from `C:\Users\mike\Documents\ygbis`:
    - Exponential backoff retry pattern
    - Batch upsert with SQLAlchemy
    - Context manager database connections

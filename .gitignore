@@ -49,4 +49,5 @@ env/
 ENV/
 
 # Media
-logo/
+/logo/*
+!logo/law7_minimal_3.png

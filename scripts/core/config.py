@@ -1,6 +1,6 @@
 """
 Law7 Data Pipeline Configuration
-Centralized configuration based on yandex-games-bi-suite patterns
+Centralized configuration based on ygbis patterns
 """
 
 import os

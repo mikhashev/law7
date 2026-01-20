@@ -1,7 +1,7 @@
 """
 Pravo.gov.ru API Client.
 Handles communication with the pravo.gov.ru API with retry logic.
-Based on yandex-games-bi-suite patterns.
+Based on ygbis patterns.
 """
 import logging
 from datetime import date, datetime

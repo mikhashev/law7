@@ -1,5 +1,5 @@
 # Docker Compose configuration for law7
-# Based on patterns from yandex-games-bi-suite
+# Based on patterns from ygbis
 version: '3.8'
 
 services:
