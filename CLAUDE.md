@@ -44,6 +44,66 @@ docker-compose down                   # Stop services
 
 **Note**: Non-default ports are used to avoid conflicts with other containers: PostgreSQL **5433**, Redis **6380**, Qdrant **6333**.
 
+## Installation
+
+### Prerequisites
+- Python 3.10+ with [Poetry](https://python-poetry.org/)
+- Node.js 18+ with npm
+- Docker & Docker Compose
+
+### Windows Setup
+
+```bash
+# Install Poetry (if not already installed)
+pip install poetry
+
+# Start Docker services
+cd docker
+docker-compose up -d
+
+# Install Python dependencies
+poetry install
+
+# Install Node dependencies
+npm install
+
+# Build and run
+npm run build
+npm start
+```
+
+### macOS/Linux Setup
+
+```bash
+# Install Poetry (if not already installed)
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Start Docker services
+cd docker
+docker-compose up -d
+
+# Install dependencies
+poetry install
+npm install
+
+# Build and run
+npm run build
+npm start
+```
+
+### Verify Installation
+
+```bash
+# Test Docker services
+docker-compose ps
+
+# Test Python environment
+poetry run python -c "import scripts.core.db; print('Python OK')"
+
+# Test TypeScript build
+npm run build
+```
+
 ## Architecture
 
 ### TypeScript MCP Server (`/src`)
@@ -155,3 +215,45 @@ Environment variables (see `.env.example`):
 - See [docs/VISION.md](docs/VISION.md) for detailed future plans
 - Country adapter pattern for adding new jurisdictions
 - Community verification and distributed data sharing
+
+## Supported Legal Codes (Phase 1 - Russia)
+
+The system currently supports **19 consolidated Russian legal codes**:
+
+| Code ID | Name (Russian) | Name (English) | Source |
+|---------|----------------|----------------|--------|
+| KONST_RF | Конституция Российской Федерации | Constitution | kremlin.ru |
+| GK_RF | Гражданский кодекс | Civil Code Part 1 | pravo.gov.ru |
+| GK_RF_2 | Гражданский кодекс ч.2 | Civil Code Part 2 | pravo.gov.ru |
+| GK_RF_3 | Гражданский кодекс ч.3 | Civil Code Part 3 | pravo.gov.ru |
+| GK_RF_4 | Гражданский кодекс ч.4 | Civil Code Part 4 | pravo.gov.ru |
+| UK_RF | Уголовный кодекс | Criminal Code | pravo.gov.ru |
+| TK_RF | Трудовой кодекс | Labor Code | pravo.gov.ru |
+| NK_RF | Налоговый кодекс | Tax Code Part 1 | pravo.gov.ru |
+| NK_RF_2 | Налоговый кодекс ч.2 | Tax Code Part 2 | pravo.gov.ru |
+| KoAP_RF | Кодекс об административных правонарушениях | Administrative Code | pravo.gov.ru |
+| SK_RF | Семейный кодекс | Family Code | pravo.gov.ru |
+| ZhK_RF | Жилищный кодекс | Housing Code | pravo.gov.ru |
+| ZK_RF | Земельный кодекс | Land Code | pravo.gov.ru |
+| APK_RF | Арбитражный процессуальный кодекс | Arbitration Procedure Code | government.ru |
+| GPK_RF | Гражданский процессуальный кодекс | Civil Procedure Code | government.ru |
+| UPK_RF | Уголовно-процессуальный кодекс | Criminal Procedure Code | government.ru |
+| BK_RF | Бюджетный кодекс | Budget Code | government.ru |
+| GRK_RF | Градостроительный кодекс | Urban Planning Code | government.ru |
+| UIK_RF | Уголовно-исполнительный кодекс | Criminal Executive Code | government.ru |
+| VZK_RF | Воздушный кодекс | Air Code | government.ru |
+| VDK_RF | Водный кодекс | Water Code | government.ru |
+| LK_RF | Лесной кодекс | Forest Code | government.ru |
+| KAS_RF | Кодекс административного судопроизводства | Administrative Procedure Code | kremlin.ru |
+
+**Total**: 23 code identifiers (19 unique codes, some split into parts)
+
+## When to Update CLAUDE.md
+
+Update this file when:
+- Adding new MCP tools or changing existing tool interfaces
+- Significant architecture changes (new services, data flow changes)
+- New code sources or countries added to the pipeline
+- Breaking changes to APIs or data pipeline
+- New consolidated legal codes imported
+- Installation or setup procedures change

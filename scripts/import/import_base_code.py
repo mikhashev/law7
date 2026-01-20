@@ -255,6 +255,232 @@ CODE_METADATA = {
 }
 
 
+# =============================================================================
+# Article Number Validation - Hybrid Context + Range Based
+# =============================================================================
+
+# Known article ranges for fallback validation (from official sources)
+KNOWN_ARTICLE_RANGES = {
+    'KONST_RF': (1, 137),
+    'GK_RF': (1, 453),
+    'GK_RF_2': (454, 1109),
+    'GK_RF_3': (1110, 1224),
+    'GK_RF_4': (1225, 1551),
+    'UK_RF': (1, 361),
+    'TK_RF': (1, 424),
+    'NK_RF': (1, 142),
+    'NK_RF_2': (143, 432),
+    'KoAP_RF': (1, 890),
+    'SK_RF': (1, 170),
+    'ZhK_RF': (1, 165),
+    'ZK_RF': (1, 85),
+    'APK_RF': (1, 418),
+    'GPK_RF': (1, 494),
+    'UPK_RF': (1, 553),
+    'BK_RF': (1, 280),
+    'GRK_RF': (1, 120),
+    'UIK_RF': (1, 200),
+    'VZK_RF': (1, 150),
+    'VDK_RF': (1, 100),
+    'LK_RF': (1, 120),
+    'KAS_RF': (1, 350),
+}
+
+
+def try_context_correction(
+    article_number: str,
+    prev_article: Optional[str],
+    next_article: Optional[str]
+) -> tuple[str, List[str]]:
+    """
+    Attempt to correct article number based on surrounding context.
+
+    Context-based approach: If article "1201" appears between "120" and "121",
+    it's likely "120.1" not "1201".
+
+    Args:
+        article_number: Raw article number from HTML (e.g., "1201")
+        prev_article: Previous article number in sequence (e.g., "120")
+        next_article: Next article number in sequence (e.g., "121")
+
+    Returns:
+        Tuple of (corrected_number, warnings)
+    """
+    warnings: List[str] = []
+
+    # Need both neighbors for context validation
+    if not prev_article or not next_article:
+        return article_number, warnings
+
+    # If article already has dot or hyphen, it's likely correct
+    if '.' in article_number or '-' in article_number:
+        return article_number, warnings
+
+    # Check if article_number is a pure number
+    if not article_number.isdigit():
+        return article_number, warnings
+
+    # Try to parse neighbor articles
+    try:
+        prev_num = float(prev_article) if '.' not in prev_article else float(prev_article)
+        next_num = float(next_article) if '.' not in next_article else float(next_article)
+    except ValueError:
+        # Neighbors have complex formatting, can't use context
+        return article_number, warnings
+
+    # If current article fits between neighbors, it's correct
+    try:
+        current_num = float(article_number)
+        if prev_num < current_num < next_num:
+            return article_number, warnings
+    except ValueError:
+        pass
+
+    # Try inserting a dot before the last digit (e.g., "1201" → "120.1")
+    if len(article_number) > 1:
+        corrected = f"{article_number[:-1]}.{article_number[-1]}"
+        try:
+            corrected_num = float(corrected)
+            if prev_num < corrected_num < next_num:
+                warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
+                return corrected, warnings
+        except ValueError:
+            pass
+
+    # Try inserting a dot before the last 2 digits (e.g., "1256" → "12.56" or "125.6")
+    if len(article_number) > 2:
+        # Try "125.6"
+        corrected = f"{article_number[:-1]}.{article_number[-1:]}"
+        try:
+            corrected_num = float(corrected)
+            if prev_num < corrected_num < next_num:
+                warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
+                return corrected, warnings
+        except ValueError:
+            pass
+
+        # Try "12.56"
+        corrected = f"{article_number[:-2]}.{article_number[-2:]}"
+        try:
+            corrected_num = float(corrected)
+            if prev_num < corrected_num < next_num:
+                warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
+                return corrected, warnings
+        except ValueError:
+            pass
+
+    # Could not correct with context
+    return article_number, warnings
+
+
+def try_range_correction(article_number: str, code_id: str) -> tuple[str, List[str]]:
+    """
+    Attempt to correct article number using known article ranges.
+
+    Fallback method when context is not available.
+
+    Args:
+        article_number: Raw article number from HTML
+        code_id: Code identifier (e.g., 'TK_RF')
+
+    Returns:
+        Tuple of (corrected_number, warnings)
+    """
+    warnings: List[str] = []
+
+    # If article number contains dots or hyphens, it's likely correct
+    if '.' in article_number or '-' in article_number:
+        return article_number, warnings
+
+    # Check if it's a pure number
+    if not article_number.isdigit():
+        return article_number, warnings
+
+    num = int(article_number)
+    range_info = KNOWN_ARTICLE_RANGES.get(code_id)
+
+    if not range_info:
+        # Unknown code - can't validate
+        return article_number, warnings
+
+    min_article, max_article = range_info
+
+    # If within valid range, it's correct
+    if min_article <= num <= max_article:
+        return article_number, warnings
+
+    # Number is out of range - try to correct
+    # Pattern: "1256" might be "125.6" if 1256 > max_article
+    if num > max_article:
+        # Try inserting a dot before the last digit
+        if num > 10:  # Need at least 2 digits
+            corrected = f"{article_number[:-1]}.{article_number[-1]}"
+            corrected_num = float(corrected)
+            if min_article <= corrected_num <= max_article:
+                warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
+                return corrected, warnings
+
+        # Try inserting a dot before the last 2 digits
+        if num > 100:
+            corrected = f"{article_number[:-2]}.{article_number[-2:]}"
+            corrected_num = float(corrected)
+            if min_article <= corrected_num <= max_article:
+                warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
+                return corrected, warnings
+
+    # Could not auto-correct
+    warnings.append(f"Suspicious article number '{article_number}' for {code_id} (valid range: {min_article}-{max_article})")
+    return article_number, warnings
+
+
+def validate_and_correct_article_number(
+    article_number: str,
+    code_id: str,
+    prev_article: Optional[str] = None,
+    next_article: Optional[str] = None
+) -> tuple[str, List[str]]:
+    """
+    Validate and potentially correct article numbers from source documents.
+
+    Hybrid approach:
+    1. If context available (prev/next articles), use context-based correction
+    2. Fall back to range-based correction using known article ranges
+
+    Context-based is more accurate for detecting issues like "1201" between "120" and "121".
+    Range-based handles edge cases where context isn't available.
+
+    Args:
+        article_number: Raw article number from HTML
+        code_id: Code identifier (e.g., 'TK_RF')
+        prev_article: Previous article number (optional, for context)
+        next_article: Next article number (optional, for context)
+
+    Returns:
+        Tuple of (corrected_article_number, warnings)
+    """
+    warnings: List[str] = []
+    original = article_number
+
+    # Step 1: If already has dot or hyphen, it's likely correct
+    if '.' in article_number or '-' in article_number:
+        return article_number, warnings
+
+    # Step 2: Try context-based correction (more accurate)
+    if prev_article and next_article:
+        corrected, context_warnings = try_context_correction(article_number, prev_article, next_article)
+        if context_warnings:
+            warnings.extend(context_warnings)
+            # If context-based correction worked, return it
+            if corrected != original:
+                return corrected, warnings
+
+    # Step 3: Fall back to range-based correction
+    corrected, range_warnings = try_range_correction(article_number, code_id)
+    warnings.extend(range_warnings)
+
+    return corrected, warnings
+
+
 class BaseCodeImporter:
     """
     Import base legal code text from online sources.
@@ -332,7 +558,7 @@ class BaseCodeImporter:
             )
 
             if article_match:
-                article_number = article_match.group(1).replace(".", "").replace("-", "")
+                article_number = article_match.group(1)  # Preserve original format
                 article_title = text
 
                 # Build full URL for article page
@@ -531,6 +757,8 @@ class BaseCodeImporter:
         """
         Parse a single kremlin.ru HTML page to extract articles.
 
+        Collects raw articles first, then validates article numbers with context.
+
         Args:
             html: HTML content
             code_id: Code identifier
@@ -540,11 +768,11 @@ class BaseCodeImporter:
         """
         soup = BeautifulSoup(html, "html.parser")
 
-        articles = []
+        raw_articles = []
         current_article = None
         current_paragraphs = []
 
-        # Find all text elements
+        # Find all text elements - collect raw articles first
         for element in soup.find_all(["h4", "p", "div"]):
             text = element.get_text(strip=True)
 
@@ -557,14 +785,14 @@ class BaseCodeImporter:
                 # Save previous article if exists
                 if current_article and current_paragraphs:
                     current_article["article_text"] = "\n\n".join(current_paragraphs)
-                    articles.append(current_article)
+                    raw_articles.append(current_article)
 
-                # Start new article
-                article_number = article_match.group(1).replace(".", "").replace("-", "")
+                # Start new article (keep raw number for now)
+                article_number = article_match.group(1)  # Preserve original format
                 article_title = article_match.group(2).strip()
 
                 current_article = {
-                    "article_number": article_number,
+                    "article_number": article_number,  # Raw number
                     "article_title": f"Статья {article_number}. {article_title}",
                     "article_text": "",
                 }
@@ -590,7 +818,29 @@ class BaseCodeImporter:
         # Don't forget the last article
         if current_article and current_paragraphs:
             current_article["article_text"] = "\n\n".join(current_paragraphs)
-            articles.append(current_article)
+            raw_articles.append(current_article)
+
+        # NOW validate and correct article numbers with context
+        articles = []
+        for i, raw_article in enumerate(raw_articles):
+            raw_number = raw_article["article_number"]
+
+            # Get context for validation
+            prev_article = raw_articles[i - 1]["article_number"] if i > 0 else None
+            next_article = raw_articles[i + 1]["article_number"] if i < len(raw_articles) - 1 else None
+
+            # Validate with hybrid approach
+            corrected_number, warnings = validate_and_correct_article_number(
+                raw_number, code_id, prev_article, next_article
+            )
+
+            for warning in warnings:
+                logger.warning(f"[{code_id}] {warning}")
+
+            articles.append({
+                **raw_article,
+                "article_number": corrected_number,  # Use corrected number
+            })
 
         return {
             "code_id": code_id,
@@ -646,6 +896,49 @@ class BaseCodeImporter:
         # Handle single-part codes
         return self._import_single_code(code_id, metadata, source)
 
+    def _check_article_quality(self, articles: list, code_id: str) -> bool:
+        """
+        Check if parsed articles have acceptable quality.
+
+        Quality metrics:
+        - Too many "suspicious" article numbers (indicates source formatting issues)
+        - Article count significantly different from expected range
+
+        Args:
+            articles: List of parsed articles
+            code_id: Code identifier
+
+        Returns:
+            True if quality is acceptable, False otherwise
+        """
+        suspicious_count = 0
+        range_info = KNOWN_ARTICLE_RANGES.get(code_id)
+
+        for article in articles:
+            article_number = article["article_number"]
+
+            # Check if number looks suspicious (very large for this code)
+            if range_info:
+                min_article, max_article = range_info
+                try:
+                    # Handle both integers and floats (for articles like "80.1")
+                    num = float(article_number)
+                    if num > max_article * 1.5:  # More than 50% over max
+                        suspicious_count += 1
+                except ValueError:
+                    # Non-numeric article number - could be an error
+                    suspicious_count += 1
+
+        # If >10% of articles are suspicious, quality is poor
+        if suspicious_count > len(articles) * 0.1:
+            logger.warning(
+                f"{suspicious_count}/{len(articles)} articles look suspicious for {code_id}, "
+                f"trying alternative source"
+            )
+            return False
+
+        return True
+
     def _import_single_code(
         self, code_id: str, metadata: Dict[str, Any], source: str
     ) -> Dict[str, Any]:
@@ -681,17 +974,22 @@ class BaseCodeImporter:
                         parsed = self.parse_kremlin_html(html_pages, code_id)
                         articles = parsed.get("articles", [])
                         if articles:
-                            # Articles from Kremlin already have full text
-                            saved = self.save_base_articles(code_id, articles, metadata)
-                            return {
-                                "code_id": code_id,
-                                "status": "success",
-                                "pages_fetched": len(html_pages),
-                                "articles_found": len(articles),
-                                "articles_processed": len(articles),
-                                "articles_saved": saved,
-                                "source": "kremlin",
-                            }
+                            # Check quality before saving
+                            if self._check_article_quality(articles, code_id):
+                                saved = self.save_base_articles(code_id, articles, metadata)
+                                return {
+                                    "code_id": code_id,
+                                    "status": "success",
+                                    "pages_fetched": len(html_pages),
+                                    "articles_found": len(articles),
+                                    "articles_processed": len(articles),
+                                    "articles_saved": saved,
+                                    "source": "kremlin",
+                                }
+                            else:
+                                # Quality check failed, try next source
+                                logger.warning(f"Kremlin source quality check failed for {code_id}, trying next source")
+                                continue
 
             elif src == "pravo":
                 if metadata.get("pravo_nd"):
@@ -700,15 +998,21 @@ class BaseCodeImporter:
                         parsed = self.parse_pravo_html(html_content, code_id)
                         articles = parsed.get("articles", [])
                         if articles:
-                            saved = self.save_base_articles(code_id, articles, metadata)
-                            return {
-                                "code_id": code_id,
-                                "status": "success",
-                                "articles_found": len(articles),
-                                "articles_processed": len(articles),
-                                "articles_saved": saved,
-                                "source": "pravo",
-                            }
+                            # Check quality before saving
+                            if self._check_article_quality(articles, code_id):
+                                saved = self.save_base_articles(code_id, articles, metadata)
+                                return {
+                                    "code_id": code_id,
+                                    "status": "success",
+                                    "articles_found": len(articles),
+                                    "articles_processed": len(articles),
+                                    "articles_saved": saved,
+                                    "source": "pravo",
+                                }
+                            else:
+                                # Quality check failed, try next source
+                                logger.warning(f"Pravo source quality check failed for {code_id}, trying next source")
+                                continue
 
             elif src == "government":
                 if metadata.get("government_url"):
@@ -717,19 +1021,25 @@ class BaseCodeImporter:
                         parsed = self.parse_government_html(html_pages, code_id)
                         articles = parsed.get("articles", [])
                         if articles:
-                            saved = self.save_base_articles(code_id, articles, metadata)
-                            return {
-                                "code_id": code_id,
-                                "status": "success",
-                                "pages_fetched": len(html_pages),
-                                "articles_found": len(articles),
-                                "articles_processed": len(articles),
-                                "articles_saved": saved,
-                                "source": "government",
-                            }
+                            # Check quality before saving
+                            if self._check_article_quality(articles, code_id):
+                                saved = self.save_base_articles(code_id, articles, metadata)
+                                return {
+                                    "code_id": code_id,
+                                    "status": "success",
+                                    "pages_fetched": len(html_pages),
+                                    "articles_found": len(articles),
+                                    "articles_processed": len(articles),
+                                    "articles_saved": saved,
+                                    "source": "government",
+                                }
+                            else:
+                                # Quality check failed, try next source
+                                logger.warning(f"Government source quality check failed for {code_id}, trying next source")
+                                continue
 
         # All sources failed
-        return {"code_id": code_id, "status": "error", "error": f"Failed to fetch from any source"}
+        return {"code_id": code_id, "status": "error", "error": "Failed to fetch from any source or all sources had quality issues"}
 
     def _import_constitution(
         self, code_id: str, metadata: Dict[str, Any], source: str
@@ -835,6 +1145,8 @@ class BaseCodeImporter:
         """
         Parse pravo.gov.ru HTML to extract articles.
 
+        Collects raw articles first, then validates article numbers with context.
+
         Args:
             html: HTML content
             code_id: Code identifier
@@ -844,10 +1156,10 @@ class BaseCodeImporter:
         """
         soup = BeautifulSoup(html, "html.parser")
 
-        articles = []
+        raw_articles = []
 
         # Pravo.gov.ru uses article headers like "Статья 1. Title"
-        # Look for article patterns
+        # Look for article patterns - collect raw first
         for element in soup.find_all(["h3", "h4", "p", "div"]):
             text = element.get_text(strip=True)
             article_match = re.match(
@@ -855,7 +1167,7 @@ class BaseCodeImporter:
             )
 
             if article_match:
-                article_number = article_match.group(1).replace(".", "").replace("-", "")
+                article_number = article_match.group(1)  # Preserve original format
                 article_title = text
 
                 # Find the article content (paragraphs following the header)
@@ -870,7 +1182,7 @@ class BaseCodeImporter:
                         content_paragraphs.append(para_text)
                     current_element = current_element.find_next_sibling(["p", "div"])
 
-                articles.append(
+                raw_articles.append(
                     {
                         "article_number": article_number,
                         "article_title": article_title,
@@ -878,7 +1190,31 @@ class BaseCodeImporter:
                     }
                 )
 
-        logger.info(f"Found {len(articles)} articles from pravo.gov.ru")
+        logger.info(f"Found {len(raw_articles)} raw articles from pravo.gov.ru")
+
+        # NOW validate and correct article numbers with context
+        articles = []
+        for i, raw_article in enumerate(raw_articles):
+            raw_number = raw_article["article_number"]
+
+            # Get context for validation
+            prev_article = raw_articles[i - 1]["article_number"] if i > 0 else None
+            next_article = raw_articles[i + 1]["article_number"] if i < len(raw_articles) - 1 else None
+
+            # Validate with hybrid approach
+            corrected_number, warnings = validate_and_correct_article_number(
+                raw_number, code_id, prev_article, next_article
+            )
+
+            for warning in warnings:
+                logger.warning(f"[{code_id}] {warning}")
+
+            articles.append({
+                **raw_article,
+                "article_number": corrected_number,  # Use corrected number
+            })
+
+        logger.info(f"Validated to {len(articles)} articles from pravo.gov.ru")
         return {
             "code_id": code_id,
             "articles": articles,
@@ -1008,6 +1344,8 @@ class BaseCodeImporter:
         """
         Parse a single government.ru HTML page to extract articles.
 
+        Collects raw articles first, then validates article numbers with context.
+
         Args:
             html: HTML content
             code_id: Code identifier
@@ -1018,7 +1356,7 @@ class BaseCodeImporter:
         # Similar structure to Kremlin parser
         soup = BeautifulSoup(html, "html.parser")
 
-        articles = []
+        raw_articles = []
         current_article = None
         current_paragraphs = []
 
@@ -1033,14 +1371,14 @@ class BaseCodeImporter:
                 # Save previous article
                 if current_article and current_paragraphs:
                     current_article["article_text"] = "\n\n".join(current_paragraphs)
-                    articles.append(current_article)
+                    raw_articles.append(current_article)
 
-                # Start new article
-                article_number = article_match.group(1).replace(".", "").replace("-", "")
+                # Start new article (keep raw number for now)
+                article_number = article_match.group(1)  # Preserve original format
                 article_title = text
 
                 current_article = {
-                    "article_number": article_number,
+                    "article_number": article_number,  # Raw number
                     "article_title": article_title,
                     "article_text": "",
                 }
@@ -1056,7 +1394,29 @@ class BaseCodeImporter:
         # Don't forget the last article
         if current_article and current_paragraphs:
             current_article["article_text"] = "\n\n".join(current_paragraphs)
-            articles.append(current_article)
+            raw_articles.append(current_article)
+
+        # NOW validate and correct article numbers with context
+        articles = []
+        for i, raw_article in enumerate(raw_articles):
+            raw_number = raw_article["article_number"]
+
+            # Get context for validation
+            prev_article = raw_articles[i - 1]["article_number"] if i > 0 else None
+            next_article = raw_articles[i + 1]["article_number"] if i < len(raw_articles) - 1 else None
+
+            # Validate with hybrid approach
+            corrected_number, warnings = validate_and_correct_article_number(
+                raw_number, code_id, prev_article, next_article
+            )
+
+            for warning in warnings:
+                logger.warning(f"[{code_id}] {warning}")
+
+            articles.append({
+                **raw_article,
+                "article_number": corrected_number,  # Use corrected number
+            })
 
         return {
             "code_id": code_id,

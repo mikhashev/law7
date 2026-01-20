@@ -1,6 +1,6 @@
 ![Law7 Logo](logo/law7_minimal_3.png)
 
-# Law7 - Up-to-date Legal Documents For AI Assistants
+# Law7 MCP - Up-to-date Legal Documents For AI Assistants
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-orange)](package.json)
@@ -171,7 +171,7 @@ Python Pipeline → PostgreSQL + Qdrant → TypeScript MCP Server → AI
   - [pravo.gov.ru](http://pravo.gov.ru/) - Official Russian legal publication portal (primary)
   - [kremlin.ru](http://kremlin.ru/) - Presidential decrees, Constitution
   - [government.ru](http://government.ru/) - Government resolutions, procedure codes
-- **Codes**: All 16 major Russian legal codes imported:
+- **Codes**: All 19 consolidated Russian legal codes imported:
   - Constitution (KONST_RF)
   - Civil Code (4 parts: GK_RF, GK_RF_2/3/4)
   - Criminal Code (UK_RF)
@@ -179,7 +179,9 @@ Python Pipeline → PostgreSQL + Qdrant → TypeScript MCP Server → AI
   - Tax Code (2 parts: NK_RF, NK_RF_2)
   - Family, Housing, Land codes (SK_RF, ZhK_RF, ZK_RF)
   - Administrative Code (KoAP_RF)
-  - Procedure Codes (GPK_RF, APK_RF, UPK_RF)
+  - Procedure Codes (GPK_RF, APK_RF, UPK_RF, KAS_RF)
+  - Budget, Urban Planning, Criminal Executive codes (BK_RF, GRK_RF, UIK_RF)
+  - Environmental codes (VZK_RF - Air, VDK_RF - Water, LK_RF - Forest)
 
 See [docs/DATA_PIPELINE.md](docs/DATA_PIPELINE.md) for complete data pipeline documentation.
 

@@ -213,6 +213,13 @@ Available codes (Russia - Phase 1):
   - APK_RF: Arbitration Procedure Code (Арбитражный процессуальный кодекс)
   - GPK_RF: Civil Procedure Code (Гражданский процессуальный кодекс)
   - UPK_RF: Criminal Procedure Code (Уголовно-процессуальный кодекс)
+  - BK_RF: Budget Code (Бюджетный кодекс)
+  - GRK_RF: Urban Planning Code (Градостроительный кодекс)
+  - UIK_RF: Criminal Executive Code (Уголовно-исполнительный кодекс)
+  - VZK_RF: Air Code (Воздушный кодекс)
+  - VDK_RF: Water Code (Водный кодекс)
+  - LK_RF: Forest Code (Лесной кодекс)
+  - KAS_RF: Administrative Procedure Code (Кодекс административного судопроизводства)
 
 Example:
   Get structure of Labor Code:
