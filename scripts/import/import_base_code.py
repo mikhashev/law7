@@ -33,7 +33,7 @@ import requests
 from bs4 import BeautifulSoup
 from sqlalchemy import text
 
-from scripts.core.database import get_db_connection
+from scripts.core.db import get_db_connection
 from scripts.core.config import config
 
 logger = logging.getLogger(__name__)
