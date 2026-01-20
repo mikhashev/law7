@@ -369,6 +369,10 @@ class BaseCodeImporter:
         """
         Fetch ALL HTML pages from kremlin.ru (official publication portal).
 
+        Some kremlin.ru pages have introductory content on early pages with
+        actual articles starting on later pages. We check at least 3 pages before
+        giving up.
+
         Args:
             bank_id: Kremlin bank ID (e.g., '7279' for Civil Code)
 
@@ -377,6 +381,9 @@ class BaseCodeImporter:
         """
         all_pages = []
         page_num = 1
+        min_pages_to_check = 3  # Check at least 3 pages before giving up
+        consecutive_empty_pages = 0
+        max_consecutive_empty = 2  # Stop after 2 consecutive empty pages
 
         while True:
             url = f"http://www.kremlin.ru/acts/bank/{bank_id}/page/{page_num}"
@@ -391,11 +398,23 @@ class BaseCodeImporter:
                 text = soup.get_text()
                 has_articles = bool(re.search(r"Статья\s+\d+", text))
 
-                if not has_articles:
-                    logger.info(f"Page {page_num} has no articles, stopping pagination")
-                    break
+                if has_articles:
+                    all_pages.append(response.text)
+                    consecutive_empty_pages = 0
+                else:
+                    consecutive_empty_pages += 1
+                    logger.info(f"Page {page_num} has no articles (empty count: {consecutive_empty_pages})")
 
-                all_pages.append(response.text)
+                    # Stop if we've checked minimum pages AND found consecutive empty pages
+                    if page_num >= min_pages_to_check and consecutive_empty_pages >= max_consecutive_empty:
+                        logger.info(f"Stopping pagination after {consecutive_empty_pages} consecutive empty pages")
+                        break
+
+                    # Also stop if we've checked way too many pages without finding anything
+                    if page_num >= 10 and not all_pages:
+                        logger.warning(f"Checked {page_num} pages with no articles found, stopping")
+                        break
+
                 page_num += 1
 
                 # Sleep to avoid rate limiting
@@ -408,10 +427,13 @@ class BaseCodeImporter:
 
             except Exception as e:
                 logger.error(f"Failed to fetch page {page_num}: {e}")
-                # If we got some pages, return them. If first page failed, return empty
-                if page_num > 1:
+                # If we have some pages, return what we have
+                if all_pages:
                     break
-                return []
+                # Otherwise give up after too many failures
+                if page_num >= 5:
+                    return []
+                page_num += 1
 
         logger.info(f"Fetched {len(all_pages)} pages from kremlin.ru")
         return all_pages
@@ -827,6 +849,10 @@ class BaseCodeImporter:
         """
         Fetch ALL HTML pages from government.ru (handles pagination).
 
+        Some government.ru pages have introductory content on page 1-2 with
+        actual articles starting on page 3. We check at least 3 pages before
+        giving up.
+
         Args:
             url: Full URL to the document
 
@@ -835,6 +861,9 @@ class BaseCodeImporter:
         """
         all_pages = []
         page_num = 1
+        min_pages_to_check = 3  # Check at least 3 pages before giving up
+        consecutive_empty_pages = 0
+        max_consecutive_empty = 2  # Stop after 2 consecutive empty pages
 
         while True:
             page_url = f"{url}?page={page_num}" if page_num > 1 else url
@@ -849,11 +878,23 @@ class BaseCodeImporter:
                 text = soup.get_text()
                 has_articles = bool(re.search(r"Статья\s+\d+", text))
 
-                if not has_articles:
-                    logger.info(f"Page {page_num} has no articles, stopping pagination")
-                    break
+                if has_articles:
+                    all_pages.append(response.text)
+                    consecutive_empty_pages = 0
+                else:
+                    consecutive_empty_pages += 1
+                    logger.info(f"Page {page_num} has no articles (empty count: {consecutive_empty_pages})")
 
-                all_pages.append(response.text)
+                    # Stop if we've checked minimum pages AND found consecutive empty pages
+                    if page_num >= min_pages_to_check and consecutive_empty_pages >= max_consecutive_empty:
+                        logger.info(f"Stopping pagination after {consecutive_empty_pages} consecutive empty pages")
+                        break
+
+                    # Also stop if we've checked way too many pages without finding anything
+                    if page_num >= 10 and not all_pages:
+                        logger.warning(f"Checked {page_num} pages with no articles found, stopping")
+                        break
+
                 page_num += 1
 
                 # Sleep to avoid rate limiting (government.ru is sensitive)
@@ -866,10 +907,13 @@ class BaseCodeImporter:
 
             except Exception as e:
                 logger.error(f"Failed to fetch page {page_num}: {e}")
-                # If we got some pages, return them. If first page failed, return empty
-                if page_num > 1:
+                # If we have some pages, return what we have
+                if all_pages:
                     break
-                return []
+                # Otherwise give up after too many failures
+                if page_num >= 5:
+                    return []
+                page_num += 1
 
         logger.info(f"Fetched {len(all_pages)} pages from government.ru")
         return all_pages
