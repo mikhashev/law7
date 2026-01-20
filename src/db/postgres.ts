@@ -153,11 +153,12 @@ export async function getDocumentsByEoNumbers(eoNumbers: string[]): Promise<(Doc
 }
 
 /**
- * Search documents by text content using full-text search
+ * Internal helper: search with specific tsquery function
  */
-export async function searchDocuments(
+async function searchWithTsQuery(
   searchText: string,
-  limit: number = 10,
+  queryFunction: 'plainto_tsquery' | 'to_tsquery',
+  limit: number,
   countryId?: number
 ): Promise<(Document & DocumentContent)[]> {
   const text = `
@@ -168,10 +169,10 @@ export async function searchDocuments(
       dc.pdf_url,
       dc.html_url,
       dc.text_hash,
-      ts_rank(to_tsvector('russian', dc.full_text), plainto_tsquery('russian', $1)) as rank
+      ts_rank(to_tsvector('russian', dc.full_text), ${queryFunction}('russian', $1)) as rank
     FROM documents d
     LEFT JOIN document_content dc ON d.id = dc.document_id
-    WHERE to_tsvector('russian', dc.full_text) @@ plainto_tsquery('russian', $1)
+    WHERE to_tsvector('russian', dc.full_text) @@ ${queryFunction}('russian', $1)
     ${countryId ? 'AND d.country_id = $2' : ''}
     ORDER BY rank DESC
     LIMIT $${countryId ? 3 : 2}
@@ -182,6 +183,35 @@ export async function searchDocuments(
     : [searchText, limit];
 
   return query<Document & DocumentContent>(text, params);
+}
+
+/**
+ * Search documents by text content using full-text search
+ *
+ * Implements OR fallback: tries exact AND match first, falls back to OR if no results
+ */
+export async function searchDocuments(
+  searchText: string,
+  limit: number = 10,
+  countryId?: number
+): Promise<(Document & DocumentContent)[]> {
+  // Try exact match first (AND logic via plainto_tsquery)
+  let results = await searchWithTsQuery(searchText, 'plainto_tsquery', limit, countryId);
+
+  // Fallback to OR if no results found
+  if (results.length === 0) {
+    const orTerms = searchText
+      .trim()
+      .split(/\s+/)
+      .filter(t => t.length > 0)
+      .join(' | ');
+
+    if (orTerms) {
+      results = await searchWithTsQuery(orTerms, 'to_tsquery', limit, countryId);
+    }
+  }
+
+  return results;
 }
 
 /**
