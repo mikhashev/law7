@@ -20,7 +20,7 @@ Create an open, global, decentralized database of legal texts from all countries
 **Core Principle**: Official government sources are the only trusted anchor.
 
 Examples by country:
-- **Russia**: pravo.gov.ru, consultant.ru, kremlin.ru, government.ru
+- **Russia**: pravo.gov.ru, kremlin.ru, government.ru
 - **United States**: congress.gov, uscode.house.gov
 - **France**: legifrance.gouv.fr
 - **Germany**: gesetze-im-internet.de, bundesgesetzblatt.de
