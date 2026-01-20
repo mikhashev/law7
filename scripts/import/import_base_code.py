@@ -1063,11 +1063,12 @@ class BaseCodeImporter:
         """
         Save base articles to code_article_versions table.
 
-        Uses "delete + reimport" strategy for data freshness:
+        Uses "delete + upsert" strategy for data freshness:
         1. Delete all existing articles for this code (clean slate)
-        2. Insert fresh articles from source
+        2. Insert fresh articles using UPSERT (handles duplicates within batch)
 
-        This ensures parser fixes and source updates are properly reflected.
+        The UPSERT handles cases where the same article number appears multiple
+        times across different pages (e.g., kremlin.ru pagination).
 
         Args:
             code_id: Code identifier
@@ -1126,6 +1127,14 @@ class BaseCodeImporter:
                             :is_repealed,
                             :text_hash
                         )
+                        ON CONFLICT (code_id, article_number, version_date)
+                        DO UPDATE SET
+                            article_text = EXCLUDED.article_text,
+                            article_title = EXCLUDED.article_title,
+                            amendment_eo_number = EXCLUDED.amendment_eo_number,
+                            is_current = EXCLUDED.is_current,
+                            is_repealed = EXCLUDED.is_repealed,
+                            text_hash = EXCLUDED.text_hash
                     """
                     )
 
