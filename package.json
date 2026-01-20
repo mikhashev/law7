@@ -1,7 +1,7 @@
 {
   "name": "law7",
   "version": "0.1.0",
-  "description": "MCP server for querying legal documents from multiple countries",
+  "description": "MCP server for querying legal documents from official sources for AI assistants",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -14,11 +14,14 @@
     "mcp",
     "laws",
     "legal",
+    "legislation",
     "russia",
+    "ai",
+    "chatbot",
     "law7"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
     "@qdrant/js-client-rest": "^1.12.0",

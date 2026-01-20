@@ -261,3 +261,155 @@ When implementing major features, reference these plans for:
 - Implementation phases
 - Success criteria
 - Technical trade-offs
+
+## Contributing to Global Expansion
+
+Law7 aims to become a global legal document system. See [docs/VISION.md](docs/VISION.md) for the complete vision.
+
+### Adding a New Country
+
+To add support for a new country, follow these steps:
+
+#### 1. Research Official Sources
+
+Identify the official government legal publication portals for your country:
+
+**Examples**:
+- **United States**: congress.gov, uscode.house.gov
+- **France**: legifrance.gouv.fr
+- **Germany**: gesetze-im-internet.de
+- **Brazil**: planalto.gov.br
+- **Japan**: e-gov.go.jp
+
+**Requirements**:
+- Must be official government sources
+- Must provide API or HTML access
+- Must have stable, permanent URLs
+- Must include document metadata (date, type, number)
+
+#### 2. Create a Country Adapter
+
+Create a new adapter in `scripts/crawler/adapters/<country_code>/`:
+
+```python
+# scripts/crawler/adapters/us/country_adapter.py
+from scripts.crawler.base_adapter import BaseCountryAdapter
+
+class USCountryAdapter(BaseCountryAdapter):
+    def get_official_urls(self) -> List[str]:
+        return ["https://congress.gov", "https://uscode.house.gov"]
+
+    def fetch_documents(self, date: date) -> List[Document]:
+        # Implementation for fetching documents
+        pass
+
+    def parse_document(self, raw: str) -> ParsedDocument:
+        # Implementation for parsing documents
+        pass
+
+    def calculate_hash(self, document: Document) -> str:
+        # Implementation for hashing
+        pass
+```
+
+#### 3. Add Country to Database
+
+```sql
+INSERT INTO countries (code, name, native_name) VALUES
+('US', 'United States', 'United States');
+```
+
+#### 4. Implement MCP Tools
+
+Update the MCP tools in `src/tools/` to support the new country:
+- `query-laws`: Filter by country code
+- `get-law`: Handle country-specific document IDs
+- `list-countries`: Include new country
+
+#### 5. Add Tests
+
+Create tests for the new adapter:
+```python
+# scripts/crawler/adapters/us/test_country_adapter.py
+def test_fetch_documents():
+    adapter = USCountryAdapter()
+    documents = adapter.fetch_documents(date(2025, 1, 1))
+    assert len(documents) > 0
+```
+
+#### 6. Update Documentation
+
+Update the following files:
+- `README.md`: Add country to the list
+- `docs/DATA_PIPELINE.md`: Document the new adapter
+- `CLAUDE.md`: Add country-specific notes
+
+### Contribution Guidelines for Global Expansion
+
+#### Official Sources Only
+
+- Only use official government legal publication portals
+- Document the source URLs in code and documentation
+- Implement hash verification for all documents
+
+#### Data Quality
+
+- Implement proper parsing for legal document structure
+- Handle edge cases (amendments, repeals, consolidation)
+- Add tests for parsing logic
+
+#### Community Verification
+
+- Follow the verification pattern from [docs/VISION.md](docs/VISION.md)
+- Implement hash-based verification
+- Consider contributing verification nodes
+
+#### License Compliance
+
+- All contributions must be AGPL-3.0 compatible
+- Respect copyright of legal texts (usually public domain for government works)
+- Document any licensing considerations
+
+### Getting Started with Global Contributions
+
+1. **Join the Discussion**: Open an issue to discuss the country you want to add
+2. **Research**: Document the official sources and API endpoints
+3. **Proposal**: Create a proposal issue with:
+   - Country name and code
+   - Official sources
+   - Document types to import
+   - Expected challenges
+4. **Implementation**: Follow the country adapter pattern
+5. **Testing**: Test with real data from official sources
+6. **Documentation**: Update all relevant documentation
+
+### Example: Adding France
+
+```python
+# scripts/crawler/adapters/fr/country_adapter.py
+from scripts.crawler.base_adapter import BaseCountryAdapter
+
+class FRCountryAdapter(BaseCountryAdapter):
+    """Adapter for French legal documents from Legifrance."""
+
+    def get_official_urls(self) -> List[str]:
+        return ["https://legifrance.gouv.fr"]
+
+    def fetch_documents(self, date: date) -> List[Document]:
+        # Implement using Legifrance API or HTML scraping
+        pass
+```
+
+### Need Help?
+
+- Open an issue for questions
+- Check existing adapters for reference
+- Review [docs/VISION.md](docs/VISION.md) for architecture guidance
+- Join community discussions
+
+### Recognition
+
+Contributors who add new countries will be:
+- Listed in CONTRIBUTORS.md
+- Credited in README.md
+- Recognized in release notes

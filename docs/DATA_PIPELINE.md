@@ -1,6 +1,44 @@
 # Law7 Data Pipeline Guide
 
-This guide explains how to populate and maintain the Law7 database with legal documents from pravo.gov.ru.
+This guide explains how to populate and maintain the Law7 database with legal documents from official Russian government sources.
+
+## Official Data Sources
+
+The Law7 data pipeline uses only official Russian government sources for legal documents:
+
+| Source | URL | Purpose | Documents |
+|--------|-----|---------|-----------|
+| **pravo.gov.ru** | http://pravo.gov.ru/ | Official Russian legal publication portal (primary API source) | Federal laws, presidential decrees, government resolutions |
+| **kremlin.ru** | http://kremlin.ru/ | Presidential administration website | Constitution, presidential decrees (KONST_RF) |
+| **government.ru** | http://government.ru/ | Government website | Government resolutions, procedure codes (APK_RF, GPK_RF, UPK_RF) |
+
+### Source Details
+
+**pravo.gov.ru** (Primary)
+- Official portal for legal publications
+- Provides REST API for document access
+- Contains federal laws, decrees, resolutions from 2011-present
+- Document metadata includes: type, number, date, signing authority
+- API endpoint: `http://publication.pravo.gov.ru/api`
+
+**kremlin.ru**
+- Source for the Russian Constitution
+- Presidential decrees and orders
+- Used for importing KONST_RF code
+
+**government.ru**
+- Government resolutions and orders
+- Procedural codes (arbitration, civil procedure, criminal procedure)
+- Used for importing APK_RF, GPK_RF, UPK_RF codes
+
+### Data Quality
+
+All documents are:
+- Sourced from official government websites only
+- Hashed for verification
+- Timestamped with download date
+- Cross-referenced with permanent URLs
+- Updated as amendments are published
 
 ## Overview
 

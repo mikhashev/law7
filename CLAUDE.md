@@ -144,3 +144,14 @@ Environment variables (see `.env.example`):
 3. **Hybrid Search**: Combines semantic search (Qdrant) with keyword search (PostgreSQL trigrams).
 4. **Official Sources**: All Russian legal data comes from pravo.gov.ru official API.
 5. **Historical Tracking**: The consolidation engine maintains full version history of legal articles from 2011-present.
+
+## Two-Phase Development
+
+**Phase 1 (Current)**: Russia-only implementation with centralized architecture.
+- 157,730 documents from official Russian sources
+- MCP server for chat-based AI assistants (Claude, ChatGPT, Grok)
+
+**Phase 2 (Planned)**: Global multi-country support with decentralized architecture.
+- See [docs/VISION.md](docs/VISION.md) for detailed future plans
+- Country adapter pattern for adding new jurisdictions
+- Community verification and distributed data sharing
