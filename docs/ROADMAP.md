@@ -1,4 +1,73 @@
-# Law7 TODO
+# Law7 Roadmap
+
+## Strategic Vision
+
+This document outlines the development roadmap for Law7. For the complete strategic plan for the consolidation engine, see `.claude/plans/snuggly-nibbling-lecun.md`.
+
+### Phase 1: Current Implementation (Russia) ✅
+
+**Status**: Operational
+
+- **Documents**: 157,730 Russian legal documents (2022-2026)
+- **Sources**:
+  - [pravo.gov.ru](http://pravo.gov.ru/) - Official Russian legal publication portal (primary)
+  - [kremlin.ru](http://kremlin.ru/) - Presidential decrees, Constitution
+  - [government.ru](http://government.ru/) - Government resolutions, procedure codes
+- **Codes**: All 16 major Russian legal codes imported
+- **MCP Tools**: 7 tools for legal document queries
+
+See [docs/DATA_PIPELINE.md](DATA_PIPELINE.md) for complete data pipeline documentation.
+
+### Phase 2: Consolidation Engine (In Progress)
+
+**Goal**: Transform law7 from a limited amendment database into a comprehensive Russian legal database with consolidated codes and full historical coverage (2011-present).
+
+**Architecture**:
+```
+pravo.gov.ru API (2011-present)
+    ↓
+Original Code Publication
+    ↓
+Fetch All Amendments Chronologically
+    ↓
+Consolidation Engine (Python)
+    ├─ Parse amendment text
+    ├─ Identify affected articles
+    ├─ Apply changes (add/modify/repeal)
+    └─ Resolve conflicts
+    ↓
+Consolidated Code with Version History
+    ↓
+PostgreSQL + Qdrant (embeddings per article)
+```
+
+**Status**:
+- ✅ Amendment parser (`scripts/consolidation/amendment_parser.py`)
+- ✅ Article diff engine (`scripts/consolidation/diff_engine.py`)
+- ✅ Version manager (`scripts/consolidation/version_manager.py`)
+- ✅ Consolidation orchestrator (`scripts/consolidation/consolidate.py`)
+- ✅ Database schema: `code_article_versions`, `amendment_applications`, `consolidated_codes`
+- ✅ TypeScript MCP tools: `get-code-structure`, `get-article-version`, `trace-amendment-history`
+- ⏳ Content importer for consolidated codes (needs implementation)
+
+**Benefits**:
+- Version history: Query any article as it existed on any date
+- Amendment tracking: See which law changed which article
+- Official source: Uses free pravo.gov.ru data (2011-present)
+
+**See**: [`.claude/plans/snuggly-nibbling-lecun.md`](.claude/plans/snuggly-nibbling-lecun.md) for complete technical specifications.
+
+### Phase 3: Future Vision (Global)
+
+**Status**: Planned - See [VISION.md](VISION.md)
+
+- Multi-country support
+- Decentralized data distribution (IPFS, libp2p)
+- Community verification system
+- Country adapter pattern for adding new jurisdictions
+- Delta updates and change tracking
+
+---
 
 ## High Priority
 

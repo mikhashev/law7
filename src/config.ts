@@ -21,7 +21,7 @@ export const db = {
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5433'),
   database: process.env.DB_NAME || 'law7',
-  password: process.env.DB_PASSWORD || 'law7_dev',
+  password: process.env.DB_PASSWORD || '',
   get connectionString(): string {
     if (!this.password) {
       console.error('[CONFIG] WARNING: DB_PASSWORD is not set! Database authentication will fail.');
