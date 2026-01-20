@@ -93,6 +93,7 @@ CODE_METADATA = {
                 "original_date": date(2000, 7, 31),
                 "kremlin_bank": "12755",
                 "pravo_nd": "102054722",
+                "government_url": "http://government.ru/docs/all/96558/",
             },
             {
                 "code_id": "NK_RF_2",
@@ -101,6 +102,7 @@ CODE_METADATA = {
                 "original_date": date(2000, 7, 31),
                 "kremlin_bank": "15925",
                 "pravo_nd": "102067058",
+                "government_url": "http://government.ru/docs/all/96947/",
             },
         ],
     },
@@ -191,6 +193,64 @@ CODE_METADATA = {
         "kremlin_url": "http://www.kremlin.ru/acts/bank/17643",
         "pravo_nd": None,
         "government_url": "http://government.ru/docs/all/97184/",
+    },
+    # Budget Code
+    "BK_RF": {
+        "name": "Бюджетный кодекс Российской Федерации",
+        "eo_number": "145-ФЗ",
+        "original_date": date(1998, 7, 31),
+        "pravo_nd": None,
+        "government_url": "http://government.ru/docs/all/96557/",
+    },
+    # Urban Planning Code
+    "GRK_RF": {
+        "name": "Градостроительный кодекс Российской Федерации",
+        "eo_number": "190-ФЗ",
+        "original_date": date(2004, 12, 29),
+        "pravo_nd": None,
+        "government_url": "http://government.ru/docs/all/97828/",
+    },
+    # Criminal Executive Code
+    "UIK_RF": {
+        "name": "Уголовно-исполнительный кодекс Российской Федерации",
+        "eo_number": "1-ФЗ",
+        "original_date": date(1997, 1, 8),
+        "pravo_nd": None,
+        "government_url": "http://government.ru/docs/all/96249/",
+    },
+    # Air Code
+    "VZK_RF": {
+        "name": "Воздушный кодекс Российской Федерации",
+        "eo_number": "60-ФЗ",
+        "original_date": date(1997, 3, 19),
+        "pravo_nd": None,
+        "government_url": "http://government.ru/docs/all/96308/",
+    },
+    # Water Code
+    "VDK_RF": {
+        "name": "Водный кодекс Российской Федерации",
+        "eo_number": "74-ФЗ",
+        "original_date": date(2006, 6, 3),
+        "pravo_nd": None,
+        "government_url": "http://government.ru/docs/all/98126/",
+    },
+    # Forest Code
+    "LK_RF": {
+        "name": "Лесной кодекс Российской Федерации",
+        "eo_number": "200-ФЗ",
+        "original_date": date(2006, 12, 4),
+        "pravo_nd": None,
+        "government_url": "http://government.ru/docs/all/98250/",
+    },
+    # Administrative Procedure Code
+    "KAS_RF": {
+        "name": "Кодекс административного судопроизводства Российской Федерации",
+        "eo_number": "21-ФЗ",
+        "original_date": date(2015, 3, 8),
+        "kremlin_bank": "39498",
+        "kremlin_url": "http://www.kremlin.ru/acts/bank/39498",
+        "pravo_nd": None,
+        "government_url": None,
     },
 }
 
