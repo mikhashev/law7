@@ -109,10 +109,15 @@ Question: Can we use https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B or from o
 ## Low Priority
 
 ### MCP Server Enhancements
-- [ ] Add hybrid search (keyword + semantic combined)
+- [x] **Improved keyword search**: OR fallback when AND returns no results (2025-01-21)
+- [ ] Implement hybrid search (keyword + semantic combined)
+  - Note: `use_hybrid` parameter exists in schema but not implemented
+  - Requires: Embedding generation in MCP server (currently only in Python pipeline)
+  - Requires: Combine Qdrant semantic + PostgreSQL keyword results
 - [ ] Add document summarization tool
 - [ ] Add document comparison tool
 - [ ] Add date range filtering in query-laws tool
+  - Note: `getDocumentsByDateRange()` function exists in postgres.ts but not exposed as MCP tool
 
 ### Code Import Issues
 - [ ] **Fix KoAP_RF (Administrative Code) import**
