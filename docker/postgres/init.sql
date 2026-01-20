@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS documents (
 
   -- Document names and titles
   title TEXT,                      -- Full title with HTML formatting
-  name VARCHAR(1000),              -- Short name/description
+  name TEXT,                       -- Short name/description (can be very long)
   complex_name TEXT,               -- Full name with date and number
 
   -- Document identification

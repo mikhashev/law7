@@ -6,6 +6,16 @@
 - [x] Fix content sync to run without embeddings
 - [x] Build MCP server (7 tools implemented: query-laws, get-law, list-countries, get-statistics, get-code-structure, get-article-version, trace-amendment-history)
 - [x] Test content parsing from API metadata (test script: scripts/test_content_parsing.py)
+- [x] Database has 156,000 documents (2022-2026) - sufficient for MVP testing
+- [x] All 16 legal codes imported (Constitution + 15 codes)
+- [ ] **Run content sync + embeddings** - See [docs/DATA_PIPELINE.md](docs/DATA_PIPELINE.md)
+  ```bash
+  # Quick test with 100 docs
+  poetry run python scripts/sync/content_sync.py --limit 100 --recreate-collection
+
+  # Full run with 156k docs
+  poetry run python scripts/sync/content_sync.py --recreate-collection
+  ```
 - [ ] Test all 7 MCP tools with real data
 
 ### Data Coverage Check
@@ -105,6 +115,16 @@ Question: Can we use https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B or from o
 - [ ] Add date range filtering in query-laws tool
 
 ### Data Pipeline
+- [ ] **URGENT**: Fix historical sync date range filtering
+  - **Issue**: `initial_sync.py --start-date 2011-01-01 --end-date 2022-08-28` doesn't filter by date
+  - **Root cause**: API returns all documents (1.6 million total, 53,142 pages) in reverse chronological order
+  - **Current behavior**: Syncs from newest (2026) → oldest, taking 100+ hours for full sync
+  - **Proposed solution**: Reverse pagination - start from last page (oldest docs) and move forward
+  - **Filtering needed**: Consider document type, block, or other filters to reduce scope
+  - **Notes**:
+    - 156k documents already synced (2022-2026) - sufficient for current testing
+    - API response: `itemsTotalCount: 1594246`, `pagesTotalCount: 53142`
+    - See `data/raw/Documents.json` for API structure
 - [ ] Add incremental sync (only new documents)
 - [ ] Add change detection via text_hash
 - [ ] Add retry logic for failed API requests

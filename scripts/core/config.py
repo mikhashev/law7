@@ -42,7 +42,8 @@ QDRANT_VECTOR_SIZE = int(os.getenv("QDRANT_VECTOR_SIZE", "1024"))
 # =============================================================================
 # Sync Configuration
 # =============================================================================
-SYNC_BATCH_SIZE = int(os.getenv("SYNC_BATCH_SIZE", "100"))
+# Note: pravo.gov.ru API has max pageSize of 30 for Documents endpoint
+SYNC_BATCH_SIZE = int(os.getenv("SYNC_BATCH_SIZE", "30"))
 DAILY_SYNC_TIME = os.getenv("DAILY_SYNC_TIME", "02:00")
 
 # Initial sync settings
