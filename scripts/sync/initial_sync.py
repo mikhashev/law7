@@ -199,7 +199,7 @@ class InitialSyncService:
                 batch = batch_buffer[:self.batch_size]
                 batch_buffer = batch_buffer[self.batch_size:]
 
-                upserted = self.indexer.batch_upsert_documents(batch)
+                upserted = self.indexer.batch_upsert_documents(batch, block_code=block)
                 total_upserted += upserted
 
                 logger.debug(f"  Upserted batch: {upserted} documents (progress: {total_upserted}/{total_fetched})")
@@ -213,7 +213,7 @@ class InitialSyncService:
 
         # Upsert remaining documents in buffer
         if batch_buffer:
-            upserted = self.indexer.batch_upsert_documents(batch_buffer)
+            upserted = self.indexer.batch_upsert_documents(batch_buffer, block_code=block)
             total_upserted += upserted
 
         logger.info(f"Total documents fetched: {total_fetched}")

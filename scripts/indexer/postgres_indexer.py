@@ -1,6 +1,6 @@
 """
 PostgreSQL batch upsert indexer.
-Based on yandex-games-bi-suite batch saver pattern.
+Based on ygbis batch saver pattern.
 """
 import logging
 from datetime import datetime
@@ -70,6 +70,7 @@ class PostgresIndexer:
         self,
         documents: List[Dict[str, Any]],
         country_id: int = 1,  # Russia
+        block_code: Optional[str] = None,  # Publication block code
     ) -> int:
         """
         Batch upsert documents to the database.
@@ -79,6 +80,7 @@ class PostgresIndexer:
         Args:
             documents: List of document dictionaries from API
             country_id: Country ID (default: 1 for Russia)
+            block_code: Publication block code (e.g., 'president', 'government')
 
         Returns:
             Number of documents upserted
@@ -86,12 +88,15 @@ class PostgresIndexer:
         Example:
             >>> indexer = PostgresIndexer()
             >>> docs = [{"eoNumber": "0001202601170001", ...}]
-            >>> count = indexer.batch_upsert_documents(docs)
+            >>> count = indexer.batch_upsert_documents(docs, block_code="president")
         """
         if not documents:
             return 0
 
         logger.info(f"Upserting {len(documents)} documents in batches of {self.batch_size}")
+
+        # Get publication_block_id from block_code if provided
+        publication_block_id = self._get_publication_block_id(block_code) if block_code else None
 
         total_upserted = 0
 
@@ -102,7 +107,7 @@ class PostgresIndexer:
             # Transform API response to database schema
             records = []
             for doc in batch:
-                records.append(self._transform_document(doc, country_id))
+                records.append(self._transform_document(doc, country_id, publication_block_id))
 
             try:
                 with get_db_connection() as conn:
@@ -140,8 +145,33 @@ class PostgresIndexer:
         logger.info(f"Total documents upserted: {total_upserted}")
         return total_upserted
 
+    def _get_publication_block_id(self, block_code: str) -> Optional[str]:
+        """
+        Get publication block UUID from block code.
+
+        Args:
+            block_code: Publication block code (e.g., 'president', 'government')
+
+        Returns:
+            UUID of publication block or None if not found
+        """
+        try:
+            with get_db_connection() as conn:
+                result = conn.execute(
+                    text("SELECT id FROM publication_blocks WHERE code = :code"),
+                    {"code": block_code}
+                )
+                row = result.fetchone()
+                if row:
+                    return row[0]
+                logger.warning(f"Publication block not found for code: {block_code}")
+                return None
+        except Exception as e:
+            logger.error(f"Error fetching publication block ID: {e}")
+            return None
+
     def _transform_document(
-        self, api_doc: Dict[str, Any], country_id: int
+        self, api_doc: Dict[str, Any], country_id: int, publication_block_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Transform API document response to database schema.
@@ -149,6 +179,7 @@ class PostgresIndexer:
         Args:
             api_doc: Document from API response
             country_id: Country ID
+            publication_block_id: UUID of publication block (from block_code)
 
         Returns:
             Dictionary matching database schema
@@ -170,6 +201,7 @@ class PostgresIndexer:
             "jd_reg_date": self._parse_date(api_doc.get("jdRegDate")),
             "signatory_authority_id": api_doc.get("signatoryAuthorityId"),
             "document_type_id": api_doc.get("documentTypeId"),
+            "publication_block_id": publication_block_id,
             "country_id": country_id,
             "created_at": datetime.now(),
             "updated_at": datetime.now(),
