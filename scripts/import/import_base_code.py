@@ -2,16 +2,22 @@
 Import Base Legal Codes from Official Sources
 
 This script imports the original/base text of Russian legal codes from:
-1. pravo.gov.ru (official publication portal)
-2. consultant.ru (free reference copy)
+1. kremlin.ru (official presidential publication portal)
+2. pravo.gov.ru (official publication portal)
+3. government.ru (official government publication portal)
 
 The imported base code text serves as the foundation for applying amendments
 during the consolidation process.
 
 Usage:
-    python -m scripts.import.import_base_code --code TK_RF --source consultant
-    python -m scripts.import.import_base_code --code GK_RF --source pravo
+    python -m scripts.import.import_base_code --code TK_RF
+    python -m scripts.import.import_base_code --code GK_RF
     python -m scripts.import.import_base_code --list
+
+Configuration:
+    IMPORT_REQUEST_DELAY: Delay between requests in seconds (default: 2)
+    IMPORT_REQUEST_TIMEOUT: Request timeout in seconds (default: 30)
+    Set in .env file or environment variables.
 """
 
 import argparse
@@ -27,7 +33,8 @@ import requests
 from bs4 import BeautifulSoup
 from sqlalchemy import text
 
-from scripts.core.db import get_db_connection
+from scripts.core.database import get_db_connection
+from scripts.core.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -197,14 +204,14 @@ class BaseCodeImporter:
     - pravo.gov.ru: Official publication (when available)
     """
 
-    def __init__(self, timeout: int = 30):
+    def __init__(self, timeout: Optional[int] = None):
         """
         Initialize the importer.
 
         Args:
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (uses config.import_request_timeout if not specified)
         """
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else config.import_request_timeout
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -392,7 +399,7 @@ class BaseCodeImporter:
                 page_num += 1
 
                 # Sleep to avoid rate limiting
-                time.sleep(1)
+                time.sleep(config.import_request_delay)
 
                 # Safety limit to prevent infinite loops
                 if page_num > 100:
@@ -850,7 +857,7 @@ class BaseCodeImporter:
                 page_num += 1
 
                 # Sleep to avoid rate limiting (government.ru is sensitive)
-                time.sleep(3)
+                time.sleep(config.import_request_delay)
 
                 # Safety limit to prevent infinite loops
                 if page_num > 100:

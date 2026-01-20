@@ -2,13 +2,14 @@
 Law7 Data Pipeline Configuration
 Centralized configuration based on yandex-games-bi-suite patterns
 """
+
 import os
 from dotenv import load_dotenv
 from pathlib import Path
 
 # Load from .env file with UTF-8 encoding (Windows compatibility)
-env_path = Path(__file__).parent.parent.parent / '.env'
-load_dotenv(dotenv_path=env_path, encoding='utf-8')
+env_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path, encoding="utf-8")
 
 # =============================================================================
 # Database Configuration
@@ -33,6 +34,17 @@ BACKOFF_MULTIPLIER = int(os.getenv("BACKOFF_MULTIPLIER", "2"))
 BACKOFF_MAX_DELAY = int(os.getenv("BACKOFF_MAX_DELAY", "60"))  # 60 seconds
 
 # =============================================================================
+# Import / Web Scraping Configuration
+# =============================================================================
+# Delay between requests to avoid rate limiting (in seconds)
+# Higher values = more polite to servers, slower imports
+# Recommended: 1-3 seconds for testing, 10-30 seconds for production
+IMPORT_REQUEST_DELAY = int(os.getenv("IMPORT_REQUEST_DELAY", "2"))
+
+# Timeout for web requests (in seconds)
+IMPORT_REQUEST_TIMEOUT = int(os.getenv("IMPORT_REQUEST_TIMEOUT", "30"))
+
+# =============================================================================
 # Qdrant Configuration
 # =============================================================================
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
@@ -48,12 +60,16 @@ DAILY_SYNC_TIME = os.getenv("DAILY_SYNC_TIME", "02:00")
 
 # Initial sync settings
 INITIAL_SYNC_START_DATE = os.getenv("INITIAL_SYNC_START_DATE", "2020-01-01")
-INITIAL_SYNC_BLOCK = os.getenv("INITIAL_SYNC_BLOCK", "all")  # 'all', 'president', 'government', etc.
+INITIAL_SYNC_BLOCK = os.getenv(
+    "INITIAL_SYNC_BLOCK", "all"
+)  # 'all', 'president', 'government', etc.
 
 # =============================================================================
 # Embedding Configuration
 # =============================================================================
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-mpnet-base-v2")
+EMBEDDING_MODEL = os.getenv(
+    "EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+)
 EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu")  # 'cpu' or 'cuda'
 EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
 
@@ -103,7 +119,7 @@ def calculate_backoff_delay(attempt: int) -> int:
     Returns:
         Delay in seconds
     """
-    delay = min(BACKOFF_BASE_DELAY * (BACKOFF_MULTIPLIER ** attempt), BACKOFF_MAX_DELAY)
+    delay = min(BACKOFF_BASE_DELAY * (BACKOFF_MULTIPLIER**attempt), BACKOFF_MAX_DELAY)
     return delay
 
 
@@ -127,6 +143,10 @@ class Config:
     backoff_base_delay: int = BACKOFF_BASE_DELAY
     backoff_multiplier: int = BACKOFF_MULTIPLIER
     backoff_max_delay: int = BACKOFF_MAX_DELAY
+
+    # Import / Web Scraping
+    import_request_delay: int = IMPORT_REQUEST_DELAY
+    import_request_timeout: int = IMPORT_REQUEST_TIMEOUT
 
     # Qdrant
     qdrant_url: str = QDRANT_URL
