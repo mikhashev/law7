@@ -137,7 +137,7 @@ CODE_METADATA = {
         "kremlin_bank": "17704",
         "kremlin_url": "http://www.kremlin.ru/acts/bank/17704",
         "pravo_nd": "102074277",
-        "government_url": "http://government.ru/docs/all/95-fz.html",
+        "government_url": "http://government.ru/docs/all/97204/",
     },
     "SK_RF": {
         "name": "Семейный кодекс",
