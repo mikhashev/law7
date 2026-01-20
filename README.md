@@ -165,11 +165,11 @@ Python Pipeline → PostgreSQL + Qdrant → TypeScript MCP Server → AI
 
 ### Components
 
-| Component | Language | Location | Status |
-|-----------|----------|----------|--------|
-| Data Pipeline | Python | `/scripts` | Private |
-| MCP Server | TypeScript | `/src` | Public |
-| Docker | Compose | `/docker` | Public |
+| Component | Language | Location |
+|-----------|----------|----------|
+| Data Pipeline | Python | `/scripts` |
+| MCP Server | TypeScript | `/src` |
+| Docker | Compose | `/docker` |
 
 ## Phase 1: Current Implementation (Russia)
 
