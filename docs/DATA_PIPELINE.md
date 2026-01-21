@@ -40,19 +40,57 @@ All documents are:
 - Cross-referenced with permanent URLs
 - Updated as amendments are published
 
+## Minimum Setup for AI Users
+
+> **For AI assistants via MCP**: You only need these 3 steps to get started.
+
+```bash
+# 0. Setup MCP settings for AI
+
+# 1. Start Docker services (PostgreSQL, Qdrant, Redis)
+cd docker && docker-compose up -d
+
+# 2. Import base legal codes (~6 hours, ~6,700 articles across 23 codes)
+poetry run python scripts/import/import_base_code.py --all
+
+# 3. Build and start the MCP server
+npm run build
+npm start
+```
+
+**What you get after these 3 steps:**
+- ✅ 23 consolidated Russian legal codes (Civil, Labor, Criminal, etc.)
+- ✅ `get-code-structure` - Browse code structure and articles
+- ✅ `get-article-version` - Get specific article text
+- ✅ `get-statistics` - Database statistics
+
+**Optional: For full semantic search** across 157k+ amendment documents:
+```bash
+# Step 4: Fetch amendment documents from API (~6 hours for 2022-2026)
+poetry run python scripts/sync/initial_sync.py --start-date 2022-01-01
+
+# Step 5: Generate embeddings for semantic search (~2-3 hours)
+poetry run python scripts/sync/content_sync.py --recreate-collection
+```
+
+After Steps 4-5, you also get:
+- ✅ `query-laws` - Semantic search across all documents
+
+---
+
 ## Overview
 
 The data pipeline consists of three main stages:
 
 **Quick Start Order** (recommended for first-time users):
 ```
-Step 1: Import Base Codes (import_base_code.py)  → Import 19 core legal codes (~6 hours, ~5,000 articles)
+Step 1: Import Base Codes (import_base_code.py)  → Import 23 legal codes (~6 hours, ~6,700 articles)
 Step 2: Document Sync (initial_sync.py)         → Fetch amendment documents from API (partial: ~6h, full: 100+h)
 Step 3: Content + Embeddings (content_sync.py)   → Extract text and generate vectors (~2-3 hours)
 ```
 
 **Note**: Step 1 (Import Base Codes) is independent and can be run alone to get
-the foundational legal codes (~5,000 articles across 19 codes like Civil, Labor, Criminal).
+the foundational legal codes (~6,700 articles across 23 codes like Civil, Labor, Criminal).
 Steps 2-3 add amendment document coverage (partial 2022-2026: ~157k documents in ~6h,
 full 2011-present: ~1.6M documents in 100+ hours).
 
@@ -91,7 +129,7 @@ poetry run python scripts/import/import_base_code.py --help
 | Option | Purpose |
 |--------|---------|
 | `--code CODE` | Import specific code (e.g., GK_RF, TK_RF, UK_RF) |
-| `--all` | Import all 19 codes |
+| `--all` | Import all 23 codes |
 | `--source {auto,kremlin,pravo,government}` | Source to use (default: auto) |
 | `--list` | List all available codes |
 | `--verbose` | Enable verbose logging |
@@ -138,8 +176,9 @@ Imports the foundational Russian legal codes from official sources.
 - Hybrid validation using surrounding articles and known ranges
 
 **Current Status:**
-- ✅ All 19 codes (23 code identifiers) imported
-- ✅ 5,000+ articles total across all codes
+- ✅ All 23 codes (23 code identifiers) registered in database
+- ✅ 22 codes imported with ~6,700 articles total
+- ⚠️ KAS_RF (Administrative Procedure Code) not yet imported
 - ✅ Metadata stored in `consolidated_codes` table
 - ✅ Article validation with context-aware correction
 

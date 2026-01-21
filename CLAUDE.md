@@ -218,7 +218,7 @@ Environment variables (see `.env.example`):
 
 ## Supported Legal Codes (Phase 1 - Russia)
 
-The system currently supports **19 consolidated Russian legal codes**:
+The system currently supports **23 consolidated Russian legal codes**:
 
 | Code ID | Name (Russian) | Name (English) | Source |
 |---------|----------------|----------------|--------|
@@ -246,7 +246,8 @@ The system currently supports **19 consolidated Russian legal codes**:
 | LK_RF | Лесной кодекс | Forest Code | government.ru |
 | KAS_RF | Кодекс административного судопроизводства | Administrative Procedure Code | kremlin.ru |
 
-**Total**: 23 code identifiers (19 unique codes, some split into parts)
+**Total**: 23 code identifiers (19 unique codes, some split into parts like Civil Code and Tax Code)
+**Status**: 22 codes imported (~6,700 articles), KAS_RF pending import
 
 ## When to Update CLAUDE.md
 
