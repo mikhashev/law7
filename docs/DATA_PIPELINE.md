@@ -67,6 +67,82 @@ docker-compose ps
 # Should show: postgres (5433), qdrant (6333), redis (6380)
 ```
 
+## Step 1: Import Base Legal Codes (Quick Start - Do This First!)
+
+> **Quick Start**: Run this first to get the 19 core legal codes that most users
+> need (Civil Code, Labor Code, Criminal Code, etc.). This is completely independent
+> from the document sync steps below.
+
+```bash
+# List all available codes
+poetry run python scripts/import/import_base_code.py --list
+
+# Import all codes
+poetry run python scripts/import/import_base_code.py --all
+
+# Import specific code
+poetry run python scripts/import/import_base_code.py --code GK_RF
+
+# Show all available options
+poetry run python scripts/import/import_base_code.py --help
+```
+
+**Available options:**
+| Option | Purpose |
+|--------|---------|
+| `--code CODE` | Import specific code (e.g., GK_RF, TK_RF, UK_RF) |
+| `--all` | Import all 19 codes |
+| `--source {auto,kremlin,pravo,government}` | Source to use (default: auto) |
+| `--list` | List all available codes |
+| `--verbose` | Enable verbose logging |
+
+**Independence Note**: This step is completely independent from Steps 2-3.
+It can be run anytime, even in parallel.
+
+---
+
+Imports the foundational Russian legal codes from official sources.
+
+**Available codes:**
+
+| Code | Name (Russian) | Name (English) | kremlin.ru | pravo.gov.ru | government.ru |
+|------|----------------|----------------|------------|--------------|---------------|
+| KONST_RF | Конституция Российской Федерации | Constitution | ✅ | ✅ | - |
+| GK_RF | Гражданский кодекс | Civil Code Part 1 | ✅ | ✅ | - |
+| GK_RF_2 | Гражданский кодекс ч.2 | Civil Code Part 2 | ✅ | ✅ | - |
+| GK_RF_3 | Гражданский кодекс ч.3 | Civil Code Part 3 | ✅ | ✅ | - |
+| GK_RF_4 | Гражданский кодекс ч.4 | Civil Code Part 4 | ✅ | ✅ | - |
+| UK_RF | Уголовный кодекс | Criminal Code | ✅ | ✅ | - |
+| TK_RF | Трудовой кодекс | Labor Code | ✅ | ✅ | - |
+| NK_RF | Налоговый кодекс | Tax Code Part 1 | ✅ | ✅ | ✅ |
+| NK_RF_2 | Налоговый кодекс ч.2 | Tax Code Part 2 | ✅ | ✅ | ✅ |
+| KoAP_RF | Кодекс об административных правонарушениях | Administrative Code | ✅ | ✅ | ✅ |
+| SK_RF | Семейный кодекс | Family Code | ✅ | ✅ | - |
+| ZhK_RF | Жилищный кодекс | Housing Code | ✅ | ✅ | - |
+| ZK_RF | Земельный кодекс | Land Code | ✅ | ✅ | ✅ |
+| APK_RF | Арбитражный процессуальный кодекс | Arbitration Procedure Code | ✅ | - | ✅ |
+| GPK_RF | Гражданский процессуальный кодекс | Civil Procedure Code | ✅ | - | ✅ |
+| UPK_RF | Уголовно-процессуальный кодекс | Criminal Procedure Code | ✅ | - | ✅ |
+| BK_RF | Бюджетный кодекс | Budget Code | - | - | ✅ |
+| GRK_RF | Градостроительный кодекс | Urban Planning Code | - | - | ✅ |
+| UIK_RF | Уголовно-исполнительный кодекс | Criminal Executive Code | - | - | ✅ |
+| VZK_RF | Воздушный кодекс | Air Code | - | - | ✅ |
+| VDK_RF | Водный кодекс | Water Code | - | - | ✅ |
+| LK_RF | Лесной кодекс | Forest Code | - | - | ✅ |
+| KAS_RF | Кодекс административного судопроизводства | Administrative Procedure Code | ✅ | - | - |
+
+**Import System Features:**
+- Automatic source fallback (kremlin → pravo → government)
+- Context-based article number validation for fractional articles
+- Quality checking to detect source formatting errors
+- Hybrid validation using surrounding articles and known ranges
+
+**Current Status:**
+- ✅ All 19 codes (23 code identifiers) imported
+- ✅ 5,000+ articles total across all codes
+- ✅ Metadata stored in `consolidated_codes` table
+- ✅ Article validation with context-aware correction
+
 ## Step 2: Document Metadata Sync
 
 Fetches document metadata from pravo.gov.ru and stores in PostgreSQL.
@@ -187,70 +263,6 @@ FROM document_content;
 # Check Qdrant collection
 curl http://localhost:6333/collections/law_chunks
 ```
-
-## Step 1: Import Base Legal Codes (Quick Start - Do This First!)
-
-> **Quick Start**: Run this first to get the 19 core legal codes that most users
-> need (Civil Code, Labor Code, Criminal Code, etc.). This is completely independent
-> from the document sync steps below.
-
-```bash
-# List all available codes
-poetry run python scripts/import/import_base_code.py --list
-
-# Import all codes
-poetry run python scripts/import/import_base_code.py --all
-
-# Import specific code
-poetry run python scripts/import/import_base_code.py --code GK_RF
-```
-
-**Independence Note**: This step is completely independent from Steps 2-3.
-It can be run anytime, even in parallel.
-
----
-
-Imports the foundational Russian legal codes from official sources.
-
-**Available codes:**
-
-| Code | Name (Russian) | Name (English) | kremlin.ru | pravo.gov.ru | government.ru |
-|------|----------------|----------------|------------|--------------|---------------|
-| KONST_RF | Конституция Российской Федерации | Constitution | ✅ | ✅ | - |
-| GK_RF | Гражданский кодекс | Civil Code Part 1 | ✅ | ✅ | - |
-| GK_RF_2 | Гражданский кодекс ч.2 | Civil Code Part 2 | ✅ | ✅ | - |
-| GK_RF_3 | Гражданский кодекс ч.3 | Civil Code Part 3 | ✅ | ✅ | - |
-| GK_RF_4 | Гражданский кодекс ч.4 | Civil Code Part 4 | ✅ | ✅ | - |
-| UK_RF | Уголовный кодекс | Criminal Code | ✅ | ✅ | - |
-| TK_RF | Трудовой кодекс | Labor Code | ✅ | ✅ | - |
-| NK_RF | Налоговый кодекс | Tax Code Part 1 | ✅ | ✅ | ✅ |
-| NK_RF_2 | Налоговый кодекс ч.2 | Tax Code Part 2 | ✅ | ✅ | ✅ |
-| KoAP_RF | Кодекс об административных правонарушениях | Administrative Code | ✅ | ✅ | ✅ |
-| SK_RF | Семейный кодекс | Family Code | ✅ | ✅ | - |
-| ZhK_RF | Жилищный кодекс | Housing Code | ✅ | ✅ | - |
-| ZK_RF | Земельный кодекс | Land Code | ✅ | ✅ | ✅ |
-| APK_RF | Арбитражный процессуальный кодекс | Arbitration Procedure Code | ✅ | - | ✅ |
-| GPK_RF | Гражданский процессуальный кодекс | Civil Procedure Code | ✅ | - | ✅ |
-| UPK_RF | Уголовно-процессуальный кодекс | Criminal Procedure Code | ✅ | - | ✅ |
-| BK_RF | Бюджетный кодекс | Budget Code | - | - | ✅ |
-| GRK_RF | Градостроительный кодекс | Urban Planning Code | - | - | ✅ |
-| UIK_RF | Уголовно-исполнительный кодекс | Criminal Executive Code | - | - | ✅ |
-| VZK_RF | Воздушный кодекс | Air Code | - | - | ✅ |
-| VDK_RF | Водный кодекс | Water Code | - | - | ✅ |
-| LK_RF | Лесной кодекс | Forest Code | - | - | ✅ |
-| KAS_RF | Кодекс административного судопроизводства | Administrative Procedure Code | ✅ | - | - |
-
-**Import System Features:**
-- Automatic source fallback (kremlin → pravo → government)
-- Context-based article number validation for fractional articles
-- Quality checking to detect source formatting errors
-- Hybrid validation using surrounding articles and known ranges
-
-**Current Status:**
-- ✅ All 19 codes (23 code identifiers) imported
-- ✅ 5,000+ articles total across all codes
-- ✅ Metadata stored in `consolidated_codes` table
-- ✅ Article validation with context-aware correction
 
 ## Verification
 
