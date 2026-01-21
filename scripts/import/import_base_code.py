@@ -287,6 +287,25 @@ KNOWN_ARTICLE_RANGES = {
 }
 
 
+def parse_article_number_for_comparison(article_number: str) -> float:
+    """
+    Parse article number for range comparison.
+    Extracts base number (before first dot) for multi-dot formats.
+
+    This allows "20.1.2" to be compared against range [1, 890] using value 20.0.
+    Python's float("20.1.2") raises ValueError, so we extract the base number.
+
+    Args:
+        article_number: Article number like "1", "20.3", "20.3.1", "20.3.1.2"
+
+    Returns:
+        Float value for range comparison (base number only)
+    """
+    # Extract base number (everything before first dot, or full number if no dots)
+    base_number = article_number.split('.')[0]
+    return float(base_number) if base_number.isdigit() else 0.0
+
+
 def try_context_correction(
     article_number: str,
     prev_article: Optional[str],
@@ -320,17 +339,17 @@ def try_context_correction(
     if not article_number.isdigit():
         return article_number, warnings
 
-    # Try to parse neighbor articles
+    # Try to parse neighbor articles using the multi-dot parser
     try:
-        prev_num = float(prev_article) if '.' not in prev_article else float(prev_article)
-        next_num = float(next_article) if '.' not in next_article else float(next_article)
+        prev_num = parse_article_number_for_comparison(prev_article)
+        next_num = parse_article_number_for_comparison(next_article)
     except ValueError:
         # Neighbors have complex formatting, can't use context
         return article_number, warnings
 
     # If current article fits between neighbors, it's correct
     try:
-        current_num = float(article_number)
+        current_num = parse_article_number_for_comparison(article_number)
         if prev_num < current_num < next_num:
             return article_number, warnings
     except ValueError:
@@ -340,7 +359,7 @@ def try_context_correction(
     if len(article_number) > 1:
         corrected = f"{article_number[:-1]}.{article_number[-1]}"
         try:
-            corrected_num = float(corrected)
+            corrected_num = parse_article_number_for_comparison(corrected)
             if prev_num < corrected_num < next_num:
                 warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
                 return corrected, warnings
@@ -352,7 +371,7 @@ def try_context_correction(
         # Try "125.6"
         corrected = f"{article_number[:-1]}.{article_number[-1:]}"
         try:
-            corrected_num = float(corrected)
+            corrected_num = parse_article_number_for_comparison(corrected)
             if prev_num < corrected_num < next_num:
                 warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
                 return corrected, warnings
@@ -362,7 +381,7 @@ def try_context_correction(
         # Try "12.56"
         corrected = f"{article_number[:-2]}.{article_number[-2:]}"
         try:
-            corrected_num = float(corrected)
+            corrected_num = parse_article_number_for_comparison(corrected)
             if prev_num < corrected_num < next_num:
                 warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
                 return corrected, warnings
@@ -411,19 +430,47 @@ def try_range_correction(article_number: str, code_id: str) -> tuple[str, List[s
 
     # Number is out of range - try to correct
     # Pattern: "1256" might be "125.6" if 1256 > max_article
+    # Pattern: "2031" might be "20.3.1" (multi-level article)
     if num > max_article:
-        # Try inserting a dot before the last digit
+        # Try inserting TWO dots FIRST for multi-level articles (e.g., "2031" → "20.3.1")
+        # Multi-level articles are more specific, so try them before single-dot corrections
+        if len(article_number) >= 4:
+            # Try "20.3.1" format for 4-digit numbers: "2031" → "20.3.1"
+            # Skip if middle digit is "0" (e.g., "1201" → "12.0.1" is unlikely, prefer "120.1")
+            if len(article_number) == 4 and article_number[-2] != '0':
+                corrected = f"{article_number[:-2]}.{article_number[-2]}.{article_number[-1]}"
+                corrected_num = parse_article_number_for_comparison(corrected)
+                if min_article <= corrected_num <= max_article:
+                    warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
+                    return corrected, warnings
+
+            # Try "20.3.12" format for 5+ digit numbers: "20312" → "20.3.12"
+            if len(article_number) >= 5:
+                corrected = f"{article_number[:-3]}.{article_number[-3]}.{article_number[-2:]}"
+                corrected_num = parse_article_number_for_comparison(corrected)
+                if min_article <= corrected_num <= max_article:
+                    warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
+                    return corrected, warnings
+
+                # Try "20.31.2" format: "20312" → "20.31.2"
+                corrected = f"{article_number[:-2]}.{article_number[-2:-1]}.{article_number[-1]}"
+                corrected_num = parse_article_number_for_comparison(corrected)
+                if min_article <= corrected_num <= max_article:
+                    warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
+                    return corrected, warnings
+
+        # Try inserting a dot before the last digit (e.g., "1201" → "120.1")
         if num > 10:  # Need at least 2 digits
             corrected = f"{article_number[:-1]}.{article_number[-1]}"
-            corrected_num = float(corrected)
+            corrected_num = parse_article_number_for_comparison(corrected)
             if min_article <= corrected_num <= max_article:
                 warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
                 return corrected, warnings
 
-        # Try inserting a dot before the last 2 digits
+        # Try inserting a dot before the last 2 digits (e.g., "1256" → "12.56")
         if num > 100:
             corrected = f"{article_number[:-2]}.{article_number[-2:]}"
-            corrected_num = float(corrected)
+            corrected_num = parse_article_number_for_comparison(corrected)
             if min_article <= corrected_num <= max_article:
                 warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
                 return corrected, warnings
@@ -920,13 +967,9 @@ class BaseCodeImporter:
             # Check if number looks suspicious (very large for this code)
             if range_info:
                 min_article, max_article = range_info
-                try:
-                    # Handle both integers and floats (for articles like "80.1")
-                    num = float(article_number)
-                    if num > max_article * 1.5:  # More than 50% over max
-                        suspicious_count += 1
-                except ValueError:
-                    # Non-numeric article number - could be an error
+                # Use multi-dot parser to handle articles like "20.3.1", "20.1.2"
+                num = parse_article_number_for_comparison(article_number)
+                if num > max_article * 1.5:  # More than 50% over max
                     suspicious_count += 1
 
         # If >10% of articles are suspicious, quality is poor
