@@ -287,6 +287,78 @@ KNOWN_ARTICLE_RANGES = {
 }
 
 
+# Expected article counts for validation (based on official sources)
+# These are approximate minimum counts - parsing fewer than this triggers warnings
+# Format: code_id -> expected_minimum_count
+KNOWN_ARTICLE_COUNTS = {
+    'KONST_RF': 137,      # Constitution has ~137 articles
+    'GK_RF': 453,         # Civil Code Part 1
+    'GK_RF_2': 656,       # Civil Code Part 2 (1109 - 454 + 1)
+    'GK_RF_3': 115,       # Civil Code Part 3 (1224 - 1110 + 1)
+    'GK_RF_4': 327,       # Civil Code Part 4 (1551 - 1225 + 1)
+    'UK_RF': 361,         # Criminal Code
+    'TK_RF': 424,         # Labor Code
+    'NK_RF': 142,         # Tax Code Part 1
+    'NK_RF_2': 290,       # Tax Code Part 2 (432 - 143 + 1)
+    'KoAP_RF': 350,       # Administrative Code (estimate, has ~350+ articles)
+    'SK_RF': 170,         # Family Code
+    'ZhK_RF': 165,        # Housing Code
+    'ZK_RF': 85,          # Land Code
+    'APK_RF': 418,        # Arbitration Procedure Code
+    'GPK_RF': 494,        # Civil Procedure Code
+    'UPK_RF': 553,        # Criminal Procedure Code
+    'BK_RF': 280,         # Budget Code
+    'GRK_RF': 120,        # Urban Planning Code
+    'UIK_RF': 200,        # Criminal Executive Code
+    'VZK_RF': 150,        # Air Code
+    'VDK_RF': 100,        # Water Code
+    'LK_RF': 120,         # Forest Code
+    'KAS_RF': 350,        # Administrative Procedure Code
+}
+
+# Acceptable deviation from expected count (percentage)
+# Below this threshold triggers warnings (severe parsing issues)
+ACCEPTABLE_COUNT_DEVIATION = 0.50  # 50% of expected count (warn only if missing half or more)
+
+
+def validate_article_count(code_id: str, article_count: int) -> List[str]:
+    """
+    Validate that the parsed article count is acceptable.
+
+    Warns if we parsed significantly fewer articles than expected,
+    which could indicate missing pages, parsing errors, or source changes.
+
+    Args:
+        code_id: Code identifier (e.g., 'TK_RF')
+        article_count: Number of articles parsed
+
+    Returns:
+        List of warning messages (empty if count is acceptable)
+    """
+    warnings: List[str] = []
+    expected_min = KNOWN_ARTICLE_COUNTS.get(code_id)
+
+    if not expected_min:
+        # No expected count for this code
+        return warnings
+
+    threshold = int(expected_min * ACCEPTABLE_COUNT_DEVIATION)
+
+    if article_count < threshold:
+        warnings.append(
+            f"Article count {article_count} is below {ACCEPTABLE_COUNT_DEVIATION * 100:.0f}% "
+            f"of expected {expected_min} for {code_id} (threshold: {threshold}). "
+            f"This may indicate missing pages or parsing errors."
+        )
+    elif article_count < expected_min:
+        warnings.append(
+            f"Article count {article_count} is below expected {expected_min} for {code_id}, "
+            f"but within acceptable range."
+        )
+
+    return warnings
+
+
 def parse_article_number_for_comparison(article_number: str) -> float:
     """
     Parse article number for range comparison.
@@ -1019,6 +1091,11 @@ class BaseCodeImporter:
                         if articles:
                             # Check quality before saving
                             if self._check_article_quality(articles, code_id):
+                                # Validate article count
+                                count_warnings = validate_article_count(code_id, len(articles))
+                                for warning in count_warnings:
+                                    logger.warning(f"[{code_id}] {warning}")
+
                                 saved = self.save_base_articles(code_id, articles, metadata)
                                 return {
                                     "code_id": code_id,
@@ -1043,6 +1120,11 @@ class BaseCodeImporter:
                         if articles:
                             # Check quality before saving
                             if self._check_article_quality(articles, code_id):
+                                # Validate article count
+                                count_warnings = validate_article_count(code_id, len(articles))
+                                for warning in count_warnings:
+                                    logger.warning(f"[{code_id}] {warning}")
+
                                 saved = self.save_base_articles(code_id, articles, metadata)
                                 return {
                                     "code_id": code_id,
@@ -1066,6 +1148,11 @@ class BaseCodeImporter:
                         if articles:
                             # Check quality before saving
                             if self._check_article_quality(articles, code_id):
+                                # Validate article count
+                                count_warnings = validate_article_count(code_id, len(articles))
+                                for warning in count_warnings:
+                                    logger.warning(f"[{code_id}] {warning}")
+
                                 saved = self.save_base_articles(code_id, articles, metadata)
                                 return {
                                     "code_id": code_id,
