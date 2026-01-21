@@ -163,6 +163,7 @@ Python Pipeline → PostgreSQL + Qdrant → TypeScript MCP Server → AI
 **Status**: Operational
 
 - **Documents**: 157,730 Russian legal documents (2022-2026)
+  > Note: This is amendment documents from a partial sync. Full historical sync (2011-present) has ~1.6M documents.
 - **Sources**:
   - [pravo.gov.ru](http://pravo.gov.ru/) - Official Russian legal publication portal (primary)
   - [kremlin.ru](http://kremlin.ru/) - Presidential decrees, Constitution
@@ -178,6 +179,13 @@ Python Pipeline → PostgreSQL + Qdrant → TypeScript MCP Server → AI
   - Procedure Codes (GPK_RF, APK_RF, UPK_RF, KAS_RF)
   - Budget, Urban Planning, Criminal Executive codes (BK_RF, GRK_RF, UIK_RF)
   - Environmental codes (VZK_RF - Air, VDK_RF - Water, LK_RF - Forest)
+
+**Quick Start Pipeline:**
+1. **Import Base Codes** (~6 hours) - 19 core legal codes (~5,000 articles) - Civil, Labor, Criminal, etc.
+2. **Document Sync** (partial: ~6h, full: 100+h) - Amendment documents from official sources (optional)
+3. **Content + Embeddings** (~2-3 hours) - Extract text and generate vectors (optional)
+
+**For most users**: Step 1 gives you the essential legal codes. Steps 2-3 add amendment coverage.
 
 See [docs/DATA_PIPELINE.md](docs/DATA_PIPELINE.md) for complete data pipeline documentation.
 

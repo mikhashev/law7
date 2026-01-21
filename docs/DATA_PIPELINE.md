@@ -44,11 +44,17 @@ All documents are:
 
 The data pipeline consists of three main stages:
 
+**Quick Start Order** (recommended for first-time users):
 ```
-1. Document Sync (initial_sync.py)    → Fetch metadata from pravo.gov.ru API
-2. Content Parsing (content_sync.py)  → Extract text content from API
-3. Embedding Generation (content_sync.py) → Generate semantic search vectors
+Step 1: Import Base Codes (import_base_code.py)  → Import 19 core legal codes (~6 hours, ~5,000 articles)
+Step 2: Document Sync (initial_sync.py)         → Fetch amendment documents from API (partial: ~6h, full: 100+h)
+Step 3: Content + Embeddings (content_sync.py)   → Extract text and generate vectors (~2-3 hours)
 ```
+
+**Note**: Step 1 (Import Base Codes) is independent and can be run alone to get
+the foundational legal codes (~5,000 articles across 19 codes like Civil, Labor, Criminal).
+Steps 2-3 add amendment document coverage (partial 2022-2026: ~157k documents in ~6h,
+full 2011-present: ~1.6M documents in 100+ hours).
 
 ## Prerequisites
 
@@ -61,7 +67,7 @@ docker-compose ps
 # Should show: postgres (5433), qdrant (6333), redis (6380)
 ```
 
-## Stage 1: Document Metadata Sync
+## Step 2: Document Metadata Sync
 
 Fetches document metadata from pravo.gov.ru and stores in PostgreSQL.
 
@@ -90,11 +96,11 @@ poetry run python scripts/sync/initial_sync.py --daily
 ```
 
 **Current Status:**
-- ✅ 156,000 documents synced (2022-2026)
+- ✅ 157,730 documents synced (2022-2026)
 - ⚠️ Date range filtering has issues - see TODO.md
 - ⚠️ Full sync would take 100+ hours (1.6M documents total)
 
-## Stage 2: Content Parsing + Embeddings
+## Step 3: Content Parsing + Embeddings
 
 Extracts document text from API metadata and generates embeddings for semantic search.
 
@@ -182,17 +188,29 @@ FROM document_content;
 curl http://localhost:6333/collections/law_chunks
 ```
 
-## Stage 3: Import Base Legal Codes
+## Step 1: Import Base Legal Codes (Quick Start - Do This First!)
 
-Imports the foundational Russian legal codes from official sources.
+> **Quick Start**: Run this first to get the 19 core legal codes that most users
+> need (Civil Code, Labor Code, Criminal Code, etc.). This is completely independent
+> from the document sync steps below.
 
 ```bash
+# List all available codes
+poetry run python scripts/import/import_base_code.py --list
+
 # Import all codes
 poetry run python scripts/import/import_base_code.py --all
 
 # Import specific code
 poetry run python scripts/import/import_base_code.py --code GK_RF
 ```
+
+**Independence Note**: This step is completely independent from Steps 2-3.
+It can be run anytime, even in parallel.
+
+---
+
+Imports the foundational Russian legal codes from official sources.
 
 **Available codes:**
 
