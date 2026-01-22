@@ -643,13 +643,27 @@ def _generate_dot_candidates(article_number: str) -> List[str]:
         # "21410" → "214.10" (3-digit base + 2-digit subsection)
         candidates.append(f"{base_part[:3]}.{base_part[3:]}{hyphen_part}")
 
+    elif len(base_part) == 6:
+        # For 6-digit numbers, try multi-level patterns
+        # "123412" → "12.34.12" (2-digit base + 2-digit insertion + 2-digit subsection)
+        candidates.append(f"{base_part[:2]}.{base_part[2:4]}.{base_part[4:]}{hyphen_part}")
+        # "123412" → "123.4.12" (3-digit base + 1-digit insertion + 2-digit subsection)
+        candidates.append(f"{base_part[:3]}.{base_part[3]}.{base_part[4:]}{hyphen_part}")
+        # "123412" → "1234.12" (4-digit base + 2-digit subsection) - PRIORITY
+        candidates.append(f"{base_part[:4]}.{base_part[4:]}{hyphen_part}")
+
     # Always include original as fallback
     candidates.append(article_number)
 
     return candidates
 
 
-def try_range_correction(article_number: str, code_id: str) -> tuple[str, List[str]]:
+def try_range_correction(
+    article_number: str,
+    code_id: str,
+    prev_article: Optional[str] = None,
+    next_article: Optional[str] = None
+) -> tuple[str, List[str]]:
     """
     Attempt to correct article number using known article ranges.
 
@@ -659,6 +673,8 @@ def try_range_correction(article_number: str, code_id: str) -> tuple[str, List[s
     Args:
         article_number: Raw article number from HTML
         code_id: Code identifier (e.g., 'TK_RF')
+        prev_article: Previous article number (optional, for context-aware correction)
+        next_article: Next article number (optional, for context-aware correction)
 
     Returns:
         Tuple of (corrected_number, warnings)
@@ -679,9 +695,11 @@ def try_range_correction(article_number: str, code_id: str) -> tuple[str, List[s
 
     # Step 2: Check if it's a pure number within valid range (no correction needed)
     # This prevents converting valid sequential articles like 11, 12, 71 to 1.1, 1.2, 7.1
+    # Allow numbers up to 10x the known max (handles 4-digit articles, parts, appendices)
+    # This handles cases where some codes have articles beyond the known base range
     if article_number.isdigit():
         num = int(article_number)
-        if min_article <= num <= max_article:
+        if min_article <= num <= max_article * 10:
             return article_number, warnings
 
     # Step 3: Generate all valid candidates by inserting dots
@@ -702,6 +720,40 @@ def try_range_correction(article_number: str, code_id: str) -> tuple[str, List[s
         except ValueError:
             # Invalid format, try next candidate
             continue
+
+    # Step 4.5: If context available, validate candidates against neighbors
+    if prev_article and next_article:
+        # Try to parse prev/next to get their base numbers
+        try:
+            prev_parsed = _article_parser.parse(prev_article)
+            next_parsed = _article_parser.parse(next_article)
+            prev_base = prev_parsed.to_float_for_comparison()
+            next_base = next_parsed.to_float_for_comparison()
+
+            # Filter candidates that fit between prev and next
+            valid_candidates = []
+            for candidate in candidates:
+                try:
+                    cand_parsed = _article_parser.parse(candidate)
+                    cand_base = cand_parsed.to_float_for_comparison()
+                    # Candidate should be between prev and next (with tolerance)
+                    if prev_base < cand_base < next_base:
+                        valid_candidates.append((candidate, cand_base))
+                except ValueError:
+                    continue
+
+            # If we found context-valid candidates, pick the one closest to expected range
+            if valid_candidates:
+                # Sort by proximity to valid range center
+                range_center = (min_article + max_article) / 2
+                valid_candidates.sort(key=lambda x: abs(x[1] - range_center))
+                best_candidate = valid_candidates[0][0]
+                if best_candidate != article_number:
+                    warnings.append(f"Context-aware range-corrected: '{article_number}' → '{best_candidate}' (prev={prev_article}, next={next_article})")
+                return best_candidate, warnings
+        except ValueError:
+            # Context parsing failed, continue to range-based validation
+            pass
 
     # Step 5: Could not auto-correct, return original with warning
     warnings.append(f"Suspicious article number '{article_number}' for {code_id} (valid range: {min_article}-{max_article})")
@@ -786,8 +838,8 @@ def validate_and_correct_article_number(
             if corrected != original:
                 return corrected, warnings
 
-    # Step 3: Fall back to range-based correction
-    corrected, range_warnings = try_range_correction(article_number, code_id)
+    # Step 4: Fall back to range-based correction (with context if available)
+    corrected, range_warnings = try_range_correction(article_number, code_id, prev_article, next_article)
     warnings.extend(range_warnings)
 
     return corrected, warnings
