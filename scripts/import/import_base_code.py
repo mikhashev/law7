@@ -495,17 +495,20 @@ def try_context_correction(
                     prev_num = parse_article_number_for_comparison(prev_article)
                     next_num = parse_article_number_for_comparison(next_article)
 
-                    # Try XY.Z pattern first (e.g., "521" → "52.1")
-                    corrected_base = f"{base_part[:2]}.{base_part[2]}"
-                    corrected_num = parse_article_number_for_comparison(corrected_base)
+                    # Generate all valid candidates for the base part
+                    candidates = _generate_dot_candidates(base_part)
 
-                    logger.debug(f"Trying correction: '{base_part}' → '{corrected_base}' (prev={prev_num}, next={next_num}, corrected={corrected_num})")
+                    # Try each candidate and see if it fits in context
+                    for candidate_base in candidates:
+                        corrected_num = parse_article_number_for_comparison(candidate_base)
 
-                    # Check if corrected fits between neighbors
-                    if prev_num <= corrected_num <= next_num:
-                        corrected = corrected_base + hyphen_suffix
-                        warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
-                        return corrected, warnings
+                        logger.debug(f"Trying correction: '{base_part}' → '{candidate_base}' (prev={prev_num}, next={next_num}, corrected={corrected_num})")
+
+                        # Check if corrected fits between neighbors
+                        if prev_num <= corrected_num <= next_num:
+                            corrected = candidate_base + hyphen_suffix
+                            warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
+                            return corrected, warnings
                 except (ValueError, IndexError) as e:
                     logger.debug(f"Correction failed for '{article_number}': {e}")
                     pass
@@ -701,6 +704,16 @@ def try_range_correction(
         num = int(article_number)
         if min_article <= num <= max_article * 10:
             return article_number, warnings
+
+    # Step 2.5: For hyphenated articles, check if base part is within reasonable bounds
+    # This prevents over-correcting valid hyphenated articles like "1237-1" → "12.37-1"
+    if '-' in article_number:
+        base_part = article_number.split('-')[0]
+        if base_part.isdigit():
+            base_num = int(base_part)
+            # If base part is within reasonable bounds, keep hyphenated format as-is
+            if min_article <= base_num <= max_article * 10:
+                return article_number, warnings
 
     # Step 3: Generate all valid candidates by inserting dots
     candidates = _generate_dot_candidates(article_number)
@@ -1410,7 +1423,9 @@ class BaseCodeImporter:
                 min_article, max_article = range_info
                 # Use multi-dot parser to handle articles like "20.3.1", "20.1.2"
                 num = parse_article_number_for_comparison(article_number)
-                if num > max_article * 1.5:  # More than 50% over max
+                # Allow up to 10x max (handles 4-digit articles, appendices, parts)
+                # Some codes have articles beyond the base range (e.g., GK_RF has 1237, 12310-12320)
+                if num > max_article * 10:
                     suspicious_count += 1
 
         # If >10% of articles are suspicious, quality is poor
