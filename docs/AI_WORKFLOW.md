@@ -2,6 +2,63 @@
 
 This document provides guidelines for using AI assistants (Claude Code, Cursor, etc.) when working on the Law7 project.
 
+## AI-First Development Philosophy
+
+> **Philosophy Reference**: Our AI-First approach is based on [personal context for AI-human cognitive enhancement](https://github.com/mikhashev/personal-context-manager/blob/main/docs/ultimate%20guide%20on%20personal%20context%20for%20AI-human%20cognitive%20enhancement.md) - using AI to enhance human intelligence rather than replace it.
+
+Law7 is built around **AI-human cognitive partnership** - we use AI assistants to enhance, not replace, our thinking and development capabilities.
+
+### Five Core Principles
+
+1. **Conscious Delegation**
+   - Delegate to AI only after understanding the codebase context
+   - Check `git status` and `git log` before requesting changes
+   - Verify AI suggestions against actual code/database schema
+
+2. **Cognitive Partnership**
+   - Use AI as thinking enhancer, not replacement
+   - "First self, then AI" - form your own understanding first
+   - Use Socratic dialogue with AI to deepen comprehension
+
+3. **Active Thinking**
+   - Always explore code structure yourself before delegating to AI
+   - Use Explore agent to understand patterns, then synthesize your own understanding
+   - Verify AI suggestions match existing codebase conventions
+
+4. **Metacognitive Monitoring**
+   - After AI assistance, reflect on what you learned
+   - Track which skills you're developing vs. delegating
+   - Document new understanding in your own words
+
+5. **Transparent Collaboration**
+   - Request AI to explain reasoning, not just provide code
+   - Ask for alternatives when implementing features
+   - Maintain understanding of all changes you commit
+
+### Practical Workflow
+
+**Before requesting AI assistance:**
+```bash
+git status                    # What's changed?
+git log --oneline -20         # What's the context?
+```
+
+**During AI collaboration:**
+- Use Explore agent to understand codebase structure
+- Request explanations of reasoning, not just solutions
+- Ask questions to verify your understanding
+
+**After AI assistance:**
+- Review all proposed changes
+- Verify against actual schema/patterns
+- Commit with your own understanding of the change
+
+### Anti-Bias Awareness
+
+> **AI Bias Awareness**: When working with AI assistants, be aware of cognitive biases in AI systems. See [Cognitive Bias in AI and LLMs: A User's Guide](https://github.com/mikhashev/personal-context-manager/blob/main/docs/cognitive%20bias%20in%20AI%20and%20LLMs%20a%20user's%20guide.md) for practical techniques to recognize and mitigate AI biases.
+
+---
+
 ## Dependency Management Rules
 
 **CRITICAL**: Always use `poetry` for Python dependency management, never `pip` directly.
