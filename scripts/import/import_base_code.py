@@ -541,6 +541,24 @@ def try_context_correction(
         # Neighbors have complex formatting, can't use context
         return article_number, warnings
 
+    # IMPORTANT: Before accepting an article as valid, check if it could be a sub-article of the previous article
+    # Example: "601" between "60" and "602" should become "60.1" (not stay as "601")
+    # This happens because 60.0 < 601.0 < 602.0 is True, but "601" is more likely "60.1"
+    if prev_article and article_number.isdigit() and len(article_number) >= 3:
+        prev_base = prev_article.split('.')[0] if '.' in prev_article else prev_article
+        # If article_number starts with prev_base, it might be a sub-article
+        if article_number.startswith(prev_base) and len(article_number) > len(prev_base):
+            # Try converting to sub-article format (e.g., "601" → "60.1")
+            candidate = f"{prev_base}.{article_number[len(prev_base):]}"
+            try:
+                candidate_num = parse_article_number_for_comparison(candidate)
+                # Check if this candidate fits between neighbors
+                if prev_num < candidate_num < next_num:
+                    warnings.append(f"Context-corrected: '{article_number}' → '{candidate}' (between {prev_article} and {next_article})")
+                    return candidate, warnings
+            except ValueError:
+                pass
+
     # If current article fits between neighbors, it's correct
     # SPECIAL CASE: Subsections (like "7.1") should come AFTER their base (like "7")
     # So we check: prev_num < current_num OR (current_num == prev_num and article has subsection)
@@ -1209,31 +1227,193 @@ class BaseCodeImporter:
         """
         # Handle multiple pages with continuation tracking
         if isinstance(html, list):
-            all_articles = []
+            # Phase 1: Parse all pages to get raw articles (no validation yet)
+            all_raw_articles = []
             current_article = None
             current_paragraphs = []
 
             for i, page_html in enumerate(html):
-                result, current_article, current_paragraphs = self._parse_single_kremlin_page(
+                raw_articles, current_article, current_paragraphs = self._parse_raw_articles_from_page(
                     page_html, code_id, current_article, current_paragraphs
                 )
-                all_articles.extend(result.get("articles", []))
+                all_raw_articles.extend(raw_articles)
 
             # Flush final article if exists
             if current_article and current_paragraphs:
                 current_article["article_text"] = "\n\n".join(current_paragraphs)
-                all_articles.append(current_article)
+                all_raw_articles.append(current_article)
 
-            logger.info(f"Parsed {len(all_articles)} articles from {len(html)} pages")
+            logger.info(f"Parsed {len(all_raw_articles)} raw articles from {len(html)} pages")
+
+            # Phase 2: Validate all articles together with full context
+            articles = []
+            for i, raw_article in enumerate(all_raw_articles):
+                raw_number = raw_article["article_number"]
+                prev_article = all_raw_articles[i - 1]["article_number"] if i > 0 else None
+                next_article = all_raw_articles[i + 1]["article_number"] if i < len(all_raw_articles) - 1 else None
+
+                # Log what we're parsing (verbose mode shows raw number and context)
+                logger.debug(f"[{code_id}] Parsing article: '{raw_number}' (prev={prev_article}, next={next_article})")
+
+                # Validate with full context
+                corrected_number, warnings = validate_and_correct_article_number(
+                    raw_number, code_id, prev_article, next_article
+                )
+
+                # Log final result (verbose mode shows correction or validation)
+                if corrected_number == raw_number:
+                    logger.debug(f"[{code_id}] Article '{raw_number}' validated - no change needed")
+                else:
+                    logger.debug(f"[{code_id}] Article '{raw_number}' corrected to '{corrected_number}'")
+
+                for warning in warnings:
+                    logger.warning(f"[{code_id}] {warning}")
+
+                # Update title if article_number changed
+                article_title = raw_article["article_title"]
+                if corrected_number != raw_number:
+                    # Replace old article number in title with corrected one
+                    old_num_pattern = re.escape(raw_number)
+                    article_title = re.sub(
+                        f"Статья\\s+{old_num_pattern}",
+                        f"Статья {corrected_number}",
+                        article_title,
+                        flags=re.IGNORECASE
+                    )
+
+                articles.append({
+                    **raw_article,
+                    "article_number": corrected_number,
+                    "article_title": article_title,
+                })
+
+            # Verbose mode: Summary of all article numbers (initial and saved)
+            logger.debug(f"[{code_id}] Article numbers: initial → saved")
+            for raw_article, final_article in zip(all_raw_articles, articles):
+                raw_num = raw_article["article_number"]
+                final_num = final_article["article_number"]
+                if raw_num != final_num:
+                    logger.debug(f"[{code_id}]   '{raw_num}' → '{final_num}'")
+                else:
+                    logger.debug(f"[{code_id}]   '{raw_num}' (no change)")
+
+            logger.info(f"Validated to {len(articles)} articles from kremlin.ru")
             return {
                 "code_id": code_id,
-                "articles": all_articles,
+                "articles": articles,
                 "source": "kremlin.ru",
             }
         else:
             # Single page - just get the result, ignore state
             result, _, _ = self._parse_single_kremlin_page(html, code_id)
             return result
+
+    def _parse_raw_articles_from_page(
+        self,
+        html: str,
+        code_id: str,
+        current_article: Optional[Dict] = None,
+        current_paragraphs: Optional[List] = None
+    ) -> Tuple[List[Dict[str, Any]], Optional[Dict], Optional[List]]:
+        """
+        Parse a single kremlin.ru HTML page to extract RAW articles (no validation).
+
+        This is similar to _parse_single_kremlin_page but does NOT validate article numbers.
+        It only extracts raw articles from HTML, leaving validation for a later step.
+
+        Supports continuation tracking across pages - accepts and returns
+        current_article and current_paragraphs state.
+
+        Args:
+            html: HTML content
+            code_id: Code identifier
+            current_article: Previous page's article (for continuation)
+            current_paragraphs: Previous page's paragraphs (for continuation)
+
+        Returns:
+            Tuple of (raw_articles_list, current_article, current_paragraphs)
+        """
+        soup = BeautifulSoup(html, "html.parser")
+
+        raw_articles = []
+        # Use passed state or initialize fresh
+        if current_article is None:
+            current_article = None
+        if current_paragraphs is None:
+            current_paragraphs = []
+
+        # Track processed elements to avoid processing nested elements multiple times
+        processed = set()
+
+        # CRITICAL: kremlin.ru has content in <div class="reader_act_body">
+        # We must ONLY process elements within these divs to avoid picking up UI noise
+        act_body_divs = soup.find_all("div", class_="reader_act_body")
+
+        if not act_body_divs:
+            logger.warning(f"[{code_id}] No reader_act_body divs found in HTML")
+            # Return empty list with current state preserved
+            return [], current_article, current_paragraphs
+
+        # Find all text elements within reader_act_body divs
+        # Only process leaf elements (not nested within other processed elements)
+        for act_body in act_body_divs:
+            for element in act_body.find_all(["h4", "p", "div"]):
+                # Skip if this element or any of its parents have been processed
+                should_skip = False
+                for parent in element.parents:
+                    if parent in processed:
+                        should_skip = True
+                        break
+                if should_skip:
+                    continue
+
+                # Get text - use .string for elements with only direct text
+                # This prevents concatenation from nested elements
+                if element.string and element.string.strip():
+                    text = element.string.strip()
+                else:
+                    text = element.get_text(strip=True)
+
+                # Check if this is an article header
+                article_match = re.match(
+                    r"^Статья\s+(\d+(?:[\.\-]\d+)*)\.?\s*(.+)$", text, re.IGNORECASE
+                )
+
+                if article_match:
+                    # Save previous article if exists
+                    if current_article and current_paragraphs:
+                        current_article["article_text"] = "\n\n".join(current_paragraphs)
+                        raw_articles.append(current_article)
+
+                    # Start new article (keep raw number for now)
+                    article_number = article_match.group(1)  # Preserve original format
+                    article_title = article_match.group(2).strip()
+
+                    current_article = {
+                        "article_number": article_number,  # Raw number
+                        "article_title": f"Статья {article_number}. {article_title}",
+                        "article_text": "",
+                    }
+                    current_paragraphs = []
+                    processed.add(element)
+
+                elif current_article and text:
+                    # Check if this is a numbered paragraph (starts with number and period)
+                    paragraph_match = re.match(r"^(\d+)\.\s*(.+)$", text)
+
+                    if paragraph_match:
+                        # This is a numbered paragraph
+                        current_paragraphs.append(text)
+                    else:
+                        # Use helper function to filter UI noise
+                        is_valid, filter_reason = self._is_valid_article_content(
+                            text, "kremlin", current_article.get("article_number")
+                        )
+                        if is_valid:
+                            current_paragraphs.append(text)
+
+        # Return RAW articles (no validation yet) and current state
+        return raw_articles, current_article, current_paragraphs
 
     def _parse_single_kremlin_page(
         self,
@@ -1351,10 +1531,19 @@ class BaseCodeImporter:
             prev_article = raw_articles[raw_articles.index(raw_article) - 1]["article_number"] if raw_articles.index(raw_article) > 0 else None
             next_article = raw_articles[raw_articles.index(raw_article) + 1]["article_number"] if raw_articles.index(raw_article) < len(raw_articles) - 1 else None
 
+            # Log what we're parsing (verbose mode shows raw number and context)
+            logger.debug(f"[{code_id}] Parsing article: '{raw_number}' (prev={prev_article}, next={next_article})")
+
             # Validate with hybrid approach
             corrected_number, warnings = validate_and_correct_article_number(
                 raw_number, code_id, prev_article, next_article
             )
+
+            # Log final result (verbose mode shows correction or validation)
+            if corrected_number == raw_number:
+                logger.debug(f"[{code_id}] Article '{raw_number}' validated - no change needed")
+            else:
+                logger.debug(f"[{code_id}] Article '{raw_number}' corrected to '{corrected_number}'")
 
             for warning in warnings:
                 logger.warning(f"[{code_id}] {warning}")
@@ -1376,6 +1565,16 @@ class BaseCodeImporter:
                 "article_number": corrected_number,
                 "article_title": article_title,
             })
+
+        # Verbose mode: Summary of all article numbers (initial and saved)
+        logger.debug(f"[{code_id}] Article numbers: initial → saved")
+        for raw_article, final_article in zip(raw_articles, articles):
+            raw_num = raw_article["article_number"]
+            final_num = final_article["article_number"]
+            if raw_num != final_num:
+                logger.debug(f"[{code_id}]   '{raw_num}' → '{final_num}'")
+            else:
+                logger.debug(f"[{code_id}]   '{raw_num}' (no change)")
 
         return {
             "code_id": code_id,
@@ -1780,10 +1979,19 @@ class BaseCodeImporter:
             prev_article = raw_articles[i - 1]["article_number"] if i > 0 else None
             next_article = raw_articles[i + 1]["article_number"] if i < len(raw_articles) - 1 else None
 
+            # Log what we're parsing (verbose mode shows raw number and context)
+            logger.debug(f"[{code_id}] Parsing article: '{raw_number}' (prev={prev_article}, next={next_article})")
+
             # Validate with hybrid approach
             corrected_number, warnings = validate_and_correct_article_number(
                 raw_number, code_id, prev_article, next_article
             )
+
+            # Log final result (verbose mode shows correction or validation)
+            if corrected_number == raw_number:
+                logger.debug(f"[{code_id}] Article '{raw_number}' validated - no change needed")
+            else:
+                logger.debug(f"[{code_id}] Article '{raw_number}' corrected to '{corrected_number}'")
 
             for warning in warnings:
                 logger.warning(f"[{code_id}] {warning}")
@@ -1807,6 +2015,17 @@ class BaseCodeImporter:
             })
 
         logger.info(f"Validated to {len(articles)} articles from pravo.gov.ru")
+
+        # Verbose mode: Summary of all article numbers (initial and saved)
+        logger.debug(f"[{code_id}] Article numbers: initial → saved")
+        for raw_article, final_article in zip(raw_articles, articles):
+            raw_num = raw_article["article_number"]
+            final_num = final_article["article_number"]
+            if raw_num != final_num:
+                logger.debug(f"[{code_id}]   '{raw_num}' → '{final_num}'")
+            else:
+                logger.debug(f"[{code_id}]   '{raw_num}' (no change)")
+
         return {
             "code_id": code_id,
             "articles": articles,
@@ -2011,10 +2230,19 @@ class BaseCodeImporter:
             prev_article = raw_articles[i - 1]["article_number"] if i > 0 else None
             next_article = raw_articles[i + 1]["article_number"] if i < len(raw_articles) - 1 else None
 
+            # Log what we're parsing (verbose mode shows raw number and context)
+            logger.debug(f"[{code_id}] Parsing article: '{raw_number}' (prev={prev_article}, next={next_article})")
+
             # Validate with hybrid approach
             corrected_number, warnings = validate_and_correct_article_number(
                 raw_number, code_id, prev_article, next_article
             )
+
+            # Log final result (verbose mode shows correction or validation)
+            if corrected_number == raw_number:
+                logger.debug(f"[{code_id}] Article '{raw_number}' validated - no change needed")
+            else:
+                logger.debug(f"[{code_id}] Article '{raw_number}' corrected to '{corrected_number}'")
 
             for warning in warnings:
                 logger.warning(f"[{code_id}] {warning}")
@@ -2036,6 +2264,16 @@ class BaseCodeImporter:
                 "article_number": corrected_number,
                 "article_title": article_title,
             })
+
+        # Verbose mode: Summary of all article numbers (initial and saved)
+        logger.debug(f"[{code_id}] Article numbers: initial → saved")
+        for raw_article, final_article in zip(raw_articles, articles):
+            raw_num = raw_article["article_number"]
+            final_num = final_article["article_number"]
+            if raw_num != final_num:
+                logger.debug(f"[{code_id}]   '{raw_num}' → '{final_num}'")
+            else:
+                logger.debug(f"[{code_id}]   '{raw_num}' (no change)")
 
         return {
             "code_id": code_id,
