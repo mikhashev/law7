@@ -441,7 +441,8 @@ def is_valid_article_number_format(article_number: str) -> bool:
 def try_context_correction(
     article_number: str,
     prev_article: Optional[str],
-    next_article: Optional[str]
+    next_article: Optional[str],
+    code_id: Optional[str] = None
 ) -> tuple[str, List[str]]:
     """
     Attempt to correct article number based on surrounding context.
@@ -490,6 +491,17 @@ def try_context_correction(
             hyphen_suffix = '-' + article_number.split('-')[1]
 
             if base_part.isdigit() and len(base_part) >= 3:
+                # Check if base part matches previous article (same article, different appendix)
+                # If yes, keep it as-is (e.g., "12316-1" after "12316" should stay as "12316-1")
+                if prev_article and prev_article.isdigit() and int(prev_article) == int(base_part):
+                    # Previous article is the same base, so this is an appendix/variant
+                    # Keep hyphenated format as-is if base is within reasonable bounds
+                    range_info = KNOWN_ARTICLE_RANGES.get(code_id)
+                    if range_info:
+                        min_article, max_article = range_info
+                        if min_article <= int(base_part) <= max_article * 10:
+                            return article_number, warnings
+
                 # Try to correct the base part using context
                 try:
                     prev_num = parse_article_number_for_comparison(prev_article)
@@ -718,6 +730,18 @@ def try_range_correction(
     # Step 3: Generate all valid candidates by inserting dots
     candidates = _generate_dot_candidates(article_number)
 
+    # Step 3.5: Check if original number should be preferred over transformations
+    # This prevents converting valid high-numbered articles like 12310 → 123.10
+    try:
+        original_parsed = _article_parser.parse(article_number)
+        original_base = original_parsed.to_float_for_comparison()
+        # If original is within reasonable bounds (10x range), prefer it
+        if min_article <= original_base <= max_article * 10:
+            return article_number, warnings
+    except ValueError:
+        # Original number is invalid, continue with candidate validation
+        pass
+
     # Step 4: Validate each candidate using ArticleNumberParser
     for candidate in candidates:
         try:
@@ -844,7 +868,7 @@ def validate_and_correct_article_number(
 
     # Step 3: Try context-based correction (more accurate)
     if prev_article and next_article:
-        corrected, context_warnings = try_context_correction(article_number, prev_article, next_article)
+        corrected, context_warnings = try_context_correction(article_number, prev_article, next_article, code_id)
         if context_warnings:
             warnings.extend(context_warnings)
             # If context-based correction worked, return it
