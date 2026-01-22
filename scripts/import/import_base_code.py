@@ -520,8 +520,15 @@ def try_context_correction(
                             remainder = base_part[len(prev_base):]
                             # If remainder makes it a subdivision (e.g., "16" makes it "123.16")
                             if remainder.isdigit() and len(remainder) <= 2:
-                                # Reconstruct with corrected previous article's format
-                                corrected = f"{prev_article}-{article_number.split('-')[1]}"
+                                # Reconstruct using previous article's base format (without hyphen suffix)
+                                # If prev_article has hyphen (e.g., "123.16-1"), extract just "123.16"
+                                prev_base_format = prev_article.split('-')[0] if '-' in prev_article else prev_article
+                                # Construct the corrected base using prev_base_format + remainder
+                                # Example: prev="123.16-1", base_part="12316" → prev_base_format="123.16", remainder="16"
+                                # → corrected_base = "123.16"
+                                corrected_base = prev_base_format
+                                # Add the current hyphen suffix
+                                corrected = f"{corrected_base}-{article_number.split('-')[1]}"
                                 return corrected, warnings
 
                 # Try to correct the base part using context
