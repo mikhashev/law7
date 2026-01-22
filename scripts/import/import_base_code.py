@@ -371,13 +371,18 @@ def parse_article_number_for_comparison(article_number: str) -> float:
     Python's float("20.1.2") raises ValueError, so we extract the base number.
 
     Args:
-        article_number: Article number like "1", "20.3", "20.3.1", "20.3.1.2"
+        article_number: Article number like "1", "20.3", "20.3.1", "20.3.1.2", "20-1"
 
     Returns:
         Float value for range comparison (base number only)
     """
     # Extract base number (everything before first dot, or full number if no dots)
     base_number = article_number.split('.')[0]
+
+    # For hyphenated articles like "12316-1", extract the base part before the hyphen
+    if '-' in base_number:
+        base_number = base_number.split('-')[0]
+
     return float(base_number) if base_number.isdigit() else 0.0
 
 
@@ -525,7 +530,8 @@ def try_context_correction(
                     logger.debug(f"Correction failed for '{article_number}': {e}")
                     pass
 
-        return article_number, warnings
+    # Continue to general context correction for all article numbers (including pure digits)
+    # Don't return early here - let the dot insertion logic handle pure-digit numbers like 601 → 60.1
 
     # Try to parse neighbor articles using the multi-dot parser
     try:
@@ -874,6 +880,10 @@ def validate_and_correct_article_number(
             # If context-based correction worked, return it
             if corrected != original:
                 return corrected, warnings
+        elif corrected == article_number:
+            # Context correction returned unchanged, meaning it validated successfully
+            # Don't fall through to range correction (prevents over-correction)
+            return article_number, warnings
 
     # Step 4: Fall back to range-based correction (with context if available)
     corrected, range_warnings = try_range_correction(article_number, code_id, prev_article, next_article)
