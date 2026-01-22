@@ -1042,6 +1042,7 @@ class BaseCodeImporter:
                 "Upgrade-Insecure-Requests": "1",
             }
         )
+        self._expected_paragraph_num = 1
 
     def _is_valid_article_content(
         self,
@@ -1075,6 +1076,15 @@ class BaseCodeImporter:
         # Section/chapter headers (already filtered in existing code)
         if text.startswith(("Раздел", "Глава", "Подраздел")):
             return False, "section_header"
+
+        # Section/subsection headers that are structural titles, not content
+        # 1. Section symbol headers (e.g., "§ 7. Некоммерческие унитарные организации")
+        if re.match(r"^§\s+\d+\.?\s*[А-Яа-яЁёA-Za-z].*", text):
+            return False, "section_symbol_header"
+
+        # 2. Numbered section titles followed by parenthetical amendment note
+        if re.match(r"^\d+\.\s+[А-Яа-яЁё].*\s*\(.*(?:дополнение| редакция| редакции| утратил).+\)", text, re.IGNORECASE):
+            return False, "subsection_title_with_amendment"
 
         # First, clean text by removing UI noise that's embedded within content
         # This handles cases where UI elements are concatenated with legal text
@@ -1502,6 +1512,8 @@ class BaseCodeImporter:
                         "article_text": "",
                     }
                     current_paragraphs = []
+                    # Reset paragraph counter for new article
+                    self._expected_paragraph_num = 1
                     processed.add(element)
 
                 elif current_article and text:
@@ -1509,8 +1521,61 @@ class BaseCodeImporter:
                     paragraph_match = re.match(r"^(\d+)\.\s*(.+)$", text)
 
                     if paragraph_match:
-                        # This is a numbered paragraph
-                        current_paragraphs.append(text)
+                        para_num = int(paragraph_match.group(1))
+
+                        # Check if this is the expected next number or a valid sub-item
+                        if para_num < self._expected_paragraph_num:
+                            # Number is less than expected - could be duplicate or reordering
+                            # Accept it but don't change expected counter
+                            logger.debug(
+                                f"[kremlin] Paragraph {para_num} < expected {self._expected_paragraph_num}, accepting"
+                            )
+                            current_paragraphs.append(text)
+                        elif para_num == self._expected_paragraph_num:
+                            # Exact match - perfect sequence
+                            current_paragraphs.append(text)
+                            self._expected_paragraph_num = para_num + 1
+                        elif para_num > self._expected_paragraph_num:
+                            # Number is higher than expected - check if it's a valid sub-item
+                            # Sub-items are encoded as: base * 10 + sub_num (e.g., 2.1 = 21, 4.2 = 42)
+                            # The sub-item could be of the expected number OR the previous base number
+                            # Example: after 2 (expected=3), we might see 21 (sub-item of 2)
+
+                            # Check if it's a sub-item of the expected number
+                            expected_base = self._expected_paragraph_num * 10
+                            if para_num >= expected_base and para_num < expected_base + 10:
+                                # Valid sub-item of expected number
+                                logger.debug(
+                                    f"[kremlin] Sub-item detected: {para_num} (expected {self._expected_paragraph_num}, representing {self._expected_paragraph_num}.{para_num % 10})"
+                                )
+                                current_paragraphs.append(text)
+                                # Don't update expected counter - main sequence continues
+                            # Check if it's a sub-item of the previous base number (expected - 1)
+                            elif self._expected_paragraph_num > 1:
+                                prev_base = (self._expected_paragraph_num - 1) * 10
+                                if para_num >= prev_base and para_num < prev_base + 10:
+                                    # Valid sub-item of previous base number
+                                    logger.debug(
+                                        f"[kremlin] Sub-item detected: {para_num} (of prev {self._expected_paragraph_num - 1}, representing {self._expected_paragraph_num - 1}.{para_num % 10})"
+                                    )
+                                    current_paragraphs.append(text)
+                                    # Don't update expected counter - main sequence continues
+                                else:
+                                    # Not a sub-item - section header
+                                    logger.debug(
+                                        f"[kremlin] Filtered section header '{text[:50]}...' "
+                                        f"(got {para_num}, expected {self._expected_paragraph_num})"
+                                    )
+                                    processed.add(element)
+                                    continue
+                            else:
+                                # Not a sub-item - section header
+                                logger.debug(
+                                    f"[kremlin] Filtered section header '{text[:50]}...' "
+                                    f"(got {para_num}, expected {self._expected_paragraph_num})"
+                                )
+                                processed.add(element)
+                                continue
                     else:
                         # Use helper function to filter UI noise
                         is_valid, filter_reason = self._is_valid_article_content(
@@ -1611,6 +1676,8 @@ class BaseCodeImporter:
                         "article_text": "",
                     }
                     current_paragraphs = []
+                    # Reset paragraph counter for new article
+                    self._expected_paragraph_num = 1
                     processed.add(element)
 
                 elif current_article and text:
@@ -1618,8 +1685,61 @@ class BaseCodeImporter:
                     paragraph_match = re.match(r"^(\d+)\.\s*(.+)$", text)
 
                     if paragraph_match:
-                        # This is a numbered paragraph
-                        current_paragraphs.append(text)
+                        para_num = int(paragraph_match.group(1))
+
+                        # Check if this is the expected next number or a valid sub-item
+                        if para_num < self._expected_paragraph_num:
+                            # Number is less than expected - could be duplicate or reordering
+                            # Accept it but don't change expected counter
+                            logger.debug(
+                                f"[kremlin] Paragraph {para_num} < expected {self._expected_paragraph_num}, accepting"
+                            )
+                            current_paragraphs.append(text)
+                        elif para_num == self._expected_paragraph_num:
+                            # Exact match - perfect sequence
+                            current_paragraphs.append(text)
+                            self._expected_paragraph_num = para_num + 1
+                        elif para_num > self._expected_paragraph_num:
+                            # Number is higher than expected - check if it's a valid sub-item
+                            # Sub-items are encoded as: base * 10 + sub_num (e.g., 2.1 = 21, 4.2 = 42)
+                            # The sub-item could be of the expected number OR the previous base number
+                            # Example: after 2 (expected=3), we might see 21 (sub-item of 2)
+
+                            # Check if it's a sub-item of the expected number
+                            expected_base = self._expected_paragraph_num * 10
+                            if para_num >= expected_base and para_num < expected_base + 10:
+                                # Valid sub-item of expected number
+                                logger.debug(
+                                    f"[kremlin] Sub-item detected: {para_num} (expected {self._expected_paragraph_num}, representing {self._expected_paragraph_num}.{para_num % 10})"
+                                )
+                                current_paragraphs.append(text)
+                                # Don't update expected counter - main sequence continues
+                            # Check if it's a sub-item of the previous base number (expected - 1)
+                            elif self._expected_paragraph_num > 1:
+                                prev_base = (self._expected_paragraph_num - 1) * 10
+                                if para_num >= prev_base and para_num < prev_base + 10:
+                                    # Valid sub-item of previous base number
+                                    logger.debug(
+                                        f"[kremlin] Sub-item detected: {para_num} (of prev {self._expected_paragraph_num - 1}, representing {self._expected_paragraph_num - 1}.{para_num % 10})"
+                                    )
+                                    current_paragraphs.append(text)
+                                    # Don't update expected counter - main sequence continues
+                                else:
+                                    # Not a sub-item - section header
+                                    logger.debug(
+                                        f"[kremlin] Filtered section header '{text[:50]}...' "
+                                        f"(got {para_num}, expected {self._expected_paragraph_num})"
+                                    )
+                                    processed.add(element)
+                                    continue
+                            else:
+                                # Not a sub-item - section header
+                                logger.debug(
+                                    f"[kremlin] Filtered section header '{text[:50]}...' "
+                                    f"(got {para_num}, expected {self._expected_paragraph_num})"
+                                )
+                                processed.add(element)
+                                continue
                     else:
                         # Use helper function to filter UI noise
                         is_valid, filter_reason = self._is_valid_article_content(
@@ -2309,6 +2429,8 @@ class BaseCodeImporter:
                         "article_text": "",
                     }
                     current_paragraphs = []
+                    # Reset paragraph counter for new article
+                    self._expected_paragraph_num = 1
                     processed.add(element)
 
                 elif current_article and text:
