@@ -532,7 +532,15 @@ def try_context_correction(
                     # Generate all valid candidates for the base part
                     candidates = _generate_dot_candidates(base_part)
 
+                    # If previous article has dot notation, extract its base and prefer matching candidates
+                    # Example: prev="123.7" should prefer "123.8" over "12.38" for base "1238"
+                    prev_candidate_base = None
+                    if '.' in prev_article:
+                        prev_candidate_base = prev_article.split('.')[0]
+
                     # Try each candidate and see if it fits in context
+                    # Collect all valid candidates, then prefer those matching previous article's base
+                    valid_candidates = []
                     for candidate_base in candidates:
                         corrected_num = parse_article_number_for_comparison(candidate_base)
 
@@ -540,9 +548,23 @@ def try_context_correction(
 
                         # Check if corrected fits between neighbors
                         if prev_num <= corrected_num <= next_num:
-                            corrected = candidate_base + hyphen_suffix
-                            warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
-                            return corrected, warnings
+                            valid_candidates.append(candidate_base)
+
+                    # If we have valid candidates, prefer those matching previous article's base
+                    if valid_candidates:
+                        if prev_candidate_base:
+                            # Filter candidates with same base as previous article
+                            matching_candidates = [c for c in valid_candidates if c.split('.')[0] == prev_candidate_base]
+                            if matching_candidates:
+                                # Prefer matching candidate
+                                corrected = matching_candidates[0] + hyphen_suffix
+                                warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
+                                return corrected, warnings
+
+                        # No matching base, use first valid candidate
+                        corrected = valid_candidates[0] + hyphen_suffix
+                        warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
+                        return corrected, warnings
                 except (ValueError, IndexError) as e:
                     logger.debug(f"Correction failed for '{article_number}': {e}")
                     pass
@@ -764,14 +786,31 @@ def try_range_correction(
         # If num exceeds max_article, it's likely a malformed sub-article
         # Fall through to candidate generation for dot insertion correction
 
-    # Step 2.5: For hyphenated articles, check if base part is within reasonable bounds
-    # This prevents over-correcting valid hyphenated articles like "1237-1" → "12.37-1"
+    # Step 2.5: For hyphenated articles, check if base part should be corrected first
+    # If the base would be corrected (e.g., "1237" → "123.7"), apply same correction to hyphenated
     if '-' in article_number:
         base_part = article_number.split('-')[0]
+        hyphen_suffix = '-' + article_number.split('-')[1]
+
+        if base_part.isdigit() and len(base_part) in (4, 5):
+            # Check what the base would be corrected to
+            base_candidates = _generate_dot_candidates(base_part)
+            # Try to find a valid correction for the base
+            for candidate in base_candidates:
+                try:
+                    parsed = _article_parser.parse(candidate)
+                    base_num = parsed.to_float_for_comparison()
+                    if min_article <= base_num <= max_article:
+                        # Found valid correction for base, apply to hyphenated article
+                        corrected = f"{candidate}{hyphen_suffix}"
+                        return corrected, warnings
+                except ValueError:
+                    continue
+
+        # If base is already within valid range, keep hyphenated format as-is
         if base_part.isdigit():
             base_num = int(base_part)
-            # If base part is within reasonable bounds, keep hyphenated format as-is
-            if min_article <= base_num <= max_article * 10:
+            if min_article <= base_num <= max_article:
                 return article_number, warnings
 
     # Step 3: Generate all valid candidates by inserting dots
@@ -952,9 +991,10 @@ def validate_and_correct_article_number(
         corrected, context_warnings = try_context_correction(article_number, prev_article, next_article, code_id)
         if context_warnings:
             warnings.extend(context_warnings)
-            # If context-based correction worked, return it
-            if corrected != original:
-                return corrected, warnings
+        # If context-based correction worked (changed the value), return it
+        # Check this regardless of whether warnings were generated
+        if corrected != original:
+            return corrected, warnings
         elif corrected == article_number:
             # Context correction returned unchanged with no warnings
             # This could mean either: (a) it's valid, or (b) context was inconclusive
