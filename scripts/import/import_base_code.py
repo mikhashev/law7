@@ -551,9 +551,13 @@ def try_context_correction(
             # Try converting to sub-article format (e.g., "601" → "60.1")
             candidate = f"{prev_base}.{article_number[len(prev_base):]}"
             try:
-                candidate_num = parse_article_number_for_comparison(candidate)
-                # Check if this candidate fits between neighbors
-                if prev_num < candidate_num < next_num:
+                # Use ArticleNumber comparison for proper ordering
+                prev_parsed = _article_parser.parse(prev_article)
+                cand_parsed = _article_parser.parse(candidate)
+                next_parsed = _article_parser.parse(next_article)
+
+                # Check if this candidate fits between neighbors using ArticleNumber comparison
+                if prev_parsed < cand_parsed < next_parsed:
                     warnings.append(f"Context-corrected: '{article_number}' → '{candidate}' (between {prev_article} and {next_article})")
                     return candidate, warnings
             except ValueError:
@@ -1249,7 +1253,9 @@ class BaseCodeImporter:
             articles = []
             for i, raw_article in enumerate(all_raw_articles):
                 raw_number = raw_article["article_number"]
-                prev_article = all_raw_articles[i - 1]["article_number"] if i > 0 else None
+                # Use corrected previous article for context (not raw) - this allows proper sub-article detection
+                prev_article = articles[i - 1]["article_number"] if i > 0 else None
+                # Use raw next article for context (not yet corrected)
                 next_article = all_raw_articles[i + 1]["article_number"] if i < len(all_raw_articles) - 1 else None
 
                 # Log what we're parsing (verbose mode shows raw number and context)

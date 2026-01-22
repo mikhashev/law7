@@ -61,6 +61,47 @@ class ArticleNumber:
         """Return hash for use in sets and dicts."""
         return hash((self.base, self.insertion, self.subdivision))
 
+    def __lt__(self, other) -> bool:
+        """Compare article numbers for less-than (for sorting)."""
+        if not isinstance(other, ArticleNumber):
+            return NotImplemented
+        # Compare base first
+        if self.base != other.base:
+            return self.base < other.base
+        # If base equal, compare insertion (None < 1 < 2, etc.)
+        if self.insertion != other.insertion:
+            if self.insertion is None:
+                return True  # No insertion comes before having insertion
+            if other.insertion is None:
+                return False
+            return self.insertion < other.insertion
+        # If insertion equal, compare subdivision
+        if self.subdivision != other.subdivision:
+            if self.subdivision is None:
+                return True
+            if other.subdivision is None:
+                return False
+            return self.subdivision < other.subdivision
+        return False  # Equal
+
+    def __le__(self, other) -> bool:
+        """Compare article numbers for less-than-or-equal."""
+        if not isinstance(other, ArticleNumber):
+            return NotImplemented
+        return self == other or self < other
+
+    def __gt__(self, other) -> bool:
+        """Compare article numbers for greater-than."""
+        if not isinstance(other, ArticleNumber):
+            return NotImplemented
+        return not self <= other
+
+    def __ge__(self, other) -> bool:
+        """Compare article numbers for greater-than-or-equal."""
+        if not isinstance(other, ArticleNumber):
+            return NotImplemented
+        return not self < other
+
     def to_float_for_comparison(self) -> float:
         """
         Convert to float for range comparison purposes.
