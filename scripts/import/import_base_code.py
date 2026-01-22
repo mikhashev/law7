@@ -497,15 +497,32 @@ def try_context_correction(
 
             if base_part.isdigit() and len(base_part) >= 3:
                 # Check if base part matches previous article (same article, different appendix)
-                # If yes, keep it as-is (e.g., "12316-1" after "12316" should stay as "12316-1")
-                if prev_article and prev_article.isdigit() and int(prev_article) == int(base_part):
-                    # Previous article is the same base, so this is an appendix/variant
-                    # Keep hyphenated format as-is if base is within reasonable bounds
-                    range_info = KNOWN_ARTICLE_RANGES.get(code_id)
-                    if range_info:
-                        min_article, max_article = range_info
-                        if min_article <= int(base_part) <= max_article * 10:
-                            return article_number, warnings
+                # Handle two cases:
+                # 1. Previous article is a pure digit: "12316" (original source format)
+                # 2. Previous article has been corrected: "123.16" (dot notation)
+                if prev_article:
+                    if prev_article.isdigit():
+                        # Case 1: Previous article is pure digit - direct comparison
+                        if int(prev_article) == int(base_part):
+                            # Previous article is the same base, so this is an appendix/variant
+                            # Keep hyphenated format as-is if base is within reasonable bounds
+                            range_info = KNOWN_ARTICLE_RANGES.get(code_id)
+                            if range_info:
+                                min_article, max_article = range_info
+                                if min_article <= int(base_part) <= max_article * 10:
+                                    return article_number, warnings
+                    elif '.' in prev_article:
+                        # Case 2: Previous article has dot notation - extract base and compare
+                        # Example: prev="123.16", base_part="12316" → both have base "123"
+                        prev_base = prev_article.split('.')[0]
+                        if prev_base.isdigit() and base_part.startswith(prev_base):
+                            # Check if the rest of base_part is a valid subdivision
+                            remainder = base_part[len(prev_base):]
+                            # If remainder makes it a subdivision (e.g., "16" makes it "123.16")
+                            if remainder.isdigit() and len(remainder) <= 2:
+                                # Reconstruct with corrected previous article's format
+                                corrected = f"{prev_article}-{article_number.split('-')[1]}"
+                                return corrected, warnings
 
                 # Try to correct the base part using context
                 try:
@@ -738,12 +755,14 @@ def try_range_correction(
 
     # Step 2: Check if it's a pure number within valid range (no correction needed)
     # This prevents converting valid sequential articles like 11, 12, 71 to 1.1, 1.2, 7.1
-    # Allow numbers up to 10x the known max (handles 4-digit articles, parts, appendices)
-    # This handles cases where some codes have articles beyond the known base range
+    # Use strict max_article range to catch sub-articles with deleted parent articles
+    # Example: 1061 should become 106.1 (article 106 was deleted, but 106.1 remains)
     if article_number.isdigit():
         num = int(article_number)
-        if min_article <= num <= max_article * 10:
+        if min_article <= num <= max_article:
             return article_number, warnings
+        # If num exceeds max_article, it's likely a malformed sub-article
+        # Fall through to candidate generation for dot insertion correction
 
     # Step 2.5: For hyphenated articles, check if base part is within reasonable bounds
     # This prevents over-correcting valid hyphenated articles like "1237-1" → "12.37-1"
@@ -759,18 +778,52 @@ def try_range_correction(
     candidates = _generate_dot_candidates(article_number)
 
     # Step 3.5: Check if original number should be preferred over transformations
-    # This prevents converting valid high-numbered articles like 12310 → 123.10
+    # Only keep original as-is if it's within STRICT valid range
+    # Numbers exceeding max_article are likely sub-articles needing dot insertion
+    # Example: 1061 should become 106.1 (sub-article of deleted article 106)
     try:
         original_parsed = _article_parser.parse(article_number)
         original_base = original_parsed.to_float_for_comparison()
-        # If original is within reasonable bounds (10x range), prefer it
-        if min_article <= original_base <= max_article * 10:
+        # Only prefer original if it's within actual valid range (not 10x expanded)
+        if min_article <= original_base <= max_article:
             return article_number, warnings
+        # If original exceeds max_article, it's likely a malformed sub-article
+        # Fall through to candidate generation for dot insertion correction
     except ValueError:
         # Original number is invalid, continue with candidate validation
         pass
 
     # Step 4: Validate each candidate using ArticleNumberParser
+    # Use previous article context to filter candidates when available
+    if prev_article:
+        try:
+            prev_parsed = _article_parser.parse(prev_article)
+            prev_base = prev_parsed.to_float_for_comparison()
+            # Filter candidates: base should be after previous article
+            # Example: '1061' with prev='104' should prefer '106.1' (106 > 104) over '10.61' (10 < 104)
+            context_filtered_candidates = []
+            for candidate in candidates:
+                try:
+                    cand_parsed = _article_parser.parse(candidate)
+                    cand_base = cand_parsed.to_float_for_comparison()
+                    # Only keep candidates where base is after previous article
+                    if cand_base > prev_base:
+                        context_filtered_candidates.append((candidate, cand_base))
+                except ValueError:
+                    continue
+
+            # If context filtering found candidates, use them for range validation
+            if context_filtered_candidates:
+                for candidate, cand_base in context_filtered_candidates:
+                    if min_article <= cand_base <= max_article:
+                        if candidate != article_number:
+                            warnings.append(f"Range-corrected: '{article_number}' → '{candidate}' (valid range: {min_article}-{max_article}, after prev={prev_article})")
+                        return candidate, warnings
+        except ValueError:
+            # Context parsing failed, fall through to non-context validation
+            pass
+
+    # Fallback: Non-context-aware range validation (original logic)
     for candidate in candidates:
         try:
             # Try to parse the candidate using ArticleNumberParser
@@ -903,9 +956,10 @@ def validate_and_correct_article_number(
             if corrected != original:
                 return corrected, warnings
         elif corrected == article_number:
-            # Context correction returned unchanged, meaning it validated successfully
-            # Don't fall through to range correction (prevents over-correction)
-            return article_number, warnings
+            # Context correction returned unchanged with no warnings
+            # This could mean either: (a) it's valid, or (b) context was inconclusive
+            # Fall through to range correction to catch cases that exceed known ranges
+            pass  # Continue to range correction
 
     # Step 4: Fall back to range-based correction (with context if available)
     corrected, range_warnings = try_range_correction(article_number, code_id, prev_article, next_article)

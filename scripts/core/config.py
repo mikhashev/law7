@@ -44,6 +44,10 @@ IMPORT_REQUEST_DELAY = int(os.getenv("IMPORT_REQUEST_DELAY", "2"))
 # Timeout for web requests (in seconds)
 IMPORT_REQUEST_TIMEOUT = int(os.getenv("IMPORT_REQUEST_TIMEOUT", "30"))
 
+# Maximum pages to fetch from kremlin.ru/government.ru per code
+# Safety limit to prevent infinite loops if site doesn't return 404
+IMPORT_MAX_PAGES = int(os.getenv("IMPORT_MAX_PAGES", "500"))
+
 # =============================================================================
 # Qdrant Configuration
 # =============================================================================
@@ -147,6 +151,7 @@ class Config:
     # Import / Web Scraping
     import_request_delay: int = IMPORT_REQUEST_DELAY
     import_request_timeout: int = IMPORT_REQUEST_TIMEOUT
+    import_max_pages: int = IMPORT_MAX_PAGES
 
     # Qdrant
     qdrant_url: str = QDRANT_URL
