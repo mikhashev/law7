@@ -26,7 +26,7 @@ import re
 import sys
 import time
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 
 import requests
@@ -35,13 +35,16 @@ from sqlalchemy import text
 
 from scripts.core.db import get_db_connection
 from scripts.core.config import config
+from scripts.core.article_parser import ArticleNumberParser, ArticleNumber
 
 logger = logging.getLogger(__name__)
+
+# Singleton instance of the article parser for use throughout the module
+_article_parser = ArticleNumberParser()
 
 
 # Code metadata for import
 # Priority: kremlin (official) -> pravo (official) -> government (official)
-# Removed: consultant (paid subscription - no longer used)
 CODE_METADATA = {
     # Multi-part codes
     "GK_RF": {
@@ -378,6 +381,63 @@ def parse_article_number_for_comparison(article_number: str) -> float:
     return float(base_number) if base_number.isdigit() else 0.0
 
 
+def parse_article_number_structured(article_number: str) -> Optional[ArticleNumber]:
+    """
+    Parse article number using the structured ArticleNumber parser.
+
+    Provides structured access to article number components (base, insertion, subdivision).
+    Returns None if the article number format is not recognized by the parser.
+
+    This is useful for:
+    - Extracting article components for database storage
+    - Validating article number format
+    - Building article hierarchies
+
+    Args:
+        article_number: Article number as string (e.g., "25", "25.12", "25.12-1")
+
+    Returns:
+        ArticleNumber object if parsing succeeds, None otherwise
+
+    Examples:
+        >>> parse_article_number_structured("25.12-1")
+        ArticleNumber(base=25, insertion=12, subdivision=1)
+        >>> parse_article_number_structured("2512-1")
+        ArticleNumber(base=2512, insertion=None, subdivision=1)
+        >>> parse_article_number_structured("invalid")
+        None
+    """
+    try:
+        return _article_parser.parse(article_number)
+    except ValueError:
+        # Article number doesn't match the standard pattern
+        # This is OK - the existing validation logic will handle it
+        return None
+
+
+def is_valid_article_number_format(article_number: str) -> bool:
+    """
+    Check if an article number matches the standard format.
+
+    Uses the ArticleNumberParser to validate the format.
+
+    Args:
+        article_number: Article number as string to validate
+
+    Returns:
+        True if the article number matches the standard format, False otherwise
+
+    Examples:
+        >>> is_valid_article_number_format("25.12-1")
+        True
+        >>> is_valid_article_number_format("25-1")
+        True
+        >>> is_valid_article_number_format("invalid")
+        False
+    """
+    return _article_parser.is_valid(article_number)
+
+
 def try_context_correction(
     article_number: str,
     prev_article: Optional[str],
@@ -403,12 +463,53 @@ def try_context_correction(
     if not prev_article or not next_article:
         return article_number, warnings
 
-    # If article already has dot or hyphen, it's likely correct
-    if '.' in article_number or '-' in article_number:
+    # Convert dot-notation articles (e.g., "10.5.1" → "1051")
+    # The HTML hierarchy uses dots, but actual article numbers are concatenated
+    if '.' in article_number:
+        dotless = article_number.replace('.', '')
+        if dotless.isdigit() and 2 < len(dotless) < 7:
+            warnings.append(f"Converted dot-notation '{article_number}' to '{dotless}'")
+            article_number = dotless
+
+    # Hyphenated articles WITHOUT dots need correction (e.g., "521-1" → "52.1-1")
+    # Hyphenated articles WITH dots are already correct (e.g., "52.1-1" is correct)
+    if '-' in article_number and '.' not in article_number:
+        # Continue to correction logic below for hyphenated articles missing dots
+        pass
+    elif '-' in article_number:
+        # Already has dots, return as-is
         return article_number, warnings
 
     # Check if article_number is a pure number
     if not article_number.isdigit():
+        # Special handling for hyphenated articles missing dots (e.g., "521-1" → "52.1-1")
+        if '-' in article_number:
+            logger.debug(f"Processing hyphenated article: '{article_number}' between '{prev_article}' and '{next_article}'")
+            # Extract base part and hyphen part
+            base_part = article_number.split('-')[0]
+            hyphen_suffix = '-' + article_number.split('-')[1]
+
+            if base_part.isdigit() and len(base_part) >= 3:
+                # Try to correct the base part using context
+                try:
+                    prev_num = parse_article_number_for_comparison(prev_article)
+                    next_num = parse_article_number_for_comparison(next_article)
+
+                    # Try XY.Z pattern first (e.g., "521" → "52.1")
+                    corrected_base = f"{base_part[:2]}.{base_part[2]}"
+                    corrected_num = parse_article_number_for_comparison(corrected_base)
+
+                    logger.debug(f"Trying correction: '{base_part}' → '{corrected_base}' (prev={prev_num}, next={next_num}, corrected={corrected_num})")
+
+                    # Check if corrected fits between neighbors
+                    if prev_num <= corrected_num <= next_num:
+                        corrected = corrected_base + hyphen_suffix
+                        warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
+                        return corrected, warnings
+                except (ValueError, IndexError) as e:
+                    logger.debug(f"Correction failed for '{article_number}': {e}")
+                    pass
+
         return article_number, warnings
 
     # Try to parse neighbor articles using the multi-dot parser
@@ -420,19 +521,35 @@ def try_context_correction(
         return article_number, warnings
 
     # If current article fits between neighbors, it's correct
+    # SPECIAL CASE: Subsections (like "7.1") should come AFTER their base (like "7")
+    # So we check: prev_num < current_num OR (current_num == prev_num and article has subsection)
     try:
         current_num = parse_article_number_for_comparison(article_number)
-        if prev_num < current_num < next_num:
+        current_has_subsection = '.' in article_number and article_number.split('.')[0].isdigit()
+
+        # Check if current article is after previous article
+        is_after_prev = current_num > prev_num or (current_num == prev_num and current_has_subsection)
+
+        # Check if current article is before next article
+        is_before_next = current_num < next_num
+
+        if is_after_prev and is_before_next:
             return article_number, warnings
     except ValueError:
         pass
 
-    # Try inserting a dot before the last digit (e.g., "1201" → "120.1")
+    # Try inserting a dot before the last digit (e.g., "71" → "7.1", "1201" → "120.1")
     if len(article_number) > 1:
         corrected = f"{article_number[:-1]}.{article_number[-1]}"
         try:
             corrected_num = parse_article_number_for_comparison(corrected)
-            if prev_num < corrected_num < next_num:
+            corrected_has_subsection = True  # We just inserted a dot, so it has a subsection
+
+            # Check if corrected article is after previous and before next
+            is_after_prev = corrected_num > prev_num or (corrected_num == prev_num and corrected_has_subsection)
+            is_before_next = corrected_num < next_num
+
+            if is_after_prev and is_before_next:
                 warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
                 return corrected, warnings
         except ValueError:
@@ -464,11 +581,80 @@ def try_context_correction(
     return article_number, warnings
 
 
+def _generate_dot_candidates(article_number: str) -> List[str]:
+    """
+    Generate all valid dot-notation candidates for a malformed article number.
+
+    This helper function generates possible corrected versions of article numbers
+    by inserting dots in different positions. The candidates are ordered by
+    priority (most likely patterns first).
+
+    Examples:
+        "511" → ["51.1", "5.1.1", "511"]
+        "521-1" → ["52.1-1", "5.2.1-1", "521-1"]
+        "41" → ["4.1", "41"]
+
+    Args:
+        article_number: Raw article number that may be missing dots
+
+    Returns:
+        List of candidate article numbers, ordered by priority
+    """
+    candidates = []
+
+    if not article_number.replace('-', '').replace('.', '').isdigit():
+        return [article_number]  # Skip non-numeric
+
+    # Split out hyphenated part if present
+    base_part = article_number.split('-')[0]
+    hyphen_part = f"-{article_number.split('-')[1]}" if '-' in article_number else ""
+
+    # If already has dots, return as-is (no correction needed)
+    if '.' in article_number:
+        return [article_number]
+
+    # Generate candidates based on length
+    if len(base_part) == 2:
+        # "41" → "4.1" (2-digit pattern)
+        if base_part[0] != '0':  # Don't convert "01" to "0.1"
+            candidates.append(f"{base_part[0]}.{base_part[1]}{hyphen_part}")
+
+    elif len(base_part) == 3:
+        # XY.Z pattern: "511" → "51.1" (PRIORITY - 2-digit base)
+        candidates.append(f"{base_part[:2]}.{base_part[2]}{hyphen_part}")
+        # X.Y.Z pattern: "511" → "5.1.1" (fallback)
+        candidates.append(f"{base_part[0]}.{base_part[1]}.{base_part[2]}{hyphen_part}")
+
+    elif len(base_part) == 4:
+        # For 4-digit numbers, try multiple patterns
+        # "1256" → "12.5.6" (X.Y.Z with 2-digit base)
+        candidates.append(f"{base_part[:2]}.{base_part[2]}.{base_part[3]}{hyphen_part}")
+        # "1256" → "12.56" (2-digit base + 2-digit subsection)
+        candidates.append(f"{base_part[:2]}.{base_part[2:]}{hyphen_part}")
+        # "1256" → "125.6" (3-digit base + 1-digit subsection)
+        candidates.append(f"{base_part[:3]}.{base_part[3]}{hyphen_part}")
+
+    elif len(base_part) == 5:
+        # For 5-digit numbers, try multi-level patterns
+        # "20312" → "20.3.12" (2-digit base + 2-level subsection)
+        candidates.append(f"{base_part[:2]}.{base_part[2]}.{base_part[3:]}{hyphen_part}")
+        # "20312" → "203.1.2" (3-digit base + 2-level subsection)
+        candidates.append(f"{base_part[:3]}.{base_part[3]}.{base_part[4]}{hyphen_part}")
+        # "21410" → "214.10" (3-digit base + 2-digit subsection)
+        candidates.append(f"{base_part[:3]}.{base_part[3:]}{hyphen_part}")
+
+    # Always include original as fallback
+    candidates.append(article_number)
+
+    return candidates
+
+
 def try_range_correction(article_number: str, code_id: str) -> tuple[str, List[str]]:
     """
     Attempt to correct article number using known article ranges.
 
-    Fallback method when context is not available.
+    Simplified version that generates candidate corrections and validates them
+    using the ArticleNumberParser.
 
     Args:
         article_number: Raw article number from HTML
@@ -479,75 +665,45 @@ def try_range_correction(article_number: str, code_id: str) -> tuple[str, List[s
     """
     warnings: List[str] = []
 
-    # If article number contains dots or hyphens, it's likely correct
-    if '.' in article_number or '-' in article_number:
-        return article_number, warnings
-
-    # Check if it's a pure number
-    if not article_number.isdigit():
-        return article_number, warnings
-
-    num = int(article_number)
+    # Get the valid range for this code
     range_info = KNOWN_ARTICLE_RANGES.get(code_id)
-
     if not range_info:
-        # Unknown code - can't validate
+        # Unknown code - can't validate, return as-is
         return article_number, warnings
 
     min_article, max_article = range_info
 
-    # If within valid range, it's correct
-    if min_article <= num <= max_article:
+    # Step 1: If article number already has dots (with or without hyphens), it's likely correct
+    if '.' in article_number:
         return article_number, warnings
 
-    # Number is out of range - try to correct
-    # Pattern: "1256" might be "125.6" if 1256 > max_article
-    # Pattern: "2031" might be "20.3.1" (multi-level article)
-    if num > max_article:
-        # Try inserting TWO dots FIRST for multi-level articles (e.g., "2031" → "20.3.1")
-        # Multi-level articles are more specific, so try them before single-dot corrections
-        if len(article_number) >= 4:
-            # Try "20.3.1" format for 4-digit numbers: "2031" → "20.3.1"
-            # Skip if middle digit is "0" (e.g., "1201" → "12.0.1" is unlikely, prefer "120.1")
-            if len(article_number) == 4 and article_number[-2] != '0':
-                corrected = f"{article_number[:-2]}.{article_number[-2]}.{article_number[-1]}"
-                corrected_num = parse_article_number_for_comparison(corrected)
-                if min_article <= corrected_num <= max_article:
-                    warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
-                    return corrected, warnings
+    # Step 2: Check if it's a pure number within valid range (no correction needed)
+    # This prevents converting valid sequential articles like 11, 12, 71 to 1.1, 1.2, 7.1
+    if article_number.isdigit():
+        num = int(article_number)
+        if min_article <= num <= max_article:
+            return article_number, warnings
 
-            # Try "20.3.12" format for 5+ digit numbers: "20312" → "20.3.12"
-            if len(article_number) >= 5:
-                corrected = f"{article_number[:-3]}.{article_number[-3]}.{article_number[-2:]}"
-                corrected_num = parse_article_number_for_comparison(corrected)
-                if min_article <= corrected_num <= max_article:
-                    warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
-                    return corrected, warnings
+    # Step 3: Generate all valid candidates by inserting dots
+    candidates = _generate_dot_candidates(article_number)
 
-                # Try "20.31.2" format: "20312" → "20.31.2"
-                corrected = f"{article_number[:-2]}.{article_number[-2:-1]}.{article_number[-1]}"
-                corrected_num = parse_article_number_for_comparison(corrected)
-                if min_article <= corrected_num <= max_article:
-                    warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
-                    return corrected, warnings
+    # Step 4: Validate each candidate using ArticleNumberParser
+    for candidate in candidates:
+        try:
+            # Try to parse the candidate using ArticleNumberParser
+            parsed = _article_parser.parse(candidate)
+            base_num = parsed.to_float_for_comparison()
 
-        # Try inserting a dot before the last digit (e.g., "1201" → "120.1")
-        if num > 10:  # Need at least 2 digits
-            corrected = f"{article_number[:-1]}.{article_number[-1]}"
-            corrected_num = parse_article_number_for_comparison(corrected)
-            if min_article <= corrected_num <= max_article:
-                warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
-                return corrected, warnings
+            # Check if the parsed base number is within valid range
+            if min_article <= base_num <= max_article:
+                if candidate != article_number:
+                    warnings.append(f"Range-corrected: '{article_number}' → '{candidate}' (valid range: {min_article}-{max_article})")
+                return candidate, warnings
+        except ValueError:
+            # Invalid format, try next candidate
+            continue
 
-        # Try inserting a dot before the last 2 digits (e.g., "1256" → "12.56")
-        if num > 100:
-            corrected = f"{article_number[:-2]}.{article_number[-2:]}"
-            corrected_num = parse_article_number_for_comparison(corrected)
-            if min_article <= corrected_num <= max_article:
-                warnings.append(f"Range-corrected: '{article_number}' → '{corrected}' (valid range: {min_article}-{max_article})")
-                return corrected, warnings
-
-    # Could not auto-correct
+    # Step 5: Could not auto-correct, return original with warning
     warnings.append(f"Suspicious article number '{article_number}' for {code_id} (valid range: {min_article}-{max_article})")
     return article_number, warnings
 
@@ -580,11 +736,48 @@ def validate_and_correct_article_number(
     warnings: List[str] = []
     original = article_number
 
-    # Step 1: If already has dot or hyphen, it's likely correct
-    if '.' in article_number or '-' in article_number:
-        return article_number, warnings
+    # Step 1: Handle HTML hierarchy encoding (multi-dot like "10.5.1" → "105.1")
+    # Single-dot numbers like "6.1" are legitimate sub-articles - preserve them
+    if '.' in article_number:
+        dot_count = article_number.count('.')
+        if dot_count >= 2:
+            # Multi-dot = HTML hierarchy encoding
+            # Format: "12.9.1" means article 129, part 1 (NOT chapter 12, section 9, part 1)
+            # The first TWO numbers form the article number, the last is the subsection
+            parts = article_number.split('.')
 
-    # Step 2: Try context-based correction (more accurate)
+            # Check for hyphenated appendix (like "12.9.7-1")
+            has_hyphen = '-' in parts[-1] if parts else False
+
+            if dot_count == 2 and not has_hyphen:
+                # "12.9.1" → "129.1" (merge first two parts, keep dot for last part)
+                if all(p.isdigit() for p in parts):
+                    merged_base = parts[0] + parts[1]  # "12" + "9" = "129"
+                    article_number = f"{merged_base}.{parts[2]}"  # "129.1"
+                    warnings.append(f"Converted hierarchy '{original}' to '{article_number}'")
+            elif dot_count == 2 and has_hyphen:
+                # "12.9.7-1" → "129.7-1" (merge first two parts, keep hyphen in last part)
+                if parts[0].isdigit() and parts[1].isdigit():
+                    merged_base = parts[0] + parts[1]
+                    article_number = f"{merged_base}.{parts[2]}"  # "129.7-1"
+                    warnings.append(f"Converted hierarchy '{original}' to '{article_number}'")
+            else:
+                # 4+ dots: convert all to dotless (old behavior for complex hierarchies)
+                dotless = article_number.replace('.', '')
+                if dotless.isdigit() and 2 < len(dotless) < 7:
+                    warnings.append(f"Converted hierarchy '{original}' to '{dotless}'")
+                    article_number = dotless
+        # Single-dot articles (like "6.1") are legitimate sub-articles - keep as-is
+
+    # Step 2: Handle hyphenated articles WITH dots (already correct) vs WITHOUT dots (need correction)
+    # Hyphenated articles with dots like "52.1-1" are already correct - keep as-is
+    # Hyphenated articles without dots like "521-1" need correction - continue to correction logic
+    if '-' in article_number and '.' in article_number:
+        # Already has both dot and hyphen, format is correct
+        return article_number, warnings
+    # Hyphenated articles without dots (e.g., "521-1") will proceed to correction logic below
+
+    # Step 3: Try context-based correction (more accurate)
     if prev_article and next_article:
         corrected, context_warnings = try_context_correction(article_number, prev_article, next_article)
         if context_warnings:
@@ -605,7 +798,6 @@ class BaseCodeImporter:
     Import base legal code text from online sources.
 
     Supports:
-    - consultant.ru: Free reference copy with HTML structure
     - pravo.gov.ru: Official publication (when available)
     """
 
@@ -629,146 +821,227 @@ class BaseCodeImporter:
             }
         )
 
-    def fetch_consultant_html(self, url: str) -> Optional[str]:
+    def _is_valid_article_content(
+        self,
+        text: str,
+        source: str,
+        article_number: Optional[str] = None
+    ) -> Tuple[bool, Optional[str]]:
         """
-        Fetch HTML from consultant.ru.
+        Check if text is valid article content or UI noise.
 
         Args:
-            url: Full URL to the code page
+            text: Text to validate
+            source: Source domain ('kremlin', 'government', 'pravo')
+            article_number: Optional article number for context-aware logging
 
         Returns:
-            HTML content or None if failed
+            Tuple of (is_valid, filter_reason)
         """
-        try:
-            logger.info(f"Fetching from: {url}")
-            response = self.session.get(url, timeout=self.timeout)
-            response.raise_for_status()
-            response.encoding = "utf-8"
-            return response.text
-        except Exception as e:
-            logger.error(f"Failed to fetch from consultant.ru: {e}")
-            return None
+        if not text or not text.strip():
+            return False, "empty_text"
 
-    def parse_consultant_html(self, html: str, code_id: str) -> Dict[str, Any]:
-        """
-        Parse consultant.ru HTML to extract article links.
+        text = text.strip()
 
-        Args:
-            html: HTML content
-            code_id: Code identifier
+        # Length checks
+        if len(text) < 10:
+            return False, f"too_short_{len(text)}_chars"
 
-        Returns:
-            Dictionary with articles list
-        """
-        soup = BeautifulSoup(html, "html.parser")
+        if len(text) > 5000:
+            return False, f"too_long_{len(text)}_chars"
 
-        articles = []
-        base_url = CODE_METADATA[code_id]["consultant_url"]
+        # Section/chapter headers (already filtered in existing code)
+        if text.startswith(("Раздел", "Глава", "Подраздел")):
+            return False, "section_header"
 
-        # Find all article links in the table of contents
-        # Consultant.ru uses a navigation structure with article links
-        for link in soup.find_all("a", href=True):
-            href = link.get("href", "")
-            text = link.get_text(strip=True)
+        # First, clean text by removing UI noise that's embedded within content
+        # This handles cases where UI elements are concatenated with legal text
+        ui_substitution_patterns = [
+            # Pagination buttons embedded in text
+            (r"Показать предыдущую страницу документа", ""),
+            (r"Показать следующую страницу документа", ""),
+            (r"Show previous page", ""),
+            (r"Show next page", ""),
+            # Share buttons embedded in text
+            (r"Поделиться\s*", ""),
+            (r"Подписаться\s*", ""),
+            # Other common embedded UI
+            (r"Версия официального сайта для мобильных устройств\s*", ""),
+            (r"Текст\s*", ""),
+            # NEW: Concatenated social media names (no spaces)
+            (r"ВКонтактеTelegramОдноклассникиVKRutubeYouTube", ""),
+            (r"ВКонтакте\s*Telegram\s*Одноклассники", ""),
+            (r"VK\s*OK\s*Rutube", ""),
+            # NEW: Concatenated navigation elements
+            (r"СобытияСтруктураВидео\s*и\s*фотоДокументыКонтактыПоиск", ""),
+            (r"Официальные\s+сетевые\s+ресурсы", ""),
+            (r"Президент\s+России", ""),
+            # NEW: Concatenated share buttons
+            (r"Скопировать\s+ссылкуПереслать\s+на\s+почтуРаспечатать", ""),
+            (r"Переслать\s+материал\s+на\s+почтуПросмотр\s+отправляемого\s+сообщения", ""),
+            # NEW: Footer patterns
+            (r"Администрация\s+Президента\s+России\s*\d{4}\s+год", ""),
+            (r"Официальный\s+сайт\s+президента\s+России", ""),
+            (r"Правовая\s+и\s+техническая\s+информация", ""),
+            (r"О\s+порталеОб\s+использовании\s+информации\s+сайта", ""),
+            # NEW: Government.ru specific patterns
+            (r"Email\s+адресата\*Введите\s+корректый\s+EmailТекст\s+сообщенияGovernment\.ru:", ""),
+            (r"Введите\s+корректый\s+Email", ""),
+            (r"Текст\s+сообщенияGovernment\.ru:", ""),
+            (r"Government\.ru:Отправить", ""),
+            (r"СпасибоВниманиеТекст\s+сообщенияGovernment\.ru:", ""),
+            (r"Спасибо\s*Внимание", ""),
+            # NEW: Government.ru navigation
+            (r"Правительство\s+РоссииПредседатель\s+ПравительстваВице-премьерыМинистерства\s+и\s+ведомства", ""),
+            (r"Правительство\s+России", ""),
+            (r"Председатель\s+Правительства", ""),
+            (r"Вице-премьеры", ""),
+            (r"Министерства\s+и\s+ведомства", ""),
+            (r"МинистрыСоветы\s+и\s+комиссии", ""),
+            (r"По\s+регионамОбращения", ""),
+            (r"ГосуслугиРабота\s+Правительства", ""),
+            (r"ДемографияЗдоровьеОбразованиеКультураОбществоГосударствоЗанятость\s+и\s+труд", ""),
+            (r"Технологическое\s+развитиеЭкономика\.\s+РегулированиеФинансыСоциальные\s+услугиЭкологияЖильё\s+и\s+городаТранспорт\s+и\s+связьЭнергетикаПромышленностьСельское\s+хозяйствоРегиональное\s+развитиеДальний\s+ВостокРоссия\s+и\s+мирБезопасностьПраво\s+и\s+юстиция", ""),
+            # NEW: Government.ru document types
+            (r"СтратегииГосударственные\s+программыНациональные\s+проектыРазвернуть", ""),
+            (r"РазвернутьДокументыИзбранные\s+документы\s+со\s+справками\s+к\s+ним", ""),
+            (r"Поиск\s+по\s+всем\s+документамВид\s+документаПостановление\s+Правительства\s+Российской\s+ФедерацииРаспоряжение\s+Правительства\s+Российской\s+ФедерацииРаспоряжение\s+Президента\s+Российской\s+ФедерацииУказ\s+Президента\s+Российской\s+ФедерацииФедеральный\s+законФедеральный\s+конституционный\s+законКодекс", ""),
+            (r"Вид\s+документаПостановление\s+Правительства\s+Российской\s+ФедерацииРаспоряжение\s+Правительства\s+Российской\s+Федерации", ""),
+            (r"НомерЗаголовок\s+или\s+текст\s+документаДата\s+подписанияНайти", ""),
+            (r"Заголовок\s+или\s+текст\s+документа", ""),
+            (r"Дата\s+подписанияНайти", ""),
+            (r"Поиск\s+по\s+документамстраница", ""),
+            (r"Показать\s+еще", ""),
+            # NEW: Font size controls
+            (r"Маленький\s+размер\s+шрифтаНормальный\s+размер\s+шрифтаБольшой\s+размер\s+шрифтаВключить/выключить\s+отображение\s+изображенийВклВыкл", ""),
+            (r"Маленький\s+размер\s+шрифта", ""),
+            (r"Нормальный\s+размер\s+шрифта", ""),
+            (r"Большой\s+размер\s+шрифта", ""),
+            (r"Включить/выключить\s+отображение\s+изображений", ""),
+            # NEW: Browser links
+            (r"ChromeFirefoxInternet\s+ExplorerOperaSafari", ""),
+            (r"Вы\s+пользуетесь\s+устаревшей\s+версией\s+браузера", ""),
+            (r"Внимание!\s+Вы\s+используете\s+устаревшую\s+версию\s+браузера", ""),
+            # NEW: Blog embed
+            (r"Код\s+для\s+вставки\s+в\s+блогСкопировать\s+в\s+буфер", ""),
+            (r"Следующая\s+новость", ""),
+            (r"Предыдущая\s+новость", ""),
+        ]
 
-            # Match article links like "Статья 1. Title" or "#doc-..."
-            article_match = re.search(
-                r"Статья\s+(\d+(?:[\.\-]\d+)*)\.?\s*(.+)?", text, re.IGNORECASE
+        original_text = text
+        for pattern, replacement in ui_substitution_patterns:
+            text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+
+        # Log if text was cleaned
+        if text != original_text:
+            logger.debug(
+                f"[{source}] Cleaned embedded UI from '{original_text[:50]}...' "
+                f"(article: {article_number})"
             )
+            # After cleaning, check if there's still meaningful content
+            if len(text.strip()) < 10:
+                return False, "cleaned_too_short"
 
-            if article_match:
-                article_number = article_match.group(1)  # Preserve original format
-                article_title = text
+        # UI noise patterns to filter (standalone UI elements)
+        ui_patterns = [
+            # Social media and sharing
+            r"^Поделиться$",
+            r"^(ВКонтакте|Telegram|Одноклассники|VK|OK|Rutube|YouTube)$",
+            r"^Telegram-канал$",
+            r"^Скопировать ссылку$",
+            r"^Переслать на почту$",
+            r"^Распечатать$",
+            # Links and navigation
+            r"^Прямая ссылка на материал",
+            r"^https?://\S+$",
+            r"или по банку документов",
+            # Navigation items
+            r"^(События|Структура|Видео и фото|Документы|Контакты|Поиск)$",
+            r"^(О портале|О сайте|Карта сайта)$",
+            r"^Найти документ$",
+            r"^Официальные сетевые ресурсы$",
+            r"Информационные ресурсы",
+            # Search/form elements
+            r"^(Название документа или его номер|Текст в документе)$",
+            r"^Вид документаВсе$",
+            r"^(Указ|Распоряжение|Федеральный закон|Федеральный конституционный закон|Послание|Закон Российской Федерации о поправке к Конституции Российской Федерации|Кодекс)$",
+            r"^Дата вступления в силу",
+            r"^или дата принятия",
+            r"^(Введите запрос|Искать на сайте|Найти)$",
+            r"^Официальный портал правовой информации",
+            # Footer and administrative
+            r"^\d{4}\s+год\.?$",
+            r"^Администрация Президента России",
+            r"^Официальный сайт президента России",
+            r"Для СМИ$",
+            r"Специальная версия для людей с ограниченными возможностями",
+            r"^Правовая и техническая информация$",
+            # Footer links
+            r"^(Конституция России|Государственная символика)$",
+            r"Обратиться к Президенту",
+            r"Президент России[—-]гражданам школьного возраста",
+            r"Виртуальный тур поКремлю",
+            r"Владимир Путин[—-]личный сайт",
+            r"Дикая природа России",
+            r"Путин\. \d+ лет",
+            r"^Написать в редакцию$",
+            # License
+            r"Creative Commons Attribution \d\.\d",
+            r"Все материалы сайта доступны по лицензии",
+            # Form elements
+            r"^Электронная почта адресата$",
+            r"^Отправить$",
+            # General UI labels
+            r"^Текст$",
+            # Pagination buttons
+            r"^(Показать предыдущую страницу документа|Показать следующую страницу документа)$",
+            r"^(Show previous page|Show next page)$",
+            # NEW: Multi-line concatenated UI
+            r"^Просмотр отправляемого сообщения$",
+            r"^Электронная почта адресатаОтправить$",
+            r"^Переслать материал на почтуПросмотр отправляемого сообщения$",
+            # NEW: Government.ru specific patterns
+            r"^Email\s+адресата\*",
+            r"^Текст\s+сообщенияGovernment\.ru:$",
+            r"^Government\.ru:Отправить$",
+            r"^СпасибоВнимание",
+            r"^Правительство\s+РоссииПредседатель",
+            r"^СтратегииГосударственные\s+программыНациональные\s+проекты",
+            r"^РазвернутьДокументыИзбранные",
+            r"^Вид\s+документаПостановление\s+Правительства",
+            r"^НомерЗаголовок\s+или\s+текст",
+            r"^Поиск\s+по\s+документамстраница",
+            r"^Маленький\s+размер\s+шрифтаНормальный",
+            r"^ChromeFirefoxInternet\s+Explorer",
+            r"^Код\s+для\s+вставки\s+в\s+блог",
+            r"^Вы\s+пользуетесь\s+устаревшей",
+            r"^Следующая\s+новость$",
+            r"^Предыдущая\s+новость$",
+            # NEW: Concatenated document titles (government.ru repeats these)
+            r"^\d{1,2}\s+дня\s+прошлый\s+день\d{1,2}\s+дня\s+назад",
+            r"^\d{1,2}\s+дня\s+прошлый\s+день",
+        ]
 
-                # Build full URL for article page
-                article_url = urljoin(base_url, href)
-
-                articles.append(
-                    {
-                        "article_number": article_number,
-                        "article_title": article_title,
-                        "article_url": article_url,
-                        "article_text": "",  # Will fetch separately
-                    }
+        # Now check against standalone UI patterns (text that's entirely UI noise)
+        for pattern in ui_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                logger.debug(
+                    f"[{source}] Filtered '{text[:50]}...' "
+                    f"(article: {article_number}, pattern: {pattern})"
                 )
+                return False, f"ui_pattern_{pattern[:20]}"
 
-        logger.info(f"Found {len(articles)} article links from consultant.ru table of contents")
-        return {
-            "code_id": code_id,
-            "articles": articles,
-            "source": "consultant.ru",
-        }
+        # Character ratio checks
+        total = len(text)
+        digit_ratio = sum(c.isdigit() for c in text) / total if total > 0 else 0
 
-    def fetch_article_text(self, article_url: str, article_number: str) -> str:
-        """
-        Fetch full text for a single article from its page.
+        # High digit ratio (>40%) suggests encoded data
+        if digit_ratio > 0.4:
+            return False, f"high_digit_ratio_{digit_ratio:.2f}"
 
-        Args:
-            article_url: URL to article page
-            article_number: Article number
+        # Passed all checks - this is valid content
+        return True, None
 
-        Returns:
-            Article text content
-        """
-        try:
-            logger.debug(f"Fetching article {article_number} from {article_url}")
-            response = self.session.get(article_url, timeout=self.timeout)
-            response.raise_for_status()
-            response.encoding = "utf-8"
-
-            soup = BeautifulSoup(response.text, "html.parser")
-
-            # Remove unwanted elements
-            for element in soup(["script", "style", "noscript", "nav", "footer", "header"]):
-                element.decompose()
-
-            # Find main content - consultant.ru typically uses specific containers
-            main_content = (
-                soup.find("div", class_="document-text")
-                or soup.find("div", class_="docitem")
-                or soup.find("article")
-                or soup.find("main")
-            )
-
-            if main_content:
-                # Extract text while preserving paragraphs
-                paragraphs = []
-                for p in main_content.find_all(["p", "div", "section"]):
-                    text = p.get_text(strip=True)
-                    if text and len(text) > 10:  # Filter out very short elements
-                        paragraphs.append(text)
-
-                article_text = "\n\n".join(paragraphs)
-            else:
-                # Fallback: get all text
-                article_text = soup.get_text(separator="\n", strip=True)
-
-            return article_text[:50000]  # Limit text length
-
-        except Exception as e:
-            logger.error(f"Failed to fetch article {article_number}: {e}")
-            return ""
-
-    def fetch_kremlin_html(self, bank_id: str) -> Optional[str]:
-        """
-        Fetch HTML from kremlin.ru (official publication portal).
-
-        Args:
-            bank_id: Kremlin bank ID (e.g., '7279' for Civil Code)
-
-        Returns:
-            HTML content or None if failed
-        """
-        url = f"http://www.kremlin.ru/acts/bank/{bank_id}/page/1"
-        try:
-            logger.info(f"Fetching from Kremlin: {url}")
-            response = self.session.get(url, timeout=self.timeout)
-            response.raise_for_status()
-            response.encoding = "utf-8"
-            return response.text
-        except Exception as e:
-            logger.error(f"Failed to fetch from kremlin.ru: {e}")
-            return None
 
     def fetch_kremlin_html_all_pages(self, bank_id: str) -> List[str]:
         """
@@ -786,9 +1059,6 @@ class BaseCodeImporter:
         """
         all_pages = []
         page_num = 1
-        min_pages_to_check = 3  # Check at least 3 pages before giving up
-        consecutive_empty_pages = 0
-        max_consecutive_empty = 2  # Stop after 2 consecutive empty pages
 
         while True:
             url = f"http://www.kremlin.ru/acts/bank/{bank_id}/page/{page_num}"
@@ -798,36 +1068,17 @@ class BaseCodeImporter:
                 response.raise_for_status()
                 response.encoding = "utf-8"
 
-                # Check if this page has articles (look for article patterns in text)
-                soup = BeautifulSoup(response.text, "html.parser")
-                text = soup.get_text()
-                has_articles = bool(re.search(r"Статья\s+\d+", text))
-
-                if has_articles:
-                    all_pages.append(response.text)
-                    consecutive_empty_pages = 0
-                else:
-                    consecutive_empty_pages += 1
-                    logger.info(f"Page {page_num} has no articles (empty count: {consecutive_empty_pages})")
-
-                    # Stop if we've checked minimum pages AND found consecutive empty pages
-                    if page_num >= min_pages_to_check and consecutive_empty_pages >= max_consecutive_empty:
-                        logger.info(f"Stopping pagination after {consecutive_empty_pages} consecutive empty pages")
-                        break
-
-                    # Also stop if we've checked way too many pages without finding anything
-                    if page_num >= 10 and not all_pages:
-                        logger.warning(f"Checked {page_num} pages with no articles found, stopping")
-                        break
+                # Always save the page - continuation content may exist without "Статья" header
+                all_pages.append(response.text)
 
                 page_num += 1
 
                 # Sleep to avoid rate limiting
                 time.sleep(config.import_request_delay)
 
-                # Safety limit to prevent infinite loops
-                if page_num > 100:
-                    logger.warning(f"Reached page limit (100), stopping pagination")
+                # Safety limit to prevent infinite loops (now configurable)
+                if page_num > config.import_max_pages:
+                    logger.warning(f"Reached page limit ({config.import_max_pages}), stopping pagination")
                     break
 
             except Exception as e:
@@ -857,12 +1108,23 @@ class BaseCodeImporter:
         Returns:
             Dictionary with articles list
         """
-        # Handle multiple pages
+        # Handle multiple pages with continuation tracking
         if isinstance(html, list):
             all_articles = []
+            current_article = None
+            current_paragraphs = []
+
             for i, page_html in enumerate(html):
-                result = self._parse_single_kremlin_page(page_html, code_id)
+                result, current_article, current_paragraphs = self._parse_single_kremlin_page(
+                    page_html, code_id, current_article, current_paragraphs
+                )
                 all_articles.extend(result.get("articles", []))
+
+            # Flush final article if exists
+            if current_article and current_paragraphs:
+                current_article["article_text"] = "\n\n".join(current_paragraphs)
+                all_articles.append(current_article)
+
             logger.info(f"Parsed {len(all_articles)} articles from {len(html)} pages")
             return {
                 "code_id": code_id,
@@ -870,83 +1132,125 @@ class BaseCodeImporter:
                 "source": "kremlin.ru",
             }
         else:
-            return self._parse_single_kremlin_page(html, code_id)
+            # Single page - just get the result, ignore state
+            result, _, _ = self._parse_single_kremlin_page(html, code_id)
+            return result
 
-    def _parse_single_kremlin_page(self, html: str, code_id: str) -> Dict[str, Any]:
+    def _parse_single_kremlin_page(
+        self,
+        html: str,
+        code_id: str,
+        current_article: Optional[Dict] = None,
+        current_paragraphs: Optional[List] = None
+    ) -> Tuple[Dict[str, Any], Optional[Dict], Optional[List]]:
         """
         Parse a single kremlin.ru HTML page to extract articles.
 
-        Collects raw articles first, then validates article numbers with context.
+        Supports continuation tracking across pages - accepts and returns
+        current_article and current_paragraphs state.
+        Only processes content within <div class="reader_act_body"> elements.
 
         Args:
             html: HTML content
             code_id: Code identifier
+            current_article: Previous page's article (for continuation)
+            current_paragraphs: Previous page's paragraphs (for continuation)
 
         Returns:
-            Dictionary with articles list
+            Tuple of (result_dict, current_article, current_paragraphs)
         """
         soup = BeautifulSoup(html, "html.parser")
 
         raw_articles = []
-        current_article = None
-        current_paragraphs = []
+        # Use passed state or initialize fresh
+        if current_article is None:
+            current_article = None
+        if current_paragraphs is None:
+            current_paragraphs = []
 
-        # Find all text elements - collect raw articles first
-        for element in soup.find_all(["h4", "p", "div"]):
-            text = element.get_text(strip=True)
+        # Track processed elements to avoid processing nested elements multiple times
+        processed = set()
 
-            # Check if this is an article header
-            article_match = re.match(
-                r"^Статья\s+(\d+(?:[\.\-]\d+)*)\.?\s*(.+)$", text, re.IGNORECASE
-            )
+        # CRITICAL: kremlin.ru has content in <div class="reader_act_body">
+        # We must ONLY process elements within these divs to avoid picking up UI noise
+        act_body_divs = soup.find_all("div", class_="reader_act_body")
 
-            if article_match:
-                # Save previous article if exists
-                if current_article and current_paragraphs:
-                    current_article["article_text"] = "\n\n".join(current_paragraphs)
-                    raw_articles.append(current_article)
+        if not act_body_divs:
+            logger.warning(f"[{code_id}] No reader_act_body divs found in HTML")
+            # Return empty result with current state preserved
+            return {
+                "code_id": code_id,
+                "articles": [],
+                "source": "kremlin.ru",
+            }, current_article, current_paragraphs
 
-                # Start new article (keep raw number for now)
-                article_number = article_match.group(1)  # Preserve original format
-                article_title = article_match.group(2).strip()
+        # Find all text elements within reader_act_body divs
+        # Only process leaf elements (not nested within other processed elements)
+        for act_body in act_body_divs:
+            for element in act_body.find_all(["h4", "p", "div"]):
+                # Skip if this element or any of its parents have been processed
+                should_skip = False
+                for parent in element.parents:
+                    if parent in processed:
+                        should_skip = True
+                        break
+                if should_skip:
+                    continue
 
-                current_article = {
-                    "article_number": article_number,  # Raw number
-                    "article_title": f"Статья {article_number}. {article_title}",
-                    "article_text": "",
-                }
-                current_paragraphs = []
+                # Get text - use .string for elements with only direct text
+                # This prevents concatenation from nested elements
+                if element.string and element.string.strip():
+                    text = element.string.strip()
+                else:
+                    text = element.get_text(strip=True)
 
-            elif current_article and text:
-                # Check if this is a numbered paragraph (starts with number and period)
-                # Or if it's content following an article header
-                paragraph_match = re.match(r"^(\d+)\.\s*(.+)$", text)
+                # Check if this is an article header
+                article_match = re.match(
+                    r"^Статья\s+(\d+(?:[\.\-]\d+)*)\.?\s*(.+)$", text, re.IGNORECASE
+                )
 
-                if paragraph_match:
-                    # This is a numbered paragraph
-                    current_paragraphs.append(text)
-                elif (
-                    text
-                    and not text.startswith("Раздел")
-                    and not text.startswith("Глава")
-                    and not text.startswith("Подраздел")
-                ):
-                    # This is article content
-                    current_paragraphs.append(text)
+                if article_match:
+                    # Save previous article if exists
+                    if current_article and current_paragraphs:
+                        current_article["article_text"] = "\n\n".join(current_paragraphs)
+                        raw_articles.append(current_article)
 
-        # Don't forget the last article
-        if current_article and current_paragraphs:
-            current_article["article_text"] = "\n\n".join(current_paragraphs)
-            raw_articles.append(current_article)
+                    # Start new article (keep raw number for now)
+                    article_number = article_match.group(1)  # Preserve original format
+                    article_title = article_match.group(2).strip()
 
-        # NOW validate and correct article numbers with context
+                    current_article = {
+                        "article_number": article_number,  # Raw number
+                        "article_title": f"Статья {article_number}. {article_title}",
+                        "article_text": "",
+                    }
+                    current_paragraphs = []
+                    processed.add(element)
+
+                elif current_article and text:
+                    # Check if this is a numbered paragraph (starts with number and period)
+                    paragraph_match = re.match(r"^(\d+)\.\s*(.+)$", text)
+
+                    if paragraph_match:
+                        # This is a numbered paragraph
+                        current_paragraphs.append(text)
+                    else:
+                        # Use helper function to filter UI noise
+                        is_valid, filter_reason = self._is_valid_article_content(
+                            text, "kremlin", current_article.get("article_number")
+                        )
+                        if is_valid:
+                            current_paragraphs.append(text)
+
+        # Return completed articles and current state (don't flush yet - caller handles that)
         articles = []
-        for i, raw_article in enumerate(raw_articles):
+        for raw_article in raw_articles:
+            # Validate article number
             raw_number = raw_article["article_number"]
 
             # Get context for validation
-            prev_article = raw_articles[i - 1]["article_number"] if i > 0 else None
-            next_article = raw_articles[i + 1]["article_number"] if i < len(raw_articles) - 1 else None
+            prev_article = raw_articles[raw_articles.index(raw_article) - 1]["article_number"] if raw_articles.index(raw_article) > 0 else None
+            next_article = raw_articles[raw_articles.index(raw_article) + 1]["article_number"] if raw_articles.index(raw_article) < len(raw_articles) - 1 else None
 
             # Validate with hybrid approach
             corrected_number, warnings = validate_and_correct_article_number(
@@ -956,27 +1260,40 @@ class BaseCodeImporter:
             for warning in warnings:
                 logger.warning(f"[{code_id}] {warning}")
 
+            # Update title if article_number changed
+            article_title = raw_article["article_title"]
+            if corrected_number != raw_number:
+                # Replace old article number in title with corrected one
+                old_num_pattern = re.escape(raw_number)
+                article_title = re.sub(
+                    f"Статья\\s+{old_num_pattern}",
+                    f"Статья {corrected_number}",
+                    article_title,
+                    flags=re.IGNORECASE
+                )
+
             articles.append({
                 **raw_article,
-                "article_number": corrected_number,  # Use corrected number
+                "article_number": corrected_number,
+                "article_title": article_title,
             })
 
         return {
             "code_id": code_id,
             "articles": articles,
             "source": "kremlin.ru",
-        }
+        }, current_article, current_paragraphs
 
     def import_code(self, code_id: str, source: str = "auto") -> Dict[str, Any]:
         """
         Import a legal code from specified source.
 
         Automatically falls back to alternative sources if the primary is unavailable:
-        - kremlin (official) -> pravo (official) -> consultant (reference)
+        - kremlin (official) -> pravo (official) -> government (official)
 
         Args:
             code_id: Code identifier (e.g., 'TK_RF')
-            source: Source to import from ('auto', 'kremlin', 'pravo', 'consultant')
+            source: Source to import from ('auto', 'kremlin', 'pravo', 'government')
 
         Returns:
             Result dictionary
@@ -1096,7 +1413,9 @@ class BaseCodeImporter:
                                 for warning in count_warnings:
                                     logger.warning(f"[{code_id}] {warning}")
 
-                                saved = self.save_base_articles(code_id, articles, metadata)
+                                # Merge source into metadata
+                                save_metadata = {**metadata, "source": parsed.get("source", "kremlin.ru")}
+                                saved = self.save_base_articles(code_id, articles, save_metadata)
                                 return {
                                     "code_id": code_id,
                                     "status": "success",
@@ -1104,7 +1423,7 @@ class BaseCodeImporter:
                                     "articles_found": len(articles),
                                     "articles_processed": len(articles),
                                     "articles_saved": saved,
-                                    "source": "kremlin",
+                                    "source": parsed.get("source", "kremlin"),
                                 }
                             else:
                                 # Quality check failed, try next source
@@ -1125,14 +1444,16 @@ class BaseCodeImporter:
                                 for warning in count_warnings:
                                     logger.warning(f"[{code_id}] {warning}")
 
-                                saved = self.save_base_articles(code_id, articles, metadata)
+                                # Merge source into metadata
+                                save_metadata = {**metadata, "source": parsed.get("source", "pravo.gov.ru")}
+                                saved = self.save_base_articles(code_id, articles, save_metadata)
                                 return {
                                     "code_id": code_id,
                                     "status": "success",
                                     "articles_found": len(articles),
                                     "articles_processed": len(articles),
                                     "articles_saved": saved,
-                                    "source": "pravo",
+                                    "source": parsed.get("source", "pravo"),
                                 }
                             else:
                                 # Quality check failed, try next source
@@ -1153,7 +1474,9 @@ class BaseCodeImporter:
                                 for warning in count_warnings:
                                     logger.warning(f"[{code_id}] {warning}")
 
-                                saved = self.save_base_articles(code_id, articles, metadata)
+                                # Merge source into metadata
+                                save_metadata = {**metadata, "source": parsed.get("source", "government.ru")}
+                                saved = self.save_base_articles(code_id, articles, save_metadata)
                                 return {
                                     "code_id": code_id,
                                     "status": "success",
@@ -1161,7 +1484,7 @@ class BaseCodeImporter:
                                     "articles_found": len(articles),
                                     "articles_processed": len(articles),
                                     "articles_saved": saved,
-                                    "source": "government",
+                                    "source": parsed.get("source", "government"),
                                 }
                             else:
                                 # Quality check failed, try next source
@@ -1211,14 +1534,15 @@ class BaseCodeImporter:
                         parsed = self.parse_pravo_html(html_content, code_id)
                         articles = parsed.get("articles", [])
                         if articles:
-                            saved = self.save_base_articles(code_id, articles, metadata)
+                            save_metadata = {**metadata, "source": parsed.get("source", "pravo.gov.ru")}
+                            saved = self.save_base_articles(code_id, articles, save_metadata)
                             return {
                                 "code_id": code_id,
                                 "status": "success",
                                 "articles_found": len(articles),
                                 "articles_processed": len(articles),
                                 "articles_saved": saved,
-                                "source": "pravo",
+                                "source": parsed.get("source", "pravo"),
                             }
 
                 elif src_name == "kremlin":
@@ -1230,14 +1554,15 @@ class BaseCodeImporter:
                     parsed = self.parse_constitution(response.text, code_id)
                     articles = parsed.get("articles", [])
                     if articles:
-                        saved = self.save_base_articles(code_id, articles, metadata)
+                        save_metadata = {**metadata, "source": parsed.get("source", "kremlin.ru")}
+                        saved = self.save_base_articles(code_id, articles, save_metadata)
                         return {
                             "code_id": code_id,
                             "status": "success",
                             "articles_found": len(articles),
                             "articles_processed": len(articles),
                             "articles_saved": saved,
-                            "source": "kremlin",
+                            "source": parsed.get("source", "kremlin"),
                         }
 
             except Exception as e:
@@ -1288,10 +1613,27 @@ class BaseCodeImporter:
 
         raw_articles = []
 
+        # Track processed elements to avoid processing nested elements multiple times
+        processed = set()
+
         # Pravo.gov.ru uses article headers like "Статья 1. Title"
         # Look for article patterns - collect raw first
         for element in soup.find_all(["h3", "h4", "p", "div"]):
-            text = element.get_text(strip=True)
+            # Skip if this element or any of its parents have been processed
+            should_skip = False
+            for parent in element.parents:
+                if parent in processed:
+                    should_skip = True
+                    break
+            if should_skip:
+                continue
+
+            # Get text - use .string for elements with only direct text
+            if element.string and element.string.strip():
+                text = element.string.strip()
+            else:
+                text = element.get_text(strip=True)
+
             article_match = re.match(
                 r"^Статья\s+(\d+(?:[\.\-]\d+)*)\.?\s*(.+)$", text, re.IGNORECASE
             )
@@ -1308,8 +1650,13 @@ class BaseCodeImporter:
                     # Stop at next article header
                     if re.match(r"^Статья\s+\d+", para_text):
                         break
-                    if para_text and len(para_text) > 5:
-                        content_paragraphs.append(para_text)
+                    if para_text:
+                        # Use helper function to filter UI noise
+                        is_valid, filter_reason = self._is_valid_article_content(
+                            para_text, "pravo", article_number
+                        )
+                        if is_valid:
+                            content_paragraphs.append(para_text)
                     current_element = current_element.find_next_sibling(["p", "div"])
 
                 raw_articles.append(
@@ -1319,6 +1666,7 @@ class BaseCodeImporter:
                         "article_text": "\n\n".join(content_paragraphs),
                     }
                 )
+                processed.add(element)
 
         logger.info(f"Found {len(raw_articles)} raw articles from pravo.gov.ru")
 
@@ -1339,9 +1687,22 @@ class BaseCodeImporter:
             for warning in warnings:
                 logger.warning(f"[{code_id}] {warning}")
 
+            # Update title if article_number changed
+            article_title = raw_article["article_title"]
+            if corrected_number != raw_number:
+                # Replace old article number in title with corrected one
+                old_num_pattern = re.escape(raw_number)
+                article_title = re.sub(
+                    f"Статья\\s+{old_num_pattern}",
+                    f"Статья {corrected_number}",
+                    article_title,
+                    flags=re.IGNORECASE
+                )
+
             articles.append({
                 **raw_article,
-                "article_number": corrected_number,  # Use corrected number
+                "article_number": corrected_number,
+                "article_title": article_title,
             })
 
         logger.info(f"Validated to {len(articles)} articles from pravo.gov.ru")
@@ -1387,9 +1748,6 @@ class BaseCodeImporter:
         """
         all_pages = []
         page_num = 1
-        min_pages_to_check = 3  # Check at least 3 pages before giving up
-        consecutive_empty_pages = 0
-        max_consecutive_empty = 2  # Stop after 2 consecutive empty pages
 
         while True:
             page_url = f"{url}?page={page_num}" if page_num > 1 else url
@@ -1399,36 +1757,17 @@ class BaseCodeImporter:
                 response.raise_for_status()
                 response.encoding = "utf-8"
 
-                # Check if this page has articles (look for article patterns in text)
-                soup = BeautifulSoup(response.text, "html.parser")
-                text = soup.get_text()
-                has_articles = bool(re.search(r"Статья\s+\d+", text))
-
-                if has_articles:
-                    all_pages.append(response.text)
-                    consecutive_empty_pages = 0
-                else:
-                    consecutive_empty_pages += 1
-                    logger.info(f"Page {page_num} has no articles (empty count: {consecutive_empty_pages})")
-
-                    # Stop if we've checked minimum pages AND found consecutive empty pages
-                    if page_num >= min_pages_to_check and consecutive_empty_pages >= max_consecutive_empty:
-                        logger.info(f"Stopping pagination after {consecutive_empty_pages} consecutive empty pages")
-                        break
-
-                    # Also stop if we've checked way too many pages without finding anything
-                    if page_num >= 10 and not all_pages:
-                        logger.warning(f"Checked {page_num} pages with no articles found, stopping")
-                        break
+                # Always save the page - continuation content may exist without "Статья" header
+                all_pages.append(response.text)
 
                 page_num += 1
 
                 # Sleep to avoid rate limiting (government.ru is sensitive)
                 time.sleep(config.import_request_delay)
 
-                # Safety limit to prevent infinite loops
-                if page_num > 100:
-                    logger.warning(f"Reached page limit (100), stopping pagination")
+                # Safety limit to prevent infinite loops (now configurable)
+                if page_num > config.import_max_pages:
+                    logger.warning(f"Reached page limit ({config.import_max_pages}), stopping pagination")
                     break
 
             except Exception as e:
@@ -1475,6 +1814,7 @@ class BaseCodeImporter:
         Parse a single government.ru HTML page to extract articles.
 
         Collects raw articles first, then validates article numbers with context.
+        Only processes content within <div class="reader_article_body"> elements.
 
         Args:
             html: HTML content
@@ -1483,43 +1823,78 @@ class BaseCodeImporter:
         Returns:
             Dictionary with articles list
         """
-        # Similar structure to Kremlin parser
         soup = BeautifulSoup(html, "html.parser")
 
         raw_articles = []
         current_article = None
         current_paragraphs = []
 
-        for element in soup.find_all(["h3", "h4", "p", "div"]):
-            text = element.get_text(strip=True)
+        # Track processed elements to avoid processing nested elements multiple times
+        processed = set()
 
-            article_match = re.match(
-                r"^Статья\s+(\d+(?:[\.\-]\d+)*)\.?\s*(.+)$", text, re.IGNORECASE
-            )
+        # CRITICAL: government.ru has content in <div class="reader_article_body">
+        # We must ONLY process elements within these divs to avoid picking up UI noise
+        article_body_divs = soup.find_all("div", class_="reader_article_body")
 
-            if article_match:
-                # Save previous article
-                if current_article and current_paragraphs:
-                    current_article["article_text"] = "\n\n".join(current_paragraphs)
-                    raw_articles.append(current_article)
+        if not article_body_divs:
+            logger.warning(f"[{code_id}] No reader_article_body divs found in HTML")
+            return {
+                "code_id": code_id,
+                "articles": [],
+                "source": "government.ru",
+            }
 
-                # Start new article (keep raw number for now)
-                article_number = article_match.group(1)  # Preserve original format
-                article_title = text
+        # Process elements within each reader_article_body div
+        for article_body in article_body_divs:
+            for element in article_body.find_all(["h3", "h4", "p", "div"]):
+                # Skip if this element or any of its parents have been processed
+                should_skip = False
+                for parent in element.parents:
+                    if parent in processed:
+                        should_skip = True
+                        break
+                if should_skip:
+                    continue
 
-                current_article = {
-                    "article_number": article_number,  # Raw number
-                    "article_title": article_title,
-                    "article_text": "",
-                }
-                current_paragraphs = []
+                # Get text - use .string for elements with only direct text
+                if element.string and element.string.strip():
+                    text = element.string.strip()
+                else:
+                    text = element.get_text(strip=True)
 
-            elif current_article and text:
-                paragraph_match = re.match(r"^(\d+)\.\s*(.+)$", text)
-                if paragraph_match:
-                    current_paragraphs.append(text)
-                elif text and not text.startswith("Раздел") and not text.startswith("Глава"):
-                    current_paragraphs.append(text)
+                article_match = re.match(
+                    r"^Статья\s+(\d+(?:[\.\-]\d+)*)\.?\s*(.+)$", text, re.IGNORECASE
+                )
+
+                if article_match:
+                    # Save previous article
+                    if current_article and current_paragraphs:
+                        current_article["article_text"] = "\n\n".join(current_paragraphs)
+                        raw_articles.append(current_article)
+
+                    # Start new article (keep raw number for now)
+                    article_number = article_match.group(1)  # Preserve original format
+                    article_title = text
+
+                    current_article = {
+                        "article_number": article_number,  # Raw number
+                        "article_title": article_title,
+                        "article_text": "",
+                    }
+                    current_paragraphs = []
+                    processed.add(element)
+
+                elif current_article and text:
+                    paragraph_match = re.match(r"^(\d+)\.\s*(.+)$", text)
+                    if paragraph_match:
+                        current_paragraphs.append(text)
+                    else:
+                        # Use helper function to filter UI noise
+                        is_valid, filter_reason = self._is_valid_article_content(
+                            text, "government", current_article.get("article_number")
+                        )
+                        if is_valid:
+                            current_paragraphs.append(text)
 
         # Don't forget the last article
         if current_article and current_paragraphs:
@@ -1543,9 +1918,22 @@ class BaseCodeImporter:
             for warning in warnings:
                 logger.warning(f"[{code_id}] {warning}")
 
+            # Update title if article_number changed
+            article_title = raw_article["article_title"]
+            if corrected_number != raw_number:
+                # Replace old article number in title with corrected one
+                old_num_pattern = re.escape(raw_number)
+                article_title = re.sub(
+                    f"Статья\\s+{old_num_pattern}",
+                    f"Статья {corrected_number}",
+                    article_title,
+                    flags=re.IGNORECASE
+                )
+
             articles.append({
                 **raw_article,
-                "article_number": corrected_number,  # Use corrected number
+                "article_number": corrected_number,
+                "article_title": article_title,
             })
 
         return {
@@ -1692,67 +2080,85 @@ class BaseCodeImporter:
             logger.error(f"Failed to delete existing articles for {code_id}: {e}")
             return 0
 
-        # Step 2: Insert fresh articles
-        for article in articles:
-            try:
-                with get_db_connection() as conn:
-                    insert_query = text(
-                        """
-                        INSERT INTO code_article_versions (
-                            code_id,
-                            article_number,
-                            version_date,
-                            article_text,
-                            article_title,
-                            amendment_eo_number,
-                            amendment_date,
-                            is_current,
-                            is_repealed,
-                            text_hash
-                        ) VALUES (
-                            :code_id,
-                            :article_number,
-                            :version_date,
-                            :article_text,
-                            :article_title,
-                            :amendment_eo_number,
-                            :amendment_date,
-                            :is_current,
-                            :is_repealed,
-                            :text_hash
-                        )
-                        ON CONFLICT (code_id, article_number, version_date)
-                        DO UPDATE SET
-                            article_text = EXCLUDED.article_text,
-                            article_title = EXCLUDED.article_title,
-                            amendment_eo_number = EXCLUDED.amendment_eo_number,
-                            is_current = EXCLUDED.is_current,
-                            is_repealed = EXCLUDED.is_repealed,
-                            text_hash = EXCLUDED.text_hash
+        # Step 2: Batch insert all articles in a single transaction
+        try:
+            with get_db_connection() as conn:
+                insert_query = text(
                     """
+                    INSERT INTO code_article_versions (
+                        code_id,
+                        article_number,
+                        version_date,
+                        article_text,
+                        article_title,
+                        amendment_eo_number,
+                        amendment_date,
+                        is_current,
+                        is_repealed,
+                        text_hash,
+                        source
+                    ) VALUES (
+                        :code_id,
+                        :article_number,
+                        :version_date,
+                        :article_text,
+                        :article_title,
+                        :amendment_eo_number,
+                        :amendment_date,
+                        :is_current,
+                        :is_repealed,
+                        :text_hash,
+                        :source
                     )
+                    ON CONFLICT (code_id, article_number, version_date)
+                    DO UPDATE SET
+                        article_text = EXCLUDED.article_text,
+                        article_title = EXCLUDED.article_title,
+                        amendment_eo_number = EXCLUDED.amendment_eo_number,
+                        is_current = EXCLUDED.is_current,
+                        is_repealed = EXCLUDED.is_repealed,
+                        text_hash = EXCLUDED.text_hash,
+                        source = EXCLUDED.source
+                """
+                )
 
-                    conn.execute(
-                        insert_query,
-                        {
-                            "code_id": code_id,
-                            "article_number": article["article_number"],
-                            "version_date": original_date,
-                            "article_text": article["article_text"],
-                            "article_title": article["article_title"],
-                            "amendment_eo_number": metadata.get("eo_number"),
-                            "amendment_date": original_date,
-                            "is_current": True,
-                            "is_repealed": False,
-                            "text_hash": "",
-                        },
-                    )
-                    conn.commit()
-                    saved += 1
-                    logger.debug(f"Saved article {article['article_number']}")
+                # Prepare all parameters for batch insert
+                params_list = []
+                for article in articles:
+                    params = {
+                        "code_id": code_id,
+                        "article_number": article["article_number"],
+                        "version_date": original_date,
+                        "article_text": article["article_text"],
+                        "article_title": article["article_title"],
+                        "amendment_eo_number": metadata.get("eo_number"),
+                        "amendment_date": original_date,
+                        "is_current": True,
+                        "is_repealed": False,
+                        "text_hash": "",
+                        "source": metadata.get("source", "unknown"),
+                    }
+                    params_list.append(params)
 
-            except Exception as e:
-                logger.error(f"Failed to save article {article.get('article_number')}: {e}")
+                # Single batch insert + commit
+                conn.execute(insert_query, params_list)
+                conn.commit()
+
+                # Get actual unique article count (UPSERT may have overwritten duplicates)
+                count_query = text(
+                    """
+                    SELECT COUNT(DISTINCT article_number) as unique_count
+                    FROM code_article_versions
+                    WHERE code_id = :code_id
+                    """
+                )
+                result = conn.execute(count_query, {"code_id": code_id})
+                saved = result.scalar()
+                logger.debug(f"Saved {len(params_list)} articles (UPSERT operations), {saved} unique article numbers")
+
+        except Exception as e:
+            logger.error(f"Failed to save articles for {code_id}: {e}")
+            return 0
 
         return saved
 
