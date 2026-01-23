@@ -427,6 +427,18 @@ poetry run python scripts/sync/content_sync.py --recreate-collection
 
 ### Backup Database
 
+The project includes comprehensive backup/restore scripts for PostgreSQL and Qdrant:
+
+```bash
+cd docker
+./backup.sh                 # Create full backup (PostgreSQL + Qdrant)
+./restore.sh law7_backup_YYYYMMDD_HHMMSS    # Restore from backup
+./check-backup.sh backups/law7_backup_*.tar.gz   # Verify backup integrity
+```
+
+**See [docs/BACKUP_RESTORE.md](BACKUP_RESTORE.md) for complete backup/restore documentation.**
+
+Quick manual backup (PostgreSQL only):
 ```bash
 # Backup PostgreSQL
 docker exec law7-postgres pg_dump -U law7 law7 > backup.sql
@@ -455,3 +467,6 @@ docker exec -i law7-postgres psql -U law7 law7 < backup.sql
 | `scripts/parser/html_parser.py` | Parse content from API metadata |
 | `scripts/indexer/embeddings.py` | Generate embeddings with deepvk/USER2-base |
 | `scripts/indexer/qdrant_indexer.py` | Store embeddings in Qdrant |
+| `docker/backup.sh` | Create database backup (PostgreSQL + Qdrant) |
+| `docker/restore.sh` | Restore database from backup |
+| `docker/check-backup.sh` | Verify backup integrity |

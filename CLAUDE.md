@@ -44,6 +44,16 @@ docker-compose down                   # Stop services
 
 **Note**: Non-default ports are used to avoid conflicts with other containers: PostgreSQL **5433**, Redis **6380**, Qdrant **6333**.
 
+### Database Backup and Restore
+```bash
+cd docker
+./backup.sh                 # Create database backup (PostgreSQL + Qdrant)
+./restore.sh law7_backup_YYYYMMDD_HHMMSS    # Restore from backup
+./check-backup.sh backups/law7_backup_*.tar.gz   # Verify backup integrity
+```
+
+**See [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md) for complete backup/restore documentation.**
+
 ## Installation
 
 ### Prerequisites

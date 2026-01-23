@@ -32,6 +32,13 @@ Thumbs.db
 postgres_data/
 qdrant_data/
 
+# Backups
+docker/backups/
+backups/
+*.backup
+*.dump
+*.snapshot
+
 # Logs
 *.log
 
