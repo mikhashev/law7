@@ -41,6 +41,10 @@ BACKOFF_MAX_DELAY = int(os.getenv("BACKOFF_MAX_DELAY", "60"))  # 60 seconds
 # Recommended: 1-3 seconds for testing, 10-30 seconds for production
 IMPORT_REQUEST_DELAY = int(os.getenv("IMPORT_REQUEST_DELAY", "2"))
 
+# Delay for amendment content fetching (in seconds)
+# Amendments need longer delays to avoid rate limiting from pravo.gov.ru
+AMENDMENT_IMPORT_REQUEST_DELAY = int(os.getenv("AMENDMENT_IMPORT_REQUEST_DELAY", "10"))
+
 # Timeout for web requests (in seconds)
 IMPORT_REQUEST_TIMEOUT = int(os.getenv("IMPORT_REQUEST_TIMEOUT", "30"))
 
@@ -66,6 +70,9 @@ QDRANT_VECTOR_SIZE = int(os.getenv("QDRANT_VECTOR_SIZE", "1024"))
 # Note: pravo.gov.ru API has max pageSize of 30 for Documents endpoint
 SYNC_BATCH_SIZE = int(os.getenv("SYNC_BATCH_SIZE", "30"))
 DAILY_SYNC_TIME = os.getenv("DAILY_SYNC_TIME", "02:00")
+
+# Batch size for amendment content database updates
+AMENDMENT_BATCH_SIZE = int(os.getenv("AMENDMENT_BATCH_SIZE", "20"))
 
 # Initial sync settings
 INITIAL_SYNC_START_DATE = os.getenv("INITIAL_SYNC_START_DATE", "2020-01-01")

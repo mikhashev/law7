@@ -12,11 +12,13 @@ Usage:
 import argparse
 import logging
 import sys
+import time
 from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy import text
 
+from scripts.core.config import AMENDMENT_BATCH_SIZE, AMENDMENT_IMPORT_REQUEST_DELAY
 from scripts.core.db import get_db_connection
 from scripts.parser.html_scraper import AmendmentHTMLScraper, scrape_amendment
 
@@ -159,6 +161,68 @@ def update_amendment_content(document_id: str, full_text: str, effective_date: O
         return False
 
 
+def batch_update_amendment_content(updates: List[dict]) -> int:
+    """
+    Update multiple amendments in a single database transaction.
+
+    Args:
+        updates: List of dicts with document_id, full_text, and optional effective_date
+
+    Returns:
+        Number of successfully updated amendments
+    """
+    if not updates:
+        return 0
+
+    try:
+        with get_db_connection() as conn:
+            successful = 0
+            for update in updates:
+                document_id = update['document_id']
+                full_text = update['full_text']
+                effective_date = update.get('effective_date')
+
+                # Check if content exists
+                check_query = text("""
+                    SELECT id FROM document_content WHERE document_id = :doc_id
+                """)
+                existing = conn.execute(check_query, {'doc_id': document_id}).fetchone()
+
+                if existing:
+                    # Update existing content
+                    update_query = text("""
+                        UPDATE document_content
+                        SET full_text = :full_text,
+                            updated_at = NOW()
+                        WHERE document_id = :doc_id
+                    """)
+                    conn.execute(update_query, {
+                        'doc_id': document_id,
+                        'full_text': full_text
+                    })
+                else:
+                    # Insert new content
+                    insert_query = text("""
+                        INSERT INTO document_content (id, document_id, full_text, created_at, updated_at)
+                        VALUES (gen_random_uuid(), :doc_id, :full_text, NOW(), NOW())
+                    """)
+                    conn.execute(insert_query, {
+                        'doc_id': document_id,
+                        'full_text': full_text
+                    })
+
+                successful += 1
+
+            # Single commit for all updates
+            conn.commit()
+            logger.debug(f"Batch updated {successful} amendments")
+            return successful
+
+    except Exception as e:
+        logger.error(f"Failed to batch update amendments: {e}")
+        return 0
+
+
 def fetch_amendment(eo_number: str, document_id: str, name: str) -> dict:
     """
     Fetch full content for a single amendment.
@@ -219,6 +283,9 @@ def fetch_batch(amendments: List[tuple]) -> dict:
     """
     Fetch full content for a batch of amendments.
 
+    Fetches content one by one (with rate limiting delays) but saves to database
+    in batches for better performance.
+
     Args:
         amendments: List of (document_id, eo_number, name) tuples
 
@@ -235,18 +302,79 @@ def fetch_batch(amendments: List[tuple]) -> dict:
     }
 
     logger.info(f"Fetching {len(amendments)} amendments...")
+    logger.info(f"Rate limit delay: {AMENDMENT_IMPORT_REQUEST_DELAY} seconds between requests")
+    logger.info(f"DB batch size: {AMENDMENT_BATCH_SIZE}")
 
-    for document_id, eo_number, name in amendments:
-        result = fetch_amendment(eo_number, document_id, name)
+    # Collect updates for batched database operations
+    pending_updates = []
+
+    for i, (document_id, eo_number, name) in enumerate(amendments):
+        logger.info(f"Fetching {eo_number}: {name}")
+
+        try:
+            # Fetch content (without DB save)
+            scrape_result = scrape_amendment(eo_number)
+
+            if not scrape_result.get('full_text'):
+                result = {
+                    'eo_number': eo_number,
+                    'status': 'failed',
+                    'error': 'No content returned'
+                }
+            else:
+                # Collect for batch update
+                pending_updates.append({
+                    'document_id': document_id,
+                    'full_text': scrape_result['full_text'],
+                    'effective_date': scrape_result.get('effective_date')
+                })
+
+                result = {
+                    'eo_number': eo_number,
+                    'status': 'pending_batch',
+                    'text_length': len(scrape_result['full_text']),
+                    'articles_found': len(scrape_result.get('articles_affected', [])),
+                    'changes_found': len(scrape_result.get('changes', [])),
+                }
+
+        except Exception as e:
+            logger.error(f"Error fetching {eo_number}: {e}")
+            result = {
+                'eo_number': eo_number,
+                'status': 'error',
+                'error': str(e)
+            }
 
         results['details'].append(result)
 
-        if result['status'] == 'success':
-            results['success'] += 1
-            results['total_chars'] += result.get('text_length', 0)
-        elif result['status'] == 'failed':
+        # Add delay between requests (except after last one)
+        if i < len(amendments) - 1:
+            logger.debug(f"Waiting {AMENDMENT_IMPORT_REQUEST_DELAY}s before next request...")
+            time.sleep(AMENDMENT_IMPORT_REQUEST_DELAY)
+
+        # Flush batch when size reached or at end
+        if len(pending_updates) >= AMENDMENT_BATCH_SIZE or i == len(amendments) - 1:
+            if pending_updates:
+                logger.info(f"Saving batch of {len(pending_updates)} amendments to database...")
+                saved_count = batch_update_amendment_content(pending_updates)
+
+                # Update results based on actual saves
+                for detail in results['details']:
+                    if detail['status'] == 'pending_batch':
+                        detail['status'] = 'success' if saved_count > 0 else 'failed'
+                        if detail['status'] == 'success':
+                            results['success'] += 1
+                            results['total_chars'] += detail.get('text_length', 0)
+                        else:
+                            results['failed'] += 1
+
+                pending_updates = []
+
+    # Count final failures and errors
+    for detail in results['details']:
+        if detail['status'] == 'failed':
             results['failed'] += 1
-        else:
+        elif detail['status'] == 'error':
             results['error'] += 1
 
     return results
