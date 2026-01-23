@@ -1523,6 +1523,24 @@ class BaseCodeImporter:
                     if paragraph_match:
                         para_num = int(paragraph_match.group(1))
 
+                        # FIRST: Check if this is a subsection title with amendment note
+                        # Amendment pattern takes precedence over sequential validation
+                        # This catches ALL three cases regardless of number:
+                        # - Case 1: "1. ..." after "4." (para_num < expected)
+                        # - Case 2: "4. ..." after "4." (para_num < expected, same as previous)
+                        # - Case 3: "5. ..." when expected=5 (para_num == expected)
+                        if re.search(
+                            r'\(.*(?:дополнение|редакция|редакции|утратил|Наименование|Дополнение).+\)',
+                            text,
+                            re.IGNORECASE
+                        ):
+                            logger.debug(
+                                f"[kremlin] Filtered subsection title with amendment: '{text[:50]}...'"
+                            )
+                            processed.add(element)
+                            continue
+
+                        # THEN: Do sequential validation
                         # Check if this is the expected next number or a valid sub-item
                         if para_num < self._expected_paragraph_num:
                             # Number is less than expected - could be duplicate or reordering
@@ -1687,6 +1705,24 @@ class BaseCodeImporter:
                     if paragraph_match:
                         para_num = int(paragraph_match.group(1))
 
+                        # FIRST: Check if this is a subsection title with amendment note
+                        # Amendment pattern takes precedence over sequential validation
+                        # This catches ALL three cases regardless of number:
+                        # - Case 1: "1. ..." after "4." (para_num < expected)
+                        # - Case 2: "4. ..." after "4." (para_num < expected, same as previous)
+                        # - Case 3: "5. ..." when expected=5 (para_num == expected)
+                        if re.search(
+                            r'\(.*(?:дополнение|редакция|редакции|утратил|Наименование|Дополнение).+\)',
+                            text,
+                            re.IGNORECASE
+                        ):
+                            logger.debug(
+                                f"[kremlin] Filtered subsection title with amendment: '{text[:50]}...'"
+                            )
+                            processed.add(element)
+                            continue
+
+                        # THEN: Do sequential validation
                         # Check if this is the expected next number or a valid sub-item
                         if para_num < self._expected_paragraph_num:
                             # Number is less than expected - could be duplicate or reordering
