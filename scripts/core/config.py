@@ -48,6 +48,11 @@ IMPORT_REQUEST_TIMEOUT = int(os.getenv("IMPORT_REQUEST_TIMEOUT", "30"))
 # Safety limit to prevent infinite loops if site doesn't return 404
 IMPORT_MAX_PAGES = int(os.getenv("IMPORT_MAX_PAGES", "500"))
 
+# Use Selenium WebDriver for full document content extraction (enabled by default)
+# This allows fetching documents that load content dynamically via JavaScript
+# Set to false to use only API metadata (faster, but incomplete content)
+USE_SELENIUM = os.getenv("USE_SELENIUM", "true").lower() == "true"
+
 # =============================================================================
 # Qdrant Configuration
 # =============================================================================

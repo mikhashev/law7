@@ -56,11 +56,13 @@ class ContentSyncService:
         batch_size: int = SYNC_BATCH_SIZE,
         embedding_batch_size: int = EMBEDDING_BATCH_SIZE,
         skip_embeddings: bool = False,
+        skip_selenium: bool = False,
     ):
         """Initialize the content sync service."""
         self.batch_size = batch_size
         self.embedding_batch_size = embedding_batch_size
         self.skip_embeddings = skip_embeddings
+        self.use_selenium = not skip_selenium
 
         self.content_parser = PravoContentParser()
         log_memory("Before loading model")
@@ -221,7 +223,7 @@ class ContentSyncService:
 
             # Parse content (if not skipped)
             if not skip_content:
-                content = self.content_parser.parse_document(doc_data)
+                content = self.content_parser.parse_document(doc_data, use_selenium=self.use_selenium)
                 if content and content.get("full_text"):
                     self._upsert_content(doc_id, content)
                     content_parsed += 1
@@ -307,10 +309,14 @@ def main():
     parser.add_argument("--limit", type=int, help="Limit number of documents (for testing)")
     parser.add_argument("--skip-content", action="store_true", help="Skip content parsing")
     parser.add_argument("--skip-embeddings", action="store_true", help="Skip embedding generation")
+    parser.add_argument("--skip-selenium", action="store_true", help="Skip Selenium content fetching (use API metadata only)")
     parser.add_argument("--recreate-collection", action="store_true", help="Recreate Qdrant collection")
     args = parser.parse_args()
 
-    service = ContentSyncService(skip_embeddings=args.skip_embeddings)
+    service = ContentSyncService(
+        skip_embeddings=args.skip_embeddings,
+        skip_selenium=args.skip_selenium,
+    )
     stats = service.run(
         limit=args.limit,
         skip_content=args.skip_content,

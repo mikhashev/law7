@@ -29,6 +29,9 @@ torch = [
 name = "pytorch"
 url = "https://download.pytorch.org/whl/cu124"
 
+# selenium and webdriver-manager are installed via pip to avoid poetry source issues
+# run: poetry run pip install selenium webdriver-manager
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
 black = "^24.10.0"

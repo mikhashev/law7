@@ -10,14 +10,31 @@ Based on ygbis patterns for error handling and logging.
 """
 import hashlib
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 import requests
+from bs4 import BeautifulSoup
 
 from core.config import PRAVO_API_TIMEOUT
 from utils.retry import fetch_with_retry
 
 logger = logging.getLogger(__name__)
+
+# Selenium imports (lazy-loaded to avoid unnecessary imports)
+SELENIUM_AVAILABLE = False
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.chrome.options import Options as ChromeOptions
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.common.by import By
+    from webdriver_manager.chrome import ChromeDriverManager
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+    logger.info("Selenium not available, will skip Selenium-based content fetching")
 
 
 class PravoContentParser:
@@ -220,6 +237,123 @@ class PravoContentParser:
             logger.error(f"Failed to fetch PDF for {eo_number}: {e}")
             return None
 
+    def fetch_with_selenium(self, eo_number: str) -> Optional[str]:
+        """
+        Fetch document content using Selenium WebDriver to execute JavaScript.
+
+        This follows the pattern used in ygbis project for iframe content extraction:
+        1. Navigate to page
+        2. Wait for iframe
+        3. Switch to iframe
+        4. Wait for content to load
+        5. Extract page source after JavaScript execution
+
+        Pattern source: ygbis/services/deep_parser/worker.py (lines 200-224)
+
+        Args:
+            eo_number: Document eoNumber (e.g., '0001202405140009')
+
+        Returns:
+            Extracted document text, or None if failed
+
+        Example:
+            >>> parser = PravoContentParser()
+            >>> text = parser.fetch_with_selenium('0001202405140009')
+            >>> print(len(text))
+            1250
+        """
+        if not SELENIUM_AVAILABLE:
+            logger.warning("Selenium not available, skipping Selenium-based content fetching")
+            return None
+
+        driver = None
+
+        try:
+            # Setup Chrome options
+            options = ChromeOptions()
+            options.add_argument('--headless=new')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-software-rasterizer')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-background-network-true')
+            options.add_argument('--disable-default-apps')
+            options.add_argument('--disable-sync')
+            options.add_argument('--metrics-recording-only')
+            options.add_argument('--mute-audio')
+            options.add_argument('--no-first-run')
+            options.add_argument('--safebrowsing-disable-auto-update')
+            options.add_argument('--disable-infobars')
+            options.add_argument('--disable-notifications')
+            options.add_argument('user-agent=Law7/0.1.0')
+
+            # Initialize driver
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
+            driver.set_page_load_timeout(30)
+
+            # Navigate to page
+            url = f"http://actual.pravo.gov.ru/content/content.html#pnum={eo_number}"
+            logger.debug(f"Navigating to: {url}")
+            driver.get(url)
+
+            # Wait for iframe to be present
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "iframe.doc-body"))
+            )
+
+            # Switch to iframe
+            iframe = driver.find_element(By.CSS_SELECTOR, "iframe.doc-body")
+            driver.switch_to.frame(iframe)
+
+            # Wait for content to load (JavaScript execution)
+            time.sleep(5)
+
+            # Get page source after JavaScript execution
+            page_source = driver.page_source
+
+            if not page_source or len(page_source) < 100:
+                logger.warning(f"Iframe content too short for {eo_number}")
+                return None
+
+            # Parse with BeautifulSoup
+            soup = BeautifulSoup(page_source, 'html.parser')
+
+            # Remove scripts and styles
+            for element in soup(['script', 'style', 'noscript']):
+                element.decompose()
+
+            # Extract text
+            text = soup.get_text(separator='\n', strip=True)
+
+            # Fix encoding: The iframe returns Windows-1251 bytes incorrectly decoded as UTF-8
+            # Reverse by encoding as Latin-1 (preserving byte values), then decode as Windows-1251
+            try:
+                text = text.encode('latin-1').decode('windows-1251')
+            except (UnicodeEncodeError, UnicodeDecodeError):
+                # If the fix fails, use original text (might already be correct)
+                pass
+
+            # Clean up extra whitespace while preserving structure
+            lines = [line.strip() for line in text.split('\n') if line.strip()]
+            text = '\n'.join(lines)
+
+            logger.info(f"Extracted {len(text)} chars from {eo_number} using Selenium")
+            return text
+
+        except Exception as e:
+            logger.warning(f"Selenium fetch failed for {eo_number}: {e}")
+            return None
+
+        finally:
+            # Cleanup driver
+            if driver:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+
     def _clean_html_text(self, text: str) -> str:
         """Remove HTML tags from text."""
         import re
@@ -241,14 +375,16 @@ class PravoContentParser:
     def parse_document(
         self,
         doc_data: Dict[str, Any],
+        use_selenium: bool = True,
         use_ocr_fallback: bool = False,
     ) -> Dict[str, Any]:
         """
-        Parse document content from API data, with optional OCR fallback.
+        Parse document content from API data, with optional Selenium fetching and OCR fallback.
 
         Args:
             doc_data: Document data from API response
-            use_ocr_fallback: If True, try OCR if API metadata is insufficient
+            use_selenium: If True, try Selenium WebDriver for full document text
+            use_ocr_fallback: If True, try OCR if content is still insufficient
 
         Returns:
             Dictionary with parsed content
@@ -259,12 +395,26 @@ class PravoContentParser:
             >>> result = parser.parse_document(doc_data)
             >>> print(result['full_text'])
         """
-        # First, try API metadata
+        # First, get API metadata
         result = self.parse_from_api_data(doc_data)
 
-        # If text is too short and OCR is enabled, try OCR
+        # Try Selenium for full content
+        if use_selenium and result.get("eo_number"):
+            content = self.fetch_with_selenium(result["eo_number"])
+            if content and len(content) > 100:
+                result["full_text"] = content
+                result["raw_text"] = content
+                result["text_hash"] = self._generate_text_hash(content)
+                result["selenium_used"] = True
+                result["ocr_used"] = False
+                return result
+
+        # If Selenium was skipped or failed, check OCR fallback
+        result["selenium_used"] = False
+
+        # If text is still too short and OCR is enabled, try OCR
         if use_ocr_fallback and len(result["full_text"]) < 100 and self.use_ocr:
-            logger.info(f"API text too short for {result['eo_number']}, trying OCR")
+            logger.info(f"Content too short for {result['eo_number']}, trying OCR")
             ocr_result = self.parse_with_ocr(result["eo_number"])
             if ocr_result and len(ocr_result["full_text"]) > len(result["full_text"]):
                 result["full_text"] = ocr_result["full_text"]
@@ -291,6 +441,7 @@ class PravoContentParser:
 # Convenience function for quick usage
 def parse_pravo_document(
     doc_data: Dict[str, Any],
+    use_selenium: bool = True,
     use_ocr: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -298,6 +449,7 @@ def parse_pravo_document(
 
     Args:
         doc_data: Document data from API response
+        use_selenium: Enable Selenium WebDriver for full document text
         use_ocr: Enable OCR for scanned PDFs
 
     Returns:
@@ -314,4 +466,4 @@ def parse_pravo_document(
         >>> print(result['full_text'])
     """
     with PravoContentParser(use_ocr=use_ocr) as parser:
-        return parser.parse_document(doc_data)
+        return parser.parse_document(doc_data, use_selenium=use_selenium)
