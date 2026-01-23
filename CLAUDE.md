@@ -197,6 +197,41 @@ Environment variables (see `.env.example`):
 - **Commits**: Conventional Commits format
 - **Tests**: Located in `/scripts`, use pytest
 
+## AI-Assisted Development
+
+This project is designed for **AI-First Development** - we maximize use of AI assistants while maintaining cognitive enhancement principles.
+
+> **Core Philosophy**: Law7 is built around AI-human cognitive partnership - using AI to enhance, not replace, our thinking and development capabilities.
+
+### Critical Workflow Rules
+
+**Before making any changes:**
+```bash
+git status                    # What's changed?
+git log --oneline -20         # What's the context?
+```
+
+**Before database changes:**
+```bash
+docker exec law7-postgres psql -U law7 -d law7 -c "\d table_name"
+```
+
+**For Python dependencies:**
+```bash
+# Always use Poetry, never pip directly
+poetry add package-name
+```
+
+### Five Core Principles
+
+1. **Conscious Delegation** - Delegate to AI only after understanding the codebase context
+2. **Cognitive Partnership** - Use AI as thinking enhancer, not replacement
+3. **Active Thinking** - First self, then AI - form your own understanding first
+4. **Metacognitive Monitoring** - After AI assistance, reflect on what you learned
+5. **Transparent Collaboration** - Request AI to explain reasoning, not just provide code
+
+**See [docs/AI_WORKFLOW.md](docs/AI_WORKFLOW.md) for complete AI-assisted development guidelines.**
+
 ## Development Notes
 
 1. **GPU Acceleration**: The embeddings system uses CUDA for RTX 3060. Falls back to CPU if unavailable.
