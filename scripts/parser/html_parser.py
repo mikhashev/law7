@@ -30,6 +30,7 @@ try:
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.webdriver.common.by import By
+    from selenium.common.exceptions import TimeoutException
     from webdriver_manager.chrome import ChromeDriverManager
     SELENIUM_AVAILABLE = True
 except ImportError:
@@ -63,6 +64,9 @@ class PravoContentParser:
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "Law7/0.1.0"})
+
+        # Reusable ChromeDriver instance (lazy initialization)
+        self._driver = None
 
         # Initialize OCR if enabled
         self.tesseract = None
@@ -237,6 +241,37 @@ class PravoContentParser:
             logger.error(f"Failed to fetch PDF for {eo_number}: {e}")
             return None
 
+    def _get_driver(self):
+        """
+        Get or create reusable ChromeDriver instance.
+
+        Returns:
+            ChromeDriver instance (cached or newly created)
+        """
+        if self._driver is None:
+            options = ChromeOptions()
+            options.add_argument('--headless=new')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-software-rasterizer')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-background-network-true')
+            options.add_argument('--disable-default-apps')
+            options.add_argument('--disable-sync')
+            options.add_argument('--metrics-recording-only')
+            options.add_argument('--mute-audio')
+            options.add_argument('--no-first-run')
+            options.add_argument('--safebrowsing-disable-auto-update')
+            options.add_argument('--disable-infobars')
+            options.add_argument('--disable-notifications')
+            options.add_argument('user-agent=Law7/0.1.0')
+
+            service = Service(ChromeDriverManager().install())
+            self._driver = webdriver.Chrome(service=service, options=options)
+            self._driver.set_page_load_timeout(30)
+        return self._driver
+
     def fetch_with_selenium(self, eo_number: str) -> Optional[str]:
         """
         Fetch document content using Selenium WebDriver to execute JavaScript.
@@ -266,37 +301,40 @@ class PravoContentParser:
             logger.warning("Selenium not available, skipping Selenium-based content fetching")
             return None
 
-        driver = None
+        # Log what we're trying to fetch
+        logger.info(f"[SELENIUM] Attempting to fetch document: {eo_number}")
 
         try:
-            # Setup Chrome options
-            options = ChromeOptions()
-            options.add_argument('--headless=new')
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-gpu')
-            options.add_argument('--disable-software-rasterizer')
-            options.add_argument('--disable-extensions')
-            options.add_argument('--disable-background-network-true')
-            options.add_argument('--disable-default-apps')
-            options.add_argument('--disable-sync')
-            options.add_argument('--metrics-recording-only')
-            options.add_argument('--mute-audio')
-            options.add_argument('--no-first-run')
-            options.add_argument('--safebrowsing-disable-auto-update')
-            options.add_argument('--disable-infobars')
-            options.add_argument('--disable-notifications')
-            options.add_argument('user-agent=Law7/0.1.0')
-
-            # Initialize driver
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=options)
-            driver.set_page_load_timeout(30)
+            # Use reusable driver
+            driver = self._get_driver()
 
             # Navigate to page
             url = f"http://actual.pravo.gov.ru/content/content.html#pnum={eo_number}"
-            logger.debug(f"Navigating to: {url}")
+            logger.info(f"[SELENIUM] URL: {url}")
             driver.get(url)
+
+            # Handle any alerts (e.g., "Document not found" for PDF-only documents)
+            logger.debug(f"[SELENIUM] Page loaded, checking for alerts...")
+            try:
+                WebDriverWait(driver, 2).until(EC.alert_is_present())
+                alert = driver.switch_to.alert
+                alert_text = alert.text
+                alert.dismiss()
+                logger.warning(f"[SELENIUM] Alert for {eo_number}: {alert_text}")
+                logger.info(f"[SELENIUM] Document is PDF-only, falling back to HTML scraper (publication.pravo.gov.ru)")
+
+                # Fall back to html_scraper which handles PDF-only documents
+                from scripts.parser.html_scraper import scrape_amendment
+                result = scrape_amendment(eo_number)
+                if result.get('full_text'):
+                    logger.info(f"[SELENIUM] PDF fallback succeeded: {len(result['full_text'])} chars")
+                    return result['full_text']
+                logger.warning(f"[SELENIUM] PDF fallback also failed for {eo_number}")
+                return None
+            except TimeoutException:
+                logger.debug(f"[SELENIUM] No alert detected, proceeding to iframe...")
+                # No alert - continue normally to iframe
+                pass
 
             # Wait for iframe to be present
             WebDriverWait(driver, 15).until(
@@ -345,14 +383,6 @@ class PravoContentParser:
         except Exception as e:
             logger.warning(f"Selenium fetch failed for {eo_number}: {e}")
             return None
-
-        finally:
-            # Cleanup driver
-            if driver:
-                try:
-                    driver.quit()
-                except Exception:
-                    pass
 
     def _clean_html_text(self, text: str) -> str:
         """Remove HTML tags from text."""
@@ -428,8 +458,21 @@ class PravoContentParser:
         return result
 
     def close(self):
-        """Close the HTTP session."""
+        """Close the HTTP session and cleanup resources."""
+        # Close reusable ChromeDriver
+        if self._driver:
+            try:
+                self._driver.quit()
+            except Exception:
+                pass
+            self._driver = None
+
+        # Close HTTP session
         self.session.close()
+
+        # Close OCR session if used
+        if self.use_ocr and self.ocr_session:
+            self.ocr_session.close()
 
     def __enter__(self):
         return self
