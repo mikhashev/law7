@@ -177,10 +177,100 @@ When exploring new APIs or data sources:
 - [docs/ROADMAP.md](ROADMAP.md) - Project priorities and implementation status
 - [scripts/docs/pravo_api_analysis.md](scripts/docs/pravo_api_analysis.md) - pravo.gov.ru API documentation
 
+## GitHub Project Management Tools
+
+For GitHub project development workflow and management, two complementary tools are available:
+
+### GitHub MCP Server (`github/github-mcp-server`)
+
+The GitHub MCP server provides direct access to GitHub's API from within Claude Code sessions.
+
+**Available tools include:**
+- `issue_write` (create/update) - Create and update GitHub issues
+- `add_issue_comment` - Add comments to issues and pull requests
+- `list_issues` - List and filter issues
+- `pull_request_read` - Get PR details, diffs, and status
+- `create_pull_request` - Create pull requests
+- `get_file_contents` - Read repository files
+- `create_or_update_file` - Create or update files directly in the repo
+- `push_files` - Push multiple files in a single commit
+- `search_repositories` - Search across GitHub
+- And more...
+
+**When to use GitHub MCP:**
+- Within Claude Code sessions (no CLI access needed)
+- Creating and closing issues during development
+- Managing pull requests and reviews
+- Reading file contents from the repository
+
+**Setup:**
+The GitHub MCP server is configured in `.claude/settings.local.json` with:
+- Token: Set via environment variable or directly in config
+- Repository: Automatically detected from git remote (`mikhashev/law7`)
+
+### GitHub CLI (`gh`)
+
+The GitHub CLI is a command-line tool for GitHub operations, ideal for terminal workflows.
+
+**Key commands for project management:**
+```bash
+# Project board operations
+gh project list --owner mikhashev              # List all projects
+gh project view <number>                       # View project details
+gh project item-list <number>                  # List items in a project
+gh project field-list <number>                 # View columns/fields
+gh project item-add <number> --issue <id>      # Add issue to project
+
+# Label management
+gh label list --repo mikhashev/law7            # List all labels
+gh label create <name> --color <hex>           # Create new label
+gh label edit <name> --color <hex>             # Update label color
+
+# Issue management
+gh issue list --repo mikhashev/law7            # List issues
+gh issue view <number>                         # View issue details
+gh issue close <number>                        # Close an issue
+
+# Authentication (when needed)
+gh auth refresh -s read:project -h github.com  # Add project scopes
+gh auth status                                  # Check auth status
+```
+
+**When to use GitHub CLI:**
+- Project board setup and management (columns, fields)
+- Bulk operations on labels and issues
+- Direct terminal access outside Claude Code
+- Project visualization and reporting
+
+**Authentication:**
+```bash
+# Initial setup
+gh auth login
+
+# Add required scopes for project management
+gh auth refresh -s read:project -h github.com
+
+# Check current status
+gh auth status
+```
+
+### Tool Selection Guide
+
+| Task | Best Tool | Example |
+|------|-----------|---------|
+| Create/close issues during development | GitHub MCP | `issue_write` from Claude Code |
+| Manage project board columns | GitHub CLI | `gh project field-list` |
+| Add issues to project board | GitHub CLI | `gh project item-add` |
+| Create/update labels | GitHub CLI | `gh label create/edit` |
+| Bulk label operations | GitHub CLI | `gh label list --json` |
+| Pull request management | GitHub MCP | `create_pull_request`, `pull_request_read` |
+| File operations in repo | GitHub MCP | `create_or_update_file`, `push_files` |
+
 ## Recommended MCP Servers
 
 | MCP Server | Purpose |
 |------------|---------|
+| **GitHub** (`github/github-mcp-server`) | Repository management: create issues, manage pull requests, push files, search code |
 | **Context7** | Library documentation lookup |
 | **Filesystem** | File operations |
 | **Postgres** | Direct database queries during development |
