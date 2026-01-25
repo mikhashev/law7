@@ -10,7 +10,10 @@
     "dev": "tsc && node dist/index.js",
     "http": "tsc && node dist/http-server.js",
     "start:http": "node dist/http-server.js",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "mcp",
@@ -46,6 +49,7 @@
     "@types/dotenv": "^6.1.1",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.16.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }
