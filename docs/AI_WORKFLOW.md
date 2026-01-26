@@ -114,6 +114,43 @@ git diff HEAD~5
 4. Check if files are modified/deleted/added before editing them
 5. Understand what branch you're on (main vs feature branch)
 
+## Before Starting Work
+
+**CRITICAL**: Before starting any task, AI assistants MUST check what's already in progress.
+
+```bash
+# Check open issues to see what's being worked on
+gh issue list --repo mikhashev/law7 --state open --limit 50
+
+# Or use GitHub MCP to list issues
+# Search for issues with "in_progress" status on project board
+
+# Check recent commits to understand current work
+git log --oneline -10
+
+# Check git status for uncommitted changes
+git status
+```
+
+**Why?** This prevents:
+- **Duplicate work** - Someone else may already be working on the same issue
+- **Conflicting changes** - Multiple AI sessions modifying same files
+- **Lost context** - Understanding what was just worked on
+- **Breaking changes** - Unaware of in-progress refactoring
+
+**Best practices for AI assistants:**
+1. Always check open issues before creating new ones
+2. Look for "In Progress" items on the project board
+3. Check if files you're about to edit are already modified
+4. Comment on existing issues rather than creating duplicates
+5. Ask user if task conflicts with in-progress work
+
+**Workflow:**
+1. Search for existing issues related to your task
+2. If found, comment on the issue or ask to assign it
+3. If not found, create new issue following template structure
+4. Add issue to project board using appropriate tools
+
 ## Database Schema Verification with AI
 
 **CRITICAL**: Before making any database changes, AI assistants MUST check the actual database schema.
@@ -176,6 +213,110 @@ When exploring new APIs or data sources:
 **Key References**:
 - [docs/ROADMAP.md](ROADMAP.md) - Project priorities and implementation status
 - [scripts/docs/pravo_api_analysis.md](scripts/docs/pravo_api_analysis.md) - pravo.gov.ru API documentation
+
+## Creating GitHub Issues
+
+When creating GitHub issues, use the templates from `.github/ISSUE_TEMPLATE/` to ensure consistency and completeness.
+
+### Available Templates
+
+| Template | Prefix | Purpose | Labels |
+|----------|--------|---------|--------|
+| `bug_report.md` | `[BUG]` | Report bugs or unexpected behavior | `bug` |
+| `feature_request.md` | `[FEAT]` | Suggest new features or enhancements | `enhancement` |
+| `documentation.md` | `[DOCS]` | Request documentation improvements | `documentation` |
+| `question.md` | `[QUESTION]` | Ask questions about the project | (none) |
+
+### Using Templates
+
+**Via GitHub CLI** (templates auto-applied):
+```bash
+gh issue create --repo mikhashev/law7 --template "bug_report.md"
+gh issue create --repo mikhashev/law7 --template "feature_request.md"
+gh issue create --repo mikhashev/law7 --template "documentation.md"
+```
+
+**Via GitHub MCP** (manually follow template structure):
+```typescript
+// Structure issue body to match the relevant template
+// For bug_report.md include:
+- Bug Description
+- To Reproduce (steps)
+- Expected Behavior
+- Environment (OS, versions)
+- Logs (if applicable)
+
+// For feature_request.md include:
+- Feature Description
+- Problem Statement
+- Proposed Solution
+- Alternatives Considered
+- Implementation Ideas (optional)
+```
+
+### Issue Title Conventions
+
+Match the template prefix style:
+- Bugs: `[BUG] Short description` or `bug: short description`
+- Features: `[FEAT] Short description` or `feat: short description`
+- Docs: `[DOCS] Short description` or `docs: short description`
+- Phase tasks: `[Phase X] Short description` or `[Phase X.Y] Short description`
+
+### Phase Task Issues
+
+For phase-based tasks (from roadmap/PHASE*.md files), use structured format:
+```markdown
+## Task
+[Brief description of the task]
+
+## Overview
+[Context about why this task matters, which phase it belongs to]
+
+## Requirements
+- Requirement 1
+- Requirement 2
+
+## Files to Create/Modify
+- `path/to/file1` - Description
+- `path/to/file2` - Description
+
+## Deliverables
+- [ ] Deliverable 1
+- [ ] Deliverable 2
+
+## Reference
+- Link to relevant PHASE*.md documentation
+- Related issues/PRs
+
+## Priority
+[CRITICAL/HIGH/MEDIUM/LOW]
+```
+
+### Before Creating an Issue
+
+1. **Search for existing issues** - Check if similar work is already tracked
+2. **Check project board** - Look for related items in backlog/in-progress
+3. **Review templates** - Use the appropriate template for the issue type
+4. **Add labels** - Apply relevant phase and priority labels
+5. **Add to project board** - Use `gh project item-add` or GitHub MCP
+
+### Example Workflow
+
+```bash
+# 1. Search existing issues
+gh issue list --repo mikhashev/law7 --search "parser test"
+
+# 2. If not found, create with template
+gh issue create --repo mikhashev/law7 --template "feature_request.md" \
+  --title "[FEAT] Add HTML parser tests" \
+  --body "See template for structure"
+
+# 3. Add labels
+gh issue edit 13 --add-label "phase-1,tests,high-priority"
+
+# 4. Add to project board
+gh project item-add 2 --url "https://github.com/mikhashev/law7/issues/13"
+```
 
 ## GitHub Project Management Tools
 
@@ -275,6 +416,205 @@ gh auth status
 | **Filesystem** | File operations |
 | **Postgres** | Direct database queries during development |
 | **Brave Search** | Research legal APIs and data sources |
+
+## AI Task Management Workflow
+
+For efficient Human+AI collaborative development, AI assistants should follow this structured workflow when working on tasks.
+
+### Task Lifecycle
+
+```
+┌─────────────┐     ┌──────────────┐     ┌──────────┐     ┌───────────┐     ┌──────────┐
+│  Backlog    │────▶│  In Progress │────▶│  Review  │────▶│   Done    │────▶│ Archived │
+│  (Planned)  │     │  (Working)   │     │(Check)   │     │(Closed)   │     │          │
+└─────────────┘     └──────────────┘     └──────────┘     └───────────┘     └──────────┘
+```
+
+### 1. Task Discovery (Before Starting)
+
+**When user requests work on a task:**
+```bash
+# Step 1: Check for existing issues
+gh issue list --repo mikhashev/law7 --search "relevant keywords"
+
+# Step 2: Check project board for in-progress items
+gh project item-list 2 --owner mikhashev
+
+# Step 3: Check git status for uncommitted changes
+git status
+```
+
+**AI Decision Tree:**
+- Is there an existing issue for this task?
+  - **Yes** → Comment on issue, ask to assign it
+  - **No** → Create new issue using appropriate template
+- Is anyone working on related files?
+  - **Yes** → Ask user if we should wait or coordinate
+  - **No** → Proceed with task
+
+### 2. Task Planning (Use TodoWrite)
+
+**CRITICAL**: Always use TodoWrite tool to track task progress.
+
+```python
+# Create a todo list for multi-step tasks
+TodoWrite([
+    {"content": "Read relevant files", "status": "pending", "activeForm": "Reading relevant files"},
+    {"content": "Implement feature", "status": "pending", "activeForm": "Implementing feature"},
+    {"content": "Test changes", "status": "pending", "activeForm": "Testing changes"},
+    {"content": "Commit and close issue", "status": "pending", "activeForm": "Committing and closing issue"}
+])
+```
+
+**TodoWrite Best Practices:**
+- Create todos for any task with 3+ steps
+- Use descriptive `activeForm` (present continuous): "Reading files" not "Read files"
+- Mark exactly ONE todo as `in_progress` at a time
+- Mark todos as `completed` immediately after finishing
+- Never batch-complete todos at the end
+
+### 3. Task Execution
+
+**While working on a task:**
+
+1. **Update project board status** (when starting)
+   ```bash
+   # Move issue from Backlog to In Progress
+   gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: {projectId: "PVT_...", itemId: "PVTI_...", fieldId: "PVTSSF_...", value: {singleSelectOptionId: "47fc9ee4"}}) { item { id } } }'
+   # "47fc9ee4" is the ID for "In Progress" status
+   ```
+
+2. **Update todos as you work**
+   - Mark current step as `in_progress`
+   - Complete steps immediately after finishing
+
+3. **Comment on issue for progress updates**
+   - Post updates for significant milestones
+   - Note any blockers or discoveries
+
+### 4. Completion Checklist
+
+**Before marking a task as complete, verify:**
+
+- [ ] All code follows project conventions (check existing patterns)
+- [ ] Tests pass (run `npm test` or `poetry run pytest`)
+- [ ] Build succeeds (run `npm run build` or equivalent)
+- [ ] No new warnings introduced
+- [ ] Documentation updated (if applicable)
+- [ ] Commit message follows Conventional Commits format
+- [ ] Issue referenced in commit message (`#issue_number`)
+- [ ] Files committed and pushed (if working in branch)
+
+### 5. Issue Status Transitions
+
+**Move issues through the workflow:**
+
+| Current State | Next State | When | How |
+|---------------|------------|------|-----|
+| Backlog | In Progress | Starting work | Update project board field |
+| In Progress | Review | Ready for review | Comment "Ready for review" |
+| Review | Done | After review/merge | Update project board, close issue |
+| Any | Backlog | Blocked/cancelled | Comment with reason, move to backlog |
+
+**Via GitHub CLI:**
+```bash
+# Move item to "Done"
+gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: {projectId: "PVT_...", itemId: "PVTI_...", fieldId: "PVTSSF_...", value: {singleSelectOptionId: "98236657"}}) { item { id } } }'
+# "98236657" is the ID for "Done" status
+```
+
+### 6. Collaboration Patterns
+
+**When AI should ask for human input:**
+
+| Situation | Action | Example |
+|-----------|--------|---------|
+| Ambiguous requirements | Ask clarifying questions | "Should this handle edge case X?" |
+| Multiple valid approaches | Present options, ask preference | "Option A: simpler, Option B: more flexible" |
+| Breaking changes | Explicitly request approval | "This will change X, proceed?" |
+| Missing context | Request additional information | "I need the database schema for X" |
+| Task conflicts detected | Ask how to proceed | "Issue #7 also touches this file, coordinate?" |
+
+**When AI should proceed autonomously:**
+
+| Situation | Confidence Level | Example |
+|-----------|------------------|---------|
+| Following explicit patterns | High | Creating tests similar to existing ones |
+| Refactoring within conventions | High | Extracting a function following existing style |
+| Bug fixes with clear root cause | High | Fixing typo, adding missing import |
+| Documentation updates | High | Adding docstrings to documented functions |
+| Non-trivial implementation | Medium | Implementing feature from spec (verify after) |
+
+### 7. Context Handoff Between Sessions
+
+**When providing task summary:**
+
+```markdown
+## Task: [Brief description]
+
+### Completed
+- [x] Step 1 - Description
+- [x] Step 2 - Description
+
+### In Progress
+- [ ] Step 3 - Current step (doing X, need to complete Y)
+
+### Blocked/Next
+- Next: Need to do Z
+- Context: File A depends on change in file B
+```
+
+**Commit messages as handoff:**
+```bash
+# Use descriptive commit messages that provide context
+git commit -m "feat(parser): add HTML table extraction for amendments
+
+- Implemented table cell parsing for amendment documents
+- Added support for nested tables
+- Handles edge case of merged cells
+
+Related: #6"
+```
+
+### 8. Example: Complete Task Workflow
+
+```bash
+# === STEP 1: Discovery ===
+$ gh issue list --search "parser test"
+# No existing issue found
+
+# === STEP 2: Create Issue ===
+$ gh issue create --template "feature_request.md" \
+  --title "[FEAT] Add HTML parser tests" \
+  --body "See template"
+
+# === STEP 3: Add Labels ===
+$ gh issue edit 13 --add-label "phase-1,tests,high-priority"
+
+# === STEP 4: Add to Project Board ===
+$ gh project item-add 2 --url "https://github.com/mikhashev/law7/issues/13"
+
+# === STEP 5: Create Todo List ===
+TodoWrite([
+    {"content": "Read html_parser.py to understand structure", "status": "in_progress", "activeForm": "Reading html_parser.py"},
+    {"content": "Create test_html_parser.py", "status": "pending", "activeForm": "Creating test file"},
+    {"content": "Write tests for parse_html() function", "status": "pending", "activeForm": "Writing parse_html tests"},
+    {"content": "Write tests for extract_amendments() function", "status": "pending", "activeForm": "Writing amendment extraction tests"},
+    {"content": "Run tests and verify they pass", "status": "pending", "activeForm": "Running tests"},
+    {"content": "Commit changes", "status": "pending", "activeForm": "Committing changes"}
+])
+
+# === STEP 6: Execute (with status updates) ===
+# Move issue to In Progress
+# Update todos as work progresses
+# Comment milestones on issue
+
+# === STEP 7: Complete ===
+# Run tests
+# Commit with conventional commit message
+# Move issue to Done
+# Close issue
+```
 
 ## Development Workflow with AI
 
