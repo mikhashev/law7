@@ -59,6 +59,126 @@ git log --oneline -20         # What's the context?
 
 ---
 
+## Plan Mode and Bias Mitigation
+
+When creating implementation plans or architectural decisions, AI assistants must apply **bias mitigation rules** to avoid default patterns and ensure better decision-making.
+
+### Bias Mitigation Rules
+
+**CRITICAL**: AI assistants act as knowledge curators with strong bias-awareness training. Apply these rules during planning:
+
+1. **Challenge Status Quo**
+   - Always question existing approaches and assumed sequences
+   - Ask: "Is this phase actually necessary? What if we skipped it?"
+   - Example: Initially planned Phase 0 (P2P research) before Phase 7 (refactoring), but challenging this revealed Phase 7 should come first
+
+2. **Multi-Cultural Perspective**
+   - Consider approaches from at least 3 different cultures/contexts
+   - Ask: "How would a startup in Berlin approach this? A research lab in Tokyo? A government agency in Estonia?"
+   - Helps escape local/cultural blind spots in solution design
+
+3. **Framing Neutrality**
+   - Present multiple options without expressing preference
+   - Use neutral language: "Option A, Option B, Option C" not "Recommended, Alternative, Last Resort"
+   - Let the human decide after seeing all trade-offs
+
+4. **Evidence-Based Reasoning**
+   - Require citations and reasoning for recommendations
+   - Ask: "What evidence supports this approach? What are the metrics?"
+   - Link to actual data from the codebase, not assumptions
+
+5. **Devil's Advocate**
+   - Argue against your initial recommendation
+   - Ask: "What's the strongest case against this approach?"
+   - Present the best counter-arguments and risks
+
+### Systems Thinking for Planning
+
+When planning phases or architectural changes, apply systems thinking principles:
+
+**1. Fast Feedback Loops**
+```
+Bad: Phase 0 → Phase 7 → Results (months later)
+Good: Phase 7 → Immediate validation → Phase 0 (targeted)
+```
+
+**2. Solve Concrete Problems, Not Abstract Ones**
+- Before: "Research P2P for unknown requirements"
+- After: "Research P2P for DocumentSync interface that we defined"
+- Ask: "What's the REAL problem we're solving?"
+
+**3. Reduce Uncertainty**
+- Define concrete interfaces before researching implementations
+- Measure actual requirements (data volumes, update patterns)
+- Make research questions answerable: "Which P2P implements DocumentSync efficiently for X GB daily?"
+
+### Critical Path Analysis
+
+When planning phased work:
+
+1. **Identify the critical path**: Which phases block others?
+2. **Separate blocking from supportive**: Some phases are important but not blocking
+3. **Present sequencing options**: Sequential, Critical Path First, Parallel
+
+**Example**:
+- Critical path: Phase 7 (refactoring) → Phase 0 (P2P) → Phase 4 (multi-country)
+- Supportive: Phase 1 (foundation/quality) - important but not blocking
+- Options presented: Sequential (safer), Critical Path First (faster), Parallel (fastest)
+
+### Case Study: Phase 0 → Phase 7 Revision
+
+**Initial Plan**: Start with Phase 0 (P2P Research) to inform Phase 7's adapter pattern
+
+**Bias Mitigation Applied**:
+1. **Challenge Status Quo**: "Is Phase 0 really needed before Phase 7?"
+2. **Devil's Advocate**: Argued against abstract P2P research without concrete requirements
+3. **Evidence-Based**: Examined actual user burden (157K documents parsed per user)
+4. **Systems Thinking**: Applied fast feedback loops principle
+
+**Revised Plan**: Phase 7 first - define DocumentSync ABC, refactor Russia module, THEN Phase 0 implements DocumentSync with P2P technologies
+
+**Result**: Clear interface definition, concrete requirements for P2P research, faster validation loop
+
+### Plan Mode Workflow
+
+When user requests planning work:
+
+```bash
+# 1. Understand the REAL problem
+Ask: "What problem are we actually solving? For whom?"
+
+# 2. Check existing plans
+Read existing phase documents, roadmap, vision docs
+
+# 3. Apply bias mitigation
+- Challenge the assumed approach
+- Generate 3+ alternative sequencing options
+- Present trade-offs neutrally
+- Argue against your own recommendation
+
+# 4. Use systems thinking
+- Identify critical path vs supportive work
+- Check feedback loop timing
+- Reduce uncertainty where possible
+
+# 5. Present options with clear trade-offs
+Option 1: [description] | [pros] | [cons] | [when to choose]
+Option 2: [description] | [pros] | [cons] | [when to choose]
+Option 3: [description] | [pros] | [cons] | [when to choose]
+```
+
+### Anti-Patterns to Avoid
+
+| Anti-Pattern | Description | Better Approach |
+|--------------|-------------|-----------------|
+| **Research First** | Start with abstract research before defining concrete needs | Define interface/requirements, then targeted research |
+| **Assumed Sequence** | Follow roadmap phases in order without questioning | Analyze dependencies, identify critical path |
+| **Preference Framing** | Present "recommended" option with "alternatives" | Present all options as neutral choices |
+| **Status Quo Bias** | "This is how we planned it" without challenging | "Why this phase? What if we skipped it?" |
+| **Abstract Problems** | "Research P2P for legal documents" | "Implement DocumentSync ABC for 50MB daily updates" |
+
+---
+
 ## Dependency Management Rules
 
 **CRITICAL**: Always use `poetry` for Python dependency management, never `pip` directly.
