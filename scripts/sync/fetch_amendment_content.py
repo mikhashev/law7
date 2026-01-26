@@ -20,7 +20,8 @@ from sqlalchemy import text
 
 from scripts.core.config import AMENDMENT_BATCH_SIZE, AMENDMENT_IMPORT_REQUEST_DELAY
 from scripts.core.db import get_db_connection
-from scripts.parser.html_scraper import AmendmentHTMLScraper, scrape_amendment
+# Updated import to use new country_modules location
+from country_modules.russia.parsers.html_scraper import scrape_amendment
 
 logger = logging.getLogger(__name__)
 

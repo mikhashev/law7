@@ -7,6 +7,12 @@ This module contains parsers for:
 - Amendment document parsing
 - Court decision parsing (future - Phase 7C)
 """
+from .html_parser import PravoContentParser, parse_pravo_document
+from .html_scraper import AmendmentHTMLScraper, scrape_amendment
 
-# Will be populated when existing code is moved
-__all__ = []
+__all__ = [
+    "PravoContentParser",
+    "parse_pravo_document",
+    "AmendmentHTMLScraper",
+    "scrape_amendment",
+]

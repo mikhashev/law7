@@ -10,6 +10,27 @@ Components:
 - Diff Engine: Applies amendments to create snapshots
 - Consolidate: Orchestrates the consolidation process
 """
+from .version_manager import VersionManager, VersionInfo, AmendmentChain, get_article_history
+from .amendment_parser import AmendmentParser, ParsedAmendment, AmendmentTarget, AmendmentChange
+from .diff_engine import ArticleDiffEngine, ArticleSnapshot, DiffResult
+from .consolidate import CodeConsolidator, consolidate_code
 
-# Will be populated when existing code is moved
-__all__ = []
+__all__ = [
+    # Version Manager
+    "VersionManager",
+    "VersionInfo",
+    "AmendmentChain",
+    "get_article_history",
+    # Amendment Parser
+    "AmendmentParser",
+    "ParsedAmendment",
+    "AmendmentTarget",
+    "AmendmentChange",
+    # Diff Engine
+    "ArticleDiffEngine",
+    "ArticleSnapshot",
+    "DiffResult",
+    # Consolidate
+    "CodeConsolidator",
+    "consolidate_code",
+]
