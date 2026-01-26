@@ -21,6 +21,13 @@ import { getCodeStructureTool, executeGetCodeStructure } from './tools/get-code-
 import { getArticleVersionTool, executeGetArticleVersion } from './tools/get-article-version.js';
 import { traceAmendmentHistoryTool, executeTraceAmendmentHistory } from './tools/trace-amendment-history.js';
 
+// Import Phase 7C tools
+import { searchRegionalLawTool, executeSearchRegionalLaw } from './tools/search-regional-law.js';
+import { getRegionalKoapArticleTool, executeGetRegionalKoapArticle } from './tools/get-regional-koap-article.js';
+import { searchCourtDecisionsTool, executeSearchCourtDecisions } from './tools/search-court-decisions.js';
+import { getSupremeCourtResolutionTool, executeGetSupremeCourtResolution } from './tools/get-supreme-court-resolution.js';
+import { searchInterpretationsTool, executeSearchInterpretations } from './tools/search-interpretations.js';
+
 // Import config
 import { config } from './config.js';
 
@@ -52,6 +59,12 @@ export function createServer(): Server {
         getCodeStructureTool,
         getArticleVersionTool,
         traceAmendmentHistoryTool,
+        // Phase 7C tools
+        searchRegionalLawTool,
+        getRegionalKoapArticleTool,
+        searchCourtDecisionsTool,
+        getSupremeCourtResolutionTool,
+        searchInterpretationsTool,
       ],
     };
   });
@@ -103,6 +116,27 @@ export function createServer(): Server {
 
         case 'trace-amendment-history':
           result = await executeTraceAmendmentHistory(args as any);
+          break;
+
+        // Phase 7C tools
+        case 'search-regional-law':
+          result = await executeSearchRegionalLaw(args as any);
+          break;
+
+        case 'get-regional-koap-article':
+          result = await executeGetRegionalKoapArticle(args as any);
+          break;
+
+        case 'search-court-decisions':
+          result = await executeSearchCourtDecisions(args as any);
+          break;
+
+        case 'get-supreme-court-resolution':
+          result = await executeGetSupremeCourtResolution(args as any);
+          break;
+
+        case 'search-interpretations':
+          result = await executeSearchInterpretations(args as any);
           break;
 
         default:
