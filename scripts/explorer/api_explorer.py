@@ -18,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.config import (
     PRAVO_API_BASE_URL,
     PRAVO_API_TIMEOUT,
-    calculate_backoff_delay,
 )
+from utils.retry import fetch_with_retry
 
 # =============================================================================
 # Configuration
@@ -52,9 +52,9 @@ API_ENDPOINTS = {
 # =============================================================================
 # Helper Functions
 # =============================================================================
-def fetch_with_retry(url: str, max_retries: int = 3) -> requests.Response | None:
+def fetch_url_with_retry(url: str, max_retries: int = 3) -> requests.Response | None:
     """
-    Fetch URL with exponential backoff retry (ygbis pattern).
+    Fetch URL with exponential backoff retry (wrapper for utils.retry.fetch_with_retry).
 
     Args:
         url: The URL to fetch
@@ -63,21 +63,11 @@ def fetch_with_retry(url: str, max_retries: int = 3) -> requests.Response | None
     Returns:
         Response object or None if all retries fail
     """
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"  Fetching {url} (attempt {attempt + 1}/{max_retries})")
-            response = requests.get(url, timeout=PRAVO_API_TIMEOUT)
-            response.raise_for_status()
-            return response
-        except requests.RequestException as e:
-            logger.warning(f"  Request failed: {e}")
-            if attempt < max_retries - 1:
-                delay = calculate_backoff_delay(attempt)
-                logger.info(f"  Exponential backoff: {delay}s...")
-                time.sleep(delay)
-            else:
-                logger.error(f"  Failed after {max_retries} attempts")
-    return None
+    return fetch_with_retry(
+        lambda: requests.get(url, timeout=PRAVO_API_TIMEOUT),
+        max_retries=max_retries,
+        operation_name=f"fetch {url}",
+    )
 
 
 def save_json_sample(data: Any, filename: str) -> None:
@@ -145,7 +135,7 @@ def explore_endpoint(endpoint_name: str, endpoint_path: str) -> Dict[str, Any] |
     logger.info(f"URL: {url}")
     logger.info(f"{'='*60}")
 
-    response = fetch_with_retry(url)
+    response = fetch_url_with_retry(url)
     if not response:
         return None
 
@@ -201,7 +191,7 @@ def explore_documents_search() -> Dict[str, Any] | None:
     for i, params in enumerate(queries, 1):
         logger.info(f"\nQuery {i}: {params}")
         url = f"{PRAVO_API_BASE_URL.rstrip('/')}/Documents"
-        response = fetch_with_retry(url)
+        response = fetch_url_with_retry(url)
 
         if response:
             try:
@@ -247,7 +237,7 @@ def explore_document_detail(eo_number: str = "0001202401170001") -> Dict[str, An
     url = f"{PRAVO_API_BASE_URL.rstrip('/')}/Document/{eo_number}"
     logger.info(f"URL: {url}")
 
-    response = fetch_with_retry(url)
+    response = fetch_url_with_retry(url)
     if not response:
         return None
 
