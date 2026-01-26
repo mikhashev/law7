@@ -11,7 +11,7 @@ from qdrant_client.http import models
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
 import numpy as np
 
-from core.config import QDRANT_COLLECTION, QDRANT_URL, QDRANT_VECTOR_SIZE
+from scripts.core.config import QDRANT_COLLECTION, QDRANT_URL, QDRANT_VECTOR_SIZE
 
 logger = logging.getLogger(__name__)
 

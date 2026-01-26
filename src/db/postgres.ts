@@ -189,14 +189,27 @@ async function searchWithTsQuery(
  * Search documents by text content using full-text search
  *
  * Implements OR fallback: tries exact AND match first, falls back to OR if no results
+ * @param searchText Search query text
+ * @param limit Maximum results to return
+ * @param countryId Numeric country ID (deprecated, use countryCode)
+ * @param countryCode Country code (ISO 3166-1 alpha-2, e.g., "RU", "US")
  */
 export async function searchDocuments(
   searchText: string,
   limit: number = 10,
-  countryId?: number
+  countryId?: number,
+  countryCode?: string
 ): Promise<(Document & DocumentContent)[]> {
+  // Convert country code to ID if provided
+  let effectiveCountryId: number | undefined;
+  if (countryCode) {
+    effectiveCountryId = await getCountryIdFromCode(countryCode) || undefined;
+  } else {
+    effectiveCountryId = countryId;
+  }
+
   // Try exact match first (AND logic via plainto_tsquery)
-  let results = await searchWithTsQuery(searchText, 'plainto_tsquery', limit, countryId);
+  let results = await searchWithTsQuery(searchText, 'plainto_tsquery', limit, effectiveCountryId);
 
   // Fallback to OR if no results found
   if (results.length === 0) {
@@ -207,7 +220,7 @@ export async function searchDocuments(
       .join(' | ');
 
     if (orTerms) {
-      results = await searchWithTsQuery(orTerms, 'to_tsquery', limit, countryId);
+      results = await searchWithTsQuery(orTerms, 'to_tsquery', limit, effectiveCountryId);
     }
   }
 
@@ -241,14 +254,36 @@ export async function getDocumentsByDateRange(
 }
 
 /**
- * Get document count by country
+ * Get country ID from country code (ISO 3166-1 alpha-2)
+ * @param countryCode Country code (e.g., "RU", "US")
+ * @returns Country ID or null if not found
  */
-export async function getDocumentCount(countryId?: number): Promise<number> {
-  const text = countryId
+export async function getCountryIdFromCode(countryCode: string): Promise<number | null> {
+  const text = 'SELECT id FROM countries WHERE LOWER(code) = LOWER($1)';
+  const results = await query<{ id: number }>(text, [countryCode]);
+  return results[0]?.id || null;
+}
+
+/**
+ * Get document count by country
+ * @param countryId Numeric country ID (optional)
+ * @param countryCode Country code (ISO 3166-1 alpha-2, optional)
+ */
+export async function getDocumentCount(countryId?: number, countryCode?: string): Promise<number> {
+  let effectiveCountryId: number | undefined;
+
+  // If country code is provided, look up the ID
+  if (countryCode) {
+    effectiveCountryId = await getCountryIdFromCode(countryCode) || undefined;
+  } else {
+    effectiveCountryId = countryId;
+  }
+
+  const text = effectiveCountryId
     ? 'SELECT COUNT(*) as count FROM documents WHERE country_id = $1'
     : 'SELECT COUNT(*) as count FROM documents';
 
-  const result = await query<{ count: bigint }>(text, countryId ? [countryId] : []);
+  const result = await query<{ count: bigint }>(text, effectiveCountryId ? [effectiveCountryId] : []);
   return Number(result[0].count);
 }
 

@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import Table, MetaData, insert, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from core.db import get_db_connection, engine
-from core.config import SYNC_BATCH_SIZE
+from scripts.core.db import get_db_connection, engine
+from scripts.core.config import SYNC_BATCH_SIZE
 
 logger = logging.getLogger(__name__)
 

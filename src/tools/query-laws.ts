@@ -11,7 +11,7 @@ import { config } from '../config.js';
 
 // Input schema for query-laws tool
 export const QueryLawsInputSchema = z.object({
-  country_id: z.number().optional().default(1).describe('Country ID (1=Russia)'),
+  country_code: z.string().optional().default('RU').describe('Country code (ISO 3166-1 alpha-2, e.g., "RU", "US")'),
   query: z.string().describe('Search query for finding relevant legal documents'),
   max_results: z.number().optional().default(10).describe('Maximum number of results to return'),
   use_hybrid: z.boolean().optional().default(false).describe('Use hybrid search (keyword + semantic)'),
@@ -63,12 +63,12 @@ function formatDocument(doc: any): string {
  * Execute the query-laws tool
  */
 export async function executeQueryLaws(input: QueryLawsInput): Promise<string> {
-  const { country_id, query, max_results, use_hybrid } = input;
+  const { country_code, query, max_results, use_hybrid } = input;
 
   // For now, use keyword search since we don't have embedding generation in MCP server yet
   // TODO: Add embedding generation for semantic search
 
-  const results = await searchDocuments(query, max_results, country_id);
+  const results = await searchDocuments(query, max_results, undefined, country_code);
 
   if (results.length === 0) {
     return `No documents found for query: "${query}"`;
@@ -104,24 +104,24 @@ export const queryLawsTool: Tool = {
 This tool searches the documents table which contains individual legal publications.
 
 Args:
-  country_id: Country ID to search within (default: 1)
+  country_code: Country code (ISO 3166-1 alpha-2, e.g., "RU", "US") to search within (default: "RU")
   query: Search query text (keywords or phrases)
   max_results: Maximum number of results to return (default: 10)
   use_hybrid: Enable hybrid keyword + semantic search (default: false)
 
 Examples:
   Search for documents about labor:
-  { "country_id": 1, "query": "labor contract", "max_results": 5 }
+  { "country_code": "RU", "query": "labor contract", "max_results": 5 }
 
   ❌ WRONG: "Constitution article 1" → Use get-article-version with code_id instead
   ❌ WRONG: "Civil Code article 420" → Use get-article-version instead`,
   inputSchema: {
     type: 'object',
     properties: {
-      country_id: {
-        type: 'number',
-        description: 'Country ID (1=Russia)',
-        default: 1,
+      country_code: {
+        type: 'string',
+        description: 'Country code (ISO 3166-1 alpha-2, e.g., "RU", "US")',
+        default: 'RU',
       },
       query: {
         type: 'string',

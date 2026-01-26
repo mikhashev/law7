@@ -35,7 +35,7 @@ describe('query-laws tool', () => {
   describe('Input schema validation', () => {
     it('should validate correct input with all fields', () => {
       const input = {
-        country_id: 1,
+        country_code: 'RU',
         query: 'labor contract',
         max_results: 5,
         use_hybrid: false,
@@ -51,7 +51,7 @@ describe('query-laws tool', () => {
       const result = QueryLawsInputSchema.safeParse(input);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.country_id).toBe(1); // default
+        expect(result.data.country_code).toBe('RU'); // default
         expect(result.data.max_results).toBe(10); // default
         expect(result.data.use_hybrid).toBe(false); // default
       }
@@ -59,17 +59,17 @@ describe('query-laws tool', () => {
 
     it('should reject input without query field', () => {
       const input = {
-        country_id: 1,
+        country_code: 'RU',
         max_results: 10,
       };
       const result = QueryLawsInputSchema.safeParse(input);
       expect(result.success).toBe(false);
     });
 
-    it('should reject invalid country_id type', () => {
+    it('should reject invalid country_code type', () => {
       const input = {
         query: 'test',
-        country_id: 'not-a-number',
+        country_code: 123,
       };
       const result = QueryLawsInputSchema.safeParse(input);
       expect(result.success).toBe(false);
@@ -105,7 +105,7 @@ describe('query-laws tool', () => {
       vi.mocked(searchDocuments).mockResolvedValue(mockDocuments as any);
 
       const input = {
-        country_id: 1,
+        country_code: 'RU',
         query: 'labor contract',
         max_results: 10,
         use_hybrid: false,
@@ -116,13 +116,14 @@ describe('query-laws tool', () => {
       expect(result).toContain('Found 1 document');
       expect(result).toContain('0001202601170001');
       expect(result).toContain('Трудовой кодекс Российской Федерации');
-      expect(searchDocuments).toHaveBeenCalledWith('labor contract', 10, 1);
+      expect(searchDocuments).toHaveBeenCalledWith('labor contract', 10, undefined, 'RU');
     });
 
     it('should return empty result message when no documents found', async () => {
       vi.mocked(searchDocuments).mockResolvedValue([]);
 
       const input = {
+        country_code: 'RU',
         query: 'nonexistent query',
         max_results: 10,
         use_hybrid: false,
@@ -146,6 +147,7 @@ describe('query-laws tool', () => {
       vi.mocked(searchDocuments).mockResolvedValue(mockDocuments as any);
 
       const input = {
+        country_code: 'RU',
         query: 'simple',
         max_results: 10,
         use_hybrid: false,
@@ -167,6 +169,7 @@ describe('query-laws tool', () => {
       vi.mocked(searchDocuments).mockResolvedValue(mockDocuments as any);
 
       const input = {
+        country_code: 'RU',
         query: 'test',
         max_results: 5,
         use_hybrid: false,
@@ -177,7 +180,7 @@ describe('query-laws tool', () => {
       // The implementation passes max_results to searchDocuments
       // but the mock returns 20 results, so the output says "Found 20 document"
       expect(result).toContain('Found 20 document');
-      expect(searchDocuments).toHaveBeenCalledWith('test', 5, undefined);
+      expect(searchDocuments).toHaveBeenCalledWith('test', 5, undefined, 'RU');
     });
 
     it('should pass country_id to searchDocuments', async () => {
@@ -192,15 +195,15 @@ describe('query-laws tool', () => {
       vi.mocked(searchDocuments).mockResolvedValue(mockDocuments as any);
 
       const input = {
+        country_code: 'US',  // Using US as a test country code
         query: 'test',
-        country_id: 42,
         max_results: 10,
         use_hybrid: false,
       };
 
       await executeQueryLaws(input);
 
-      expect(searchDocuments).toHaveBeenCalledWith('test', 10, 42);
+      expect(searchDocuments).toHaveBeenCalledWith('test', 10, undefined, 'US');
     });
   });
 
@@ -209,6 +212,7 @@ describe('query-laws tool', () => {
       vi.mocked(searchDocuments).mockRejectedValue(new Error('Database connection failed'));
 
       const input = {
+        country_code: 'RU',
         query: 'test',
         max_results: 10,
         use_hybrid: false,

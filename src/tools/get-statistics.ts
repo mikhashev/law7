@@ -5,12 +5,12 @@
 
 import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { query, getDocumentCount } from '../db/postgres.js';
+import { query, getDocumentCount, getCountryIdFromCode } from '../db/postgres.js';
 import { getPointCount } from '../db/qdrant.js';
 
 // Input schema for get-statistics tool
 export const GetStatisticsInputSchema = z.object({
-  country_id: z.number().optional().describe('Filter statistics by country ID'),
+  country_code: z.string().optional().describe('Filter statistics by country code (ISO 3166-1 alpha-2, e.g., "RU", "US")'),
   include_vector_stats: z.boolean().optional().default(true).describe('Include vector database statistics'),
 });
 
@@ -31,17 +31,23 @@ export interface Statistics {
  * Execute the get-statistics tool
  */
 export async function executeGetStatistics(input: GetStatisticsInput): Promise<string> {
-  const { country_id, include_vector_stats } = input;
+  const { country_code, include_vector_stats } = input;
+
+  // Convert country code to ID if provided
+  let countryId: number | undefined;
+  if (country_code) {
+    countryId = await getCountryIdFromCode(country_code) || undefined;
+  }
 
   // Get document count
-  const totalDocuments = await getDocumentCount(country_id);
+  const totalDocuments = await getDocumentCount(undefined, country_code);
 
   // Get documents with content
   const contentResult = await query<{ count: bigint }>(`
     SELECT COUNT(*) as count
     FROM document_content
     WHERE full_text IS NOT NULL
-    ${country_id ? `AND document_id IN (SELECT id FROM documents WHERE country_id = ${country_id})` : ''}
+    ${countryId ? `AND document_id IN (SELECT id FROM documents WHERE country_id = ${countryId})` : ''}
   `);
   const documentsWithContent = Number(contentResult[0].count);
 
@@ -53,7 +59,7 @@ export async function executeGetStatistics(input: GetStatisticsInput): Promise<s
       COUNT(d.id) as count
     FROM publication_blocks pb
     LEFT JOIN documents d ON pb.id = d.publication_block_id
-    ${country_id ? `WHERE d.country_id = ${country_id}` : 'WHERE 1=1'}
+    ${countryId ? `WHERE d.country_id = ${countryId}` : 'WHERE 1=1'}
     GROUP BY pb.id, pb.code, pb.short_name
     HAVING COUNT(d.id) > 0
     ORDER BY count DESC
@@ -85,8 +91,8 @@ export async function executeGetStatistics(input: GetStatisticsInput): Promise<s
   // Format output
   let output = `## Legal Document Database Statistics\n\n`;
 
-  if (country_id) {
-    output += `**Country ID**: ${country_id}\n\n`;
+  if (country_code) {
+    output += `**Country Code**: ${country_code.toUpperCase()}\n\n`;
   }
 
   // Overview
@@ -135,7 +141,7 @@ including document counts, coverage, and breakdown by category.
 Currently supports data from Russia (Phase 1). Multi-country statistics planned for Phase 2.
 
 Args:
-  country_id: Optional country ID to filter statistics (default: all countries)
+  country_code: Optional country code to filter statistics (ISO 3166-1 alpha-2, e.g., "RU", "US")
   include_vector_stats: Include vector database statistics (default: true)
 
 Examples:
@@ -143,13 +149,13 @@ Examples:
   { "include_vector_stats": true }
 
   Get statistics for specific country:
-  { "country_id": 1, "include_vector_stats": true }`,
+  { "country_code": "RU", "include_vector_stats": true }`,
   inputSchema: {
     type: 'object',
     properties: {
-      country_id: {
-        type: 'number',
-        description: 'Filter statistics by country ID',
+      country_code: {
+        type: 'string',
+        description: 'Filter statistics by country code (ISO 3166-1 alpha-2, e.g., "RU", "US")',
       },
       include_vector_stats: {
         type: 'boolean',

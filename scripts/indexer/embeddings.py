@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from core.config import EMBEDDING_BATCH_SIZE, EMBEDDING_DEVICE, EMBEDDING_MODEL
+from scripts.core.config import EMBEDDING_BATCH_SIZE, EMBEDDING_DEVICE, EMBEDDING_MODEL
 
 logger = logging.getLogger(__name__)
 
