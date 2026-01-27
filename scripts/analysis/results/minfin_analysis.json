@@ -1,0 +1,36 @@
+{
+  "portal": "Ministry of Finance (minfin.gov.ru)",
+  "timestamp": "2026-01-27T17:27:14.181695",
+  "api_endpoints": [],
+  "html_structure": {},
+  "document_patterns": {
+    "card_selector": [
+      "main_page_container",
+      "docs_page"
+    ],
+    "count_on_page": 42,
+    "detail_link_pattern": "/",
+    "date_found": true,
+    "number_format": "XX-XX-XX/XXXXX"
+  },
+  "filters": {
+    "known_types": {
+      "document_type": [
+        "Письмо Минфина России",
+        "Приказ",
+        "Распоряжение"
+      ],
+      "topic": [
+        "Налоговая политика",
+        "Бюджет",
+        "Бухгалтерский учет"
+      ],
+      "date_range": [
+        "startDate",
+        "endDate",
+        "date"
+      ]
+    }
+  },
+  "errors": []
+}

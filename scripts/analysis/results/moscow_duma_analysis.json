@@ -1,0 +1,10 @@
+{
+  "portal": "Moscow City Duma (duma.mos.ru)",
+  "timestamp": "2026-01-27T17:27:20.480469",
+  "api_endpoints": [],
+  "html_structure": {},
+  "koap_patterns": {},
+  "errors": [
+    "Error analyzing documentation page: HTTPSConnectionPool(host='duma.mos.ru', port=443): Max retries exceeded with url: /ru/documentation/ (Caused by NewConnectionError(\"HTTPSConnection(host='duma.mos.ru', port=443): Failed to establish a new connection: [WinError 10061] Подключение не установлено, т.к. конечный компьютер отверг запрос на подключение\"))"
+  ]
+}

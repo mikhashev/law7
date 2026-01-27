@@ -1,0 +1,13 @@
+{
+  "portal": "Supreme Court (vsrf.gov.ru)",
+  "timestamp": "2026-01-27T17:27:13.760627",
+  "api_endpoints": [],
+  "html_structure": {},
+  "document_patterns": {},
+  "pagination": {},
+  "errors": [
+    "Error analyzing https://vsrf.gov.ru/documents/own/: HTTPSConnectionPool(host='vsrf.gov.ru', port=443): Max retries exceeded with url: /documents/own/ (Caused by NameResolutionError(\"HTTPSConnection(host='vsrf.gov.ru', port=443): Failed to resolve 'vsrf.gov.ru' ([Errno 11001] getaddrinfo failed)\"))",
+    "Error analyzing https://vsrf.gov.ru/documents/practice/: HTTPSConnectionPool(host='vsrf.gov.ru', port=443): Max retries exceeded with url: /documents/practice/ (Caused by NameResolutionError(\"HTTPSConnection(host='vsrf.gov.ru', port=443): Failed to resolve 'vsrf.gov.ru' ([Errno 11001] getaddrinfo failed)\"))",
+    "Error analyzing document page: HTTPSConnectionPool(host='vsrf.gov.ru', port=443): Max retries exceeded with url: /documents/own/ (Caused by NameResolutionError(\"HTTPSConnection(host='vsrf.gov.ru', port=443): Failed to resolve 'vsrf.gov.ru' ([Errno 11001] getaddrinfo failed)\"))"
+  ]
+}
