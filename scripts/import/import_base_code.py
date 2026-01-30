@@ -43,6 +43,35 @@ logger = logging.getLogger(__name__)
 _article_parser = ArticleNumberParser()
 
 
+# Consultant.ru document IDs for verification
+# Used to cross-verify article numbers after import from official sources
+CONSULTANT_DOC_IDS = {
+    'KONST_RF': 'cons_doc_LAW_30994',  # Constitution
+    'GK_RF': 'cons_doc_LAW_30712',     # Civil Code Part 1
+    'GK_RF_2': 'cons_doc_LAW_30713',    # Civil Code Part 2
+    'GK_RF_3': 'cons_doc_LAW_30714',    # Civil Code Part 3
+    'GK_RF_4': 'cons_doc_LAW_30715',    # Civil Code Part 4
+    'UK_RF': 'cons_doc_LAW_30645',      # Criminal Code
+    'TK_RF': 'cons_doc_LAW_30648',      # Labor Code
+    'NK_RF': 'cons_doc_LAW_30735',      # Tax Code Part 1
+    'NK_RF_2': 'cons_doc_LAW_30736',    # Tax Code Part 2
+    'KoAP_RF': 'cons_doc_LAW_34661',    # Administrative Code
+    'SK_RF': 'cons_doc_LAW_30656',      # Family Code
+    'ZhK_RF': 'cons_doc_LAW_31120',     # Housing Code
+    'ZK_RF': 'cons_doc_LAW_30739',      # Land Code
+    'APK_RF': 'cons_doc_LAW_30644',     # Arbitration Procedure Code
+    'GPK_RF': 'cons_doc_LAW_30642',     # Civil Procedure Code
+    'UPK_RF': 'cons_doc_LAW_30643',     # Criminal Procedure Code
+    'BK_RF': 'cons_doc_LAW_30570',      # Budget Code
+    'GRK_RF': 'cons_doc_LAW_30725',     # Urban Planning Code
+    'UIK_RF': 'cons_doc_LAW_30577',     # Criminal Executive Code
+    'VZK_RF': 'cons_doc_LAW_30646',     # Air Code
+    'VDK_RF': 'cons_doc_LAW_30641',     # Water Code
+    'LK_RF': 'cons_doc_LAW_30756',      # Forest Code
+    'KAS_RF': 'cons_doc_LAW_30648',     # Administrative Procedure Code
+}
+
+
 # Code metadata for import
 # Priority: kremlin (official) -> pravo (official) -> government (official)
 CODE_METADATA = {
@@ -469,13 +498,18 @@ def try_context_correction(
     if not prev_article or not next_article:
         return article_number, warnings
 
-    # Convert dot-notation articles (e.g., "10.5.1" → "1051")
-    # The HTML hierarchy uses dots, but actual article numbers are concatenated
+    # Convert multi-dot hierarchy articles (e.g., "10.5.1" → "1051")
+    # Single-dot articles like "1.31" are valid legal notation - preserve them
     if '.' in article_number:
-        dotless = article_number.replace('.', '')
-        if dotless.isdigit() and 2 < len(dotless) < 7:
-            warnings.append(f"Converted dot-notation '{article_number}' to '{dotless}'")
-            article_number = dotless
+        dot_count = article_number.count('.')
+        if dot_count >= 2:
+            # Multi-dot = HTML hierarchy encoding
+            # Format: "20.3.1" means article 203, part 1 (multi-level hierarchy)
+            dotless = article_number.replace('.', '')
+            if dotless.isdigit() and 2 < len(dotless) < 7:
+                warnings.append(f"Converted multi-dot '{article_number}' to '{dotless}'")
+                article_number = dotless
+        # Single-dot articles (like "1.31") are preserved - they're valid legal notation
 
     # Hyphenated articles WITHOUT dots need correction (e.g., "521-1" → "52.1-1")
     # Hyphenated articles WITH dots are already correct (e.g., "52.1-1" is correct)
@@ -2777,6 +2811,261 @@ class BaseCodeImporter:
         self.close()
 
 
+# Consultant.ru verification functions
+
+
+def scrape_article_numbers_from_consultant(doc_id: str) -> List[str]:
+    """
+    Scrape all article numbers from a consultant.ru document page.
+
+    Args:
+        doc_id: Consultant.ru document ID (e.g., 'cons_doc_LAW_34661')
+
+    Returns:
+        List of article numbers found in the document
+    """
+    url = f"https://www.consultant.ru/document/{doc_id}/"
+    article_numbers = []
+
+    try:
+        logger.info(f"Fetching article structure from {url}")
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        response.encoding = 'utf-8'
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Find all article links in the document
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            # Match article pattern: e.g., "Статья 1.3.1" or just "1.3.1"
+            match = re.search(r'(?:Статья\s+)?(\d+(?:\.\d+)*)(?:\.|$)', link.get_text())
+            if match:
+                article_num = match.group(1)
+                if article_num not in article_numbers:
+                    article_numbers.append(article_num)
+
+        # Alternative: scrape from document text
+        pattern = r'Статья\s+(\d+(?:\.\d+)*)(?:\.|\s|$)'
+        for match in re.finditer(pattern, response.text):
+            article_num = match.group(1)
+            if article_num not in article_numbers:
+                article_numbers.append(article_num)
+
+        article_numbers.sort(key=lambda x: [int(p) for p in x.split('.')])
+        logger.info(f"Found {len(article_numbers)} articles in consultant.ru structure")
+
+    except Exception as e:
+        logger.error(f"Failed to scrape article numbers from {url}: {e}")
+
+    return article_numbers
+
+
+def import_consultant_reference(code_id: str, article_numbers: List[str]) -> int:
+    """
+    Import consultant.ru article number reference to database.
+
+    Creates mappings from our format (official sources) to consultant.ru format.
+
+    Args:
+        code_id: Code identifier
+        article_numbers: List of article numbers from consultant.ru
+
+    Returns:
+        Number of reference mappings created
+    """
+    imported = 0
+
+    try:
+        with get_db_connection() as conn:
+            # Ensure reference table exists
+            create_table_query = text(
+                """
+                CREATE TABLE IF NOT EXISTS article_number_reference (
+                    id SERIAL PRIMARY KEY,
+                    code_id VARCHAR(50) NOT NULL,
+                    article_number_source VARCHAR(50) NOT NULL,
+                    article_number_consultant VARCHAR(50) NOT NULL,
+                    is_verified BOOLEAN DEFAULT FALSE,
+                    verification_notes TEXT,
+                    created_at TIMESTAMP DEFAULT now(),
+                    UNIQUE(code_id, article_number_source, article_number_consultant)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_article_number_reference_code_id
+                ON article_number_reference(code_id);
+
+                CREATE INDEX IF NOT EXISTS idx_article_number_reference_consultant
+                ON article_number_reference(code_id, article_number_consultant);
+                """
+            )
+            conn.execute(create_table_query)
+
+            # Get existing articles for matching
+            our_articles_query = text(
+                """
+                SELECT article_number, article_title, text_hash
+                FROM code_article_versions
+                WHERE code_id = :code_id
+                """
+            )
+            result = conn.execute(our_articles_query, {"code_id": code_id})
+            our_articles = {row[0]: (row[1], row[2]) for row in result}
+            logger.info(f"Found {len(our_articles)} existing articles for {code_id}")
+
+            # Create mappings: our format -> consultant format
+            params_list = []
+
+            for consultant_article in article_numbers:
+                # Skip section numbers (single digit without dot)
+                if '.' not in consultant_article and len(consultant_article) <= 2:
+                    continue
+
+                # Try to find matching article by similar number pattern
+                possible_source_formats = []
+                if consultant_article.count('.') >= 2:
+                    # "1.3.1" -> look for "1.31"
+                    parts = consultant_article.split('.')
+                    if len(parts) == 3 and len(parts[1]) == 1:
+                        possible_source_formats.append(f"{parts[0]}.{parts[1]}{parts[2]}")
+                elif consultant_article.count('.') == 1:
+                    # Direct match
+                    possible_source_formats.append(consultant_article)
+
+                # Find matching article
+                for source_format in possible_source_formats:
+                    if source_format in our_articles:
+                        title, text_hash = our_articles[source_format]
+                        params = {
+                            "code_id": code_id,
+                            "article_number_source": source_format,
+                            "article_number_consultant": consultant_article,
+                            "is_verified": True,
+                            "verification_notes": f"Auto-matched: {source_format} -> {consultant_article}",
+                        }
+                        params_list.append(params)
+                        logger.debug(f"Matched: {source_format} -> {consultant_article}")
+                        break
+
+            if params_list:
+                insert_query = text(
+                    """
+                    INSERT INTO article_number_reference (
+                        code_id, article_number_source, article_number_consultant,
+                        is_verified, verification_notes
+                    ) VALUES (
+                        :code_id, :article_number_source, :article_number_consultant,
+                        :is_verified, :verification_notes
+                    )
+                    ON CONFLICT (code_id, article_number_source, article_number_consultant)
+                    DO UPDATE SET
+                        is_verified = EXCLUDED.is_verified,
+                        verification_notes = EXCLUDED.verification_notes
+                    """
+                )
+                conn.execute(insert_query, params_list)
+                imported = len(params_list)
+                conn.commit()
+
+            logger.info(f"Imported {imported} reference mappings for {code_id}")
+
+    except Exception as e:
+        logger.error(f"Failed to import reference for {code_id}: {e}")
+
+    return imported
+
+
+def verify_with_consultant(code_id: str) -> Dict[str, any]:
+    """
+    Verify imported articles against consultant.ru structure.
+
+    Args:
+        code_id: Code identifier to verify
+
+    Returns:
+        Dictionary with verification results
+    """
+    if code_id not in CONSULTANT_DOC_IDS:
+        return {
+            "code_id": code_id,
+            "status": "skipped",
+            "reason": "Not in consultant.ru mapping"
+        }
+
+    doc_id = CONSULTANT_DOC_IDS[code_id]
+    logger.info(f"Verifying {code_id} against consultant.ru ({doc_id})")
+
+    # Scrape consultant.ru structure
+    consultant_articles = scrape_article_numbers_from_consultant(doc_id)
+
+    if not consultant_articles:
+        return {
+            "code_id": code_id,
+            "status": "error",
+            "reason": "Failed to scrape consultant.ru"
+        }
+
+    # Import reference mappings
+    mappings_created = import_consultant_reference(code_id, consultant_articles)
+
+    # Get verification statistics
+    try:
+        with get_db_connection() as conn:
+            # Get consultant reference
+            ref_query = text(
+                """
+                SELECT article_number_consultant
+                FROM article_number_reference
+                WHERE code_id = :code_id
+                """
+            )
+            result = conn.execute(ref_query, {"code_id": code_id})
+            consultant_mapped = set(row[0] for row in result)
+
+            # Get imported articles
+            imp_query = text(
+                """
+                SELECT article_number
+                FROM code_article_versions
+                WHERE code_id = :code_id
+                """
+            )
+            result = conn.execute(imp_query, {"code_id": code_id})
+            imported_articles = set(row[0] for row in result)
+
+            # Sample format differences
+            format_diffs = []
+            diff_query = text(
+                """
+                SELECT article_number_source, article_number_consultant
+                FROM article_number_reference
+                WHERE code_id = :code_id
+                AND article_number_source != article_number_consultant
+                LIMIT 10
+                """
+            )
+            result = conn.execute(diff_query, {"code_id": code_id})
+            for row in result:
+                format_diffs.append(f"{row[0]} -> {row[1]}")
+
+            return {
+                "code_id": code_id,
+                "status": "success",
+                "total_in_db": len(imported_articles),
+                "total_in_consultant": len(consultant_articles),
+                "mappings_created": mappings_created,
+                "format_differences": format_diffs,
+            }
+
+    except Exception as e:
+        logger.error(f"Failed to verify articles for {code_id}: {e}")
+        return {
+            "code_id": code_id,
+            "status": "error",
+            "reason": str(e)
+        }
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Import base legal codes from official sources")
@@ -2790,6 +3079,11 @@ def main():
     )
     parser.add_argument("--list", action="store_true", help="List available codes")
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument(
+        "--verify-consultant",
+        action="store_true",
+        help="Verify imported articles against consultant.ru structure after import",
+    )
 
     args = parser.parse_args()
 
@@ -2849,6 +3143,30 @@ def main():
                             f"{part_result.get('articles_saved', 0)} articles "
                             f"({part_result['source']})"
                         )
+
+                    # Run consultant verification for each part if requested
+                    if args.verify_consultant:
+                        print(f"\n{'─'*60}")
+                        print("Verifying against consultant.ru...")
+                        print(f"{'─'*60}")
+                        for part_result in result.get("results", []):
+                            part_code_id = part_result['code_id']
+                            if part_code_id in CONSULTANT_DOC_IDS:
+                                verify_result = verify_with_consultant(part_code_id)
+                                print(f"\n{part_code_id}:")
+                                print(f"  Status: {verify_result['status']}")
+                                if verify_result['status'] == 'success':
+                                    print(f"  In DB: {verify_result['total_in_db']}")
+                                    print(f"  In consultant.ru: {verify_result['total_in_consultant']}")
+                                    print(f"  Mappings: {verify_result['mappings_created']}")
+                                    if verify_result['format_differences']:
+                                        print(f"  Format differences (sample):")
+                                        for diff in verify_result['format_differences'][:5]:
+                                            print(f"    {diff}")
+                                else:
+                                    print(f"  Reason: {verify_result.get('reason', 'Unknown')}")
+                            else:
+                                print(f"\n{part_code_id}: Not in consultant.ru mapping")
                 else:
                     # Single-part code
                     if result.get("pages_fetched"):
@@ -2857,6 +3175,26 @@ def main():
                     print(f"Articles Processed: {result.get('articles_processed', 0)}")
                     print(f"Articles Saved: {result['articles_saved']}")
                     print(f"Source: {result['source']}")
+
+                    # Run consultant verification if requested
+                    if args.verify_consultant:
+                        print(f"\n{'─'*60}")
+                        print("Verifying against consultant.ru...")
+                        print(f"{'─'*60}")
+                        verify_result = verify_with_consultant(args.code)
+                        print(f"\nStatus: {verify_result['status']}")
+                        if verify_result['status'] == 'success':
+                            print(f"In DB: {verify_result['total_in_db']}")
+                            print(f"In consultant.ru: {verify_result['total_in_consultant']}")
+                            print(f"Mappings: {verify_result['mappings_created']}")
+                            if verify_result['format_differences']:
+                                print(f"Format differences (sample):")
+                                for diff in verify_result['format_differences'][:5]:
+                                    print(f"  {diff}")
+                        elif verify_result['status'] == 'skipped':
+                            print(f"Skipped: {verify_result.get('reason', 'Unknown')}")
+                        else:
+                            print(f"Error: {verify_result.get('reason', 'Unknown')}")
             else:
                 print(f"Error: {result.get('error', 'Unknown error')}")
             print(f"{'='*60}")
@@ -2874,6 +3212,23 @@ def main():
             print(f"{'='*60}")
             successful = sum(1 for r in results if r["status"] == "success")
             print(f"Successful: {successful}/{len(results)}")
+
+            # Run consultant verification for all codes if requested
+            if args.verify_consultant:
+                print(f"\n{'='*60}")
+                print("Consultant.ru Verification")
+                print(f"{'='*60}")
+                for code_id in CODE_METADATA.keys():
+                    if code_id in CONSULTANT_DOC_IDS:
+                        verify_result = verify_with_consultant(code_id)
+                        status_symbol = "OK" if verify_result['status'] == 'success' else ("SKIP" if verify_result['status'] == 'skipped' else "ERR")
+                        print(f"  [{status_symbol}] {code_id}: ", end="")
+                        if verify_result['status'] == 'success':
+                            print(f"DB={verify_result['total_in_db']}, consultant={verify_result['total_in_consultant']}, mappings={verify_result['mappings_created']}")
+                        else:
+                            print(f"{verify_result.get('reason', 'Unknown')}")
+                    else:
+                        print(f"  [---] {code_id}: Not in consultant.ru mapping")
 
         else:
             parser.print_help()
