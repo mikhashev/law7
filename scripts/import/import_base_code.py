@@ -2924,6 +2924,45 @@ class BaseCodeImporter:
 # Consultant.ru verification functions
 
 
+def _is_valid_article_number(article_num: str) -> bool:
+    """
+    Validate if a scraped number is a valid article number.
+
+    Filters out false positives like years (1875, 2026) or random numbers.
+
+    Args:
+        article_num: Article number to validate
+
+    Returns:
+        True if valid article number, False otherwise
+    """
+    # Must be non-empty
+    if not article_num:
+        return False
+
+    # Check each part of the article number
+    parts = article_num.split('.')
+    for part in parts:
+        # Must be a valid number
+        if not part.isdigit():
+            return False
+
+        num = int(part)
+
+        # Filter out obvious false positives:
+        # - Single part numbers > 500 (likely years like 1875, 2026, 6731)
+        # - Parts that are years (1000-2999)
+        if num > 500 and len(parts) == 1:
+            return False
+        if num >= 1000 and num <= 2999:
+            return False
+        # Sub-article parts shouldn't be > 100
+        if len(parts) > 1 and num > 99:
+            return False
+
+    return True
+
+
 def scrape_article_numbers_from_consultant(doc_id: str) -> List[str]:
     """
     Scrape all article numbers from a consultant.ru document page.
@@ -2952,14 +2991,14 @@ def scrape_article_numbers_from_consultant(doc_id: str) -> List[str]:
             match = re.search(r'(?:Статья\s+)?(\d+(?:\.\d+)*)(?:\.|$)', link.get_text())
             if match:
                 article_num = match.group(1)
-                if article_num not in article_numbers:
+                if article_num not in article_numbers and _is_valid_article_number(article_num):
                     article_numbers.append(article_num)
 
         # Alternative: scrape from document text
         pattern = r'Статья\s+(\d+(?:\.\d+)*)(?:\.|\s|$)'
         for match in re.finditer(pattern, response.text):
             article_num = match.group(1)
-            if article_num not in article_numbers:
+            if article_num not in article_numbers and _is_valid_article_number(article_num):
                 article_numbers.append(article_num)
 
         article_numbers.sort(key=lambda x: [int(p) for p in x.split('.')])
@@ -3012,10 +3051,15 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dic
                 CREATE INDEX IF NOT EXISTS idx_article_number_reference_consultant
                 ON article_number_reference(code_id, article_number_consultant);
 
-                -- Unique constraint allows NULL for missing articles
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_article_number_reference_unique
+                -- Unique constraint for matched articles (article_number_source IS NOT NULL)
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_article_number_reference_matched_unique
                 ON article_number_reference(code_id, article_number_source, article_number_consultant)
                 WHERE article_number_source IS NOT NULL;
+
+                -- Unique constraint for missing articles (article_number_source IS NULL)
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_article_number_reference_missing_unique
+                ON article_number_reference(code_id, article_number_consultant)
+                WHERE article_number_source IS NULL;
                 """
             )
             conn.execute(create_table_query)
@@ -3114,6 +3158,8 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dic
                 result["matched_count"] = len(matched_params)
 
             # Insert missing articles (article_number_source is NULL)
+            # Uses the idx_article_number_reference_missing_unique index
+            # which only covers rows where article_number_source IS NULL
             if missing_params:
                 insert_missing_query = text(
                     """
@@ -3125,7 +3171,6 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dic
                         :is_verified, :verification_notes
                     )
                     ON CONFLICT (code_id, article_number_consultant)
-                    WHERE article_number_source IS NULL
                     DO NOTHING
                     """
                 )
