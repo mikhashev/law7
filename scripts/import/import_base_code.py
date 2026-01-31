@@ -2518,6 +2518,10 @@ class BaseCodeImporter:
         """
         Parse government.ru HTML to extract articles.
 
+        Uses two-phase parsing for multi-page documents:
+        1. Extract all raw articles from all pages
+        2. Validate all articles together with full context (fixes issue #23)
+
         Args:
             html: HTML content (single page string or list of pages)
             code_id: Code identifier
@@ -2525,26 +2529,33 @@ class BaseCodeImporter:
         Returns:
             Dictionary with articles list
         """
-        # Handle multiple pages
+        # Handle multiple pages - two-phase approach to maintain context across pages
         if isinstance(html, list):
-            all_articles = []
+            # Phase 1: Extract all raw articles from all pages (without validation)
+            all_raw_articles = []
             for i, page_html in enumerate(html):
-                result = self._parse_single_government_page(page_html, code_id)
-                all_articles.extend(result.get("articles", []))
-            logger.info(f"Parsed {len(all_articles)} articles from {len(html)} pages")
+                raw_articles = self._extract_raw_articles_from_government_page(page_html, code_id)
+                all_raw_articles.extend(raw_articles)
+            logger.info(f"Extracted {len(all_raw_articles)} raw articles from {len(html)} pages")
+
+            # Phase 2: Validate all articles together with full context
+            # This ensures articles like "231" at the start of page 2 have prev="23" from page 1
+            validated_articles = self._validate_and_correct_articles(all_raw_articles, code_id)
+
             return {
                 "code_id": code_id,
-                "articles": all_articles,
+                "articles": validated_articles,
                 "source": "government.ru",
             }
         else:
+            # Single page - use existing method
             return self._parse_single_government_page(html, code_id)
 
-    def _parse_single_government_page(self, html: str, code_id: str) -> Dict[str, Any]:
+    def _extract_raw_articles_from_government_page(self, html: str, code_id: str) -> List[Dict[str, Any]]:
         """
-        Parse a single government.ru HTML page to extract articles.
+        Extract raw articles from a government.ru HTML page (no validation).
 
-        Collects raw articles first, then validates article numbers with context.
+        Collects raw articles without validating article numbers.
         Only processes content within <div class="reader_article_body"> elements.
 
         Args:
@@ -2552,7 +2563,7 @@ class BaseCodeImporter:
             code_id: Code identifier
 
         Returns:
-            Dictionary with articles list
+            List of raw article dictionaries (with unvalidated article_number)
         """
         soup = BeautifulSoup(html, "html.parser")
 
@@ -2569,11 +2580,7 @@ class BaseCodeImporter:
 
         if not article_body_divs:
             logger.warning(f"[{code_id}] No reader_article_body divs found in HTML")
-            return {
-                "code_id": code_id,
-                "articles": [],
-                "source": "government.ru",
-            }
+            return []
 
         # Process elements within each reader_article_body div
         for article_body in article_body_divs:
@@ -2634,7 +2641,23 @@ class BaseCodeImporter:
             current_article["article_text"] = "\n\n".join(current_paragraphs)
             raw_articles.append(current_article)
 
-        # NOW validate and correct article numbers with context
+        return raw_articles
+
+    def _validate_and_correct_articles(self, raw_articles: List[Dict], code_id: str) -> List[Dict[str, Any]]:
+        """
+        Validate and correct article numbers with full context.
+
+        Takes a list of raw articles and validates/corrects their article numbers
+        using context from previous and next articles. This enables proper
+        correction of articles like "231" → "23.1" when prev_article is "23".
+
+        Args:
+            raw_articles: List of raw article dictionaries
+            code_id: Code identifier
+
+        Returns:
+            List of validated/corrected article dictionaries
+        """
         articles = []
         for i, raw_article in enumerate(raw_articles):
             raw_number = raw_article["article_number"]
@@ -2690,9 +2713,31 @@ class BaseCodeImporter:
             else:
                 logger.debug(f"[{code_id}]   '{raw_num}' (no change)")
 
+        return articles
+
+    def _parse_single_government_page(self, html: str, code_id: str) -> Dict[str, Any]:
+        """
+        Parse a single government.ru HTML page to extract articles.
+
+        Extracts raw articles and validates article numbers with context.
+        Only processes content within <div class="reader_article_body"> elements.
+
+        Args:
+            html: HTML content
+            code_id: Code identifier
+
+        Returns:
+            Dictionary with articles list
+        """
+        # Extract raw articles from the page
+        raw_articles = self._extract_raw_articles_from_government_page(html, code_id)
+
+        # Validate and correct article numbers with context
+        validated_articles = self._validate_and_correct_articles(raw_articles, code_id)
+
         return {
             "code_id": code_id,
-            "articles": articles,
+            "articles": validated_articles,
             "source": "government.ru",
         }
 
