@@ -46,29 +46,29 @@ _article_parser = ArticleNumberParser()
 # Consultant.ru document IDs for verification
 # Used to cross-verify article numbers after import from official sources
 CONSULTANT_DOC_IDS = {
-    'KONST_RF': 'cons_doc_LAW_30994',  # Constitution
-    'GK_RF': 'cons_doc_LAW_30712',     # Civil Code Part 1
-    'GK_RF_2': 'cons_doc_LAW_30713',    # Civil Code Part 2
-    'GK_RF_3': 'cons_doc_LAW_30714',    # Civil Code Part 3
-    'GK_RF_4': 'cons_doc_LAW_30715',    # Civil Code Part 4
-    'UK_RF': 'cons_doc_LAW_30645',      # Criminal Code
-    'TK_RF': 'cons_doc_LAW_30648',      # Labor Code
-    'NK_RF': 'cons_doc_LAW_30735',      # Tax Code Part 1
-    'NK_RF_2': 'cons_doc_LAW_30736',    # Tax Code Part 2
+    'KONST_RF': 'cons_doc_LAW_28399',  # Constitution
+    'GK_RF': 'cons_doc_LAW_5142',     # Civil Code Part 1
+    'GK_RF_2': 'cons_doc_LAW_9027',    # Civil Code Part 2
+    'GK_RF_3': 'cons_doc_LAW_34154',    # Civil Code Part 3
+    'GK_RF_4': 'cons_doc_LAW_64629',    # Civil Code Part 4
+    'UK_RF': 'cons_doc_LAW_10699',      # Criminal Code
+    'TK_RF': 'cons_doc_LAW_34683',      # Labor Code
+    'NK_RF': 'cons_doc_LAW_19671',      # Tax Code Part 1
+    'NK_RF_2': 'cons_doc_LAW_28165',    # Tax Code Part 2
     'KoAP_RF': 'cons_doc_LAW_34661',    # Administrative Code
-    'SK_RF': 'cons_doc_LAW_30656',      # Family Code
-    'ZhK_RF': 'cons_doc_LAW_31120',     # Housing Code
-    'ZK_RF': 'cons_doc_LAW_30739',      # Land Code
-    'APK_RF': 'cons_doc_LAW_30644',     # Arbitration Procedure Code
-    'GPK_RF': 'cons_doc_LAW_30642',     # Civil Procedure Code
-    'UPK_RF': 'cons_doc_LAW_30643',     # Criminal Procedure Code
-    'BK_RF': 'cons_doc_LAW_30570',      # Budget Code
-    'GRK_RF': 'cons_doc_LAW_30725',     # Urban Planning Code
-    'UIK_RF': 'cons_doc_LAW_30577',     # Criminal Executive Code
-    'VZK_RF': 'cons_doc_LAW_30646',     # Air Code
-    'VDK_RF': 'cons_doc_LAW_30641',     # Water Code
-    'LK_RF': 'cons_doc_LAW_30756',      # Forest Code
-    'KAS_RF': 'cons_doc_LAW_30648',     # Administrative Procedure Code
+    'SK_RF': 'cons_doc_LAW_8982',      # Family Code
+    'ZhK_RF': 'cons_doc_LAW_51057',     # Housing Code
+    'ZK_RF': 'cons_doc_LAW_33773',      # Land Code
+    'APK_RF': 'cons_doc_LAW_37800',     # Arbitration Procedure Code
+    'GPK_RF': 'cons_doc_LAW_39570',     # Civil Procedure Code
+    'UPK_RF': 'cons_doc_LAW_34481',     # Criminal Procedure Code
+    'BK_RF': 'cons_doc_LAW_19702',      # Budget Code
+    'GRK_RF': 'cons_doc_LAW_51040',     # Urban Planning Code
+    'UIK_RF': 'cons_doc_LAW_12940',     # Criminal Executive Code
+    'VZK_RF': 'cons_doc_LAW_13744',     # Air Code
+    'VDK_RF': 'cons_doc_LAW_60683',     # Water Code
+    'LK_RF': 'cons_doc_LAW_64299',      # Forest Code
+    'KAS_RF': 'cons_doc_LAW_176147',     # Administrative Procedure Code
 }
 
 
@@ -309,7 +309,7 @@ KNOWN_ARTICLE_RANGES = {
     'APK_RF': (1, 418),
     'GPK_RF': (1, 494),
     'UPK_RF': (1, 553),
-    'BK_RF': (1, 280),
+    'BK_RF': (1, 307),         # Budget Code (30 chapters, articles go up to 307)
     'GRK_RF': (1, 120),
     'UIK_RF': (1, 200),
     'VZK_RF': (1, 150),
@@ -339,7 +339,7 @@ KNOWN_ARTICLE_COUNTS = {
     'APK_RF': 418,        # Arbitration Procedure Code
     'GPK_RF': 494,        # Civil Procedure Code
     'UPK_RF': 553,        # Criminal Procedure Code
-    'BK_RF': 280,         # Budget Code
+    'BK_RF': 307,         # Budget Code (30 chapters, articles up to 307)
     'GRK_RF': 120,        # Urban Planning Code
     'UIK_RF': 200,        # Criminal Executive Code
     'VZK_RF': 150,        # Air Code
@@ -781,6 +781,80 @@ def _generate_dot_candidates(article_number: str) -> List[str]:
     return candidates
 
 
+def try_consultant_reference_correction(
+    article_number: str,
+    code_id: str,
+    consultant_articles: Optional[set[str]] = None
+) -> tuple[Optional[str], List[str]]:
+    """
+    Attempt to correct article number using consultant.ru reference.
+
+    Uses consultant.ru's authoritative article numbers to disambiguate conversions.
+    For example, "1051" could be "105.1" or "10.51" - we check which one
+    exists in consultant.ru and use that.
+
+    Args:
+        article_number: Raw article number from HTML (e.g., "1051")
+        code_id: Code identifier (e.g., 'BK_RF')
+        consultant_articles: Set of valid article numbers from consultant.ru
+                            (will be fetched if not provided)
+
+    Returns:
+        Tuple of (corrected_number or None, warnings)
+        Returns (None, []) if consultant_articles is not available or no match found
+    """
+    warnings: List[str] = []
+
+    # Skip if article already has dots (already formatted)
+    if '.' in article_number:
+        return None, warnings
+
+    # Skip if article is not a pure number
+    if not article_number.isdigit():
+        return None, warnings
+
+    # Fetch consultant articles if not provided
+    if consultant_articles is None:
+        if code_id not in CONSULTANT_DOC_IDS:
+            return None, warnings
+        doc_id = CONSULTANT_DOC_IDS[code_id]
+        consultant_articles = set(scrape_article_numbers_from_consultant(doc_id))
+        if not consultant_articles:
+            return None, warnings
+
+    # Generate all possible dot-notation candidates
+    candidates = _generate_dot_candidates(article_number)
+
+    # Check which candidates exist in consultant.ru
+    matching_candidates = []
+    for candidate in candidates:
+        if candidate in consultant_articles:
+            matching_candidates.append(candidate)
+
+    # If exactly one match, use it
+    if len(matching_candidates) == 1:
+        corrected = matching_candidates[0]
+        warnings.append(
+            f"Consultant-corrected: '{article_number}' -> '{corrected}' "
+            f"(found in consultant.ru)"
+        )
+        return corrected, warnings
+
+    # If multiple matches, prefer the one with fewer dots (more likely correct)
+    # Example: prefer "105.1" (1 dot) over "10.5.1" (2 dots)
+    if len(matching_candidates) > 1:
+        matching_candidates.sort(key=lambda x: x.count('.'))
+        corrected = matching_candidates[0]
+        warnings.append(
+            f"Consultant-corrected: '{article_number}' -> '{corrected}' "
+            f"(multiple matches, chose {len(matching_candidates)} options)"
+        )
+        return corrected, warnings
+
+    # No match found in consultant.ru
+    return None, warnings
+
+
 def try_range_correction(
     article_number: str,
     code_id: str,
@@ -903,7 +977,12 @@ def try_range_correction(
             # Context parsing failed, fall through to non-context validation
             pass
 
-    # Fallback: Non-context-aware range validation (original logic)
+    # Fallback: Non-context-aware range validation
+    # Collect all valid candidates, then pick the one closest to range center
+    # This prevents picking "10.51" (base=10) when "105.1" (base=105) is also valid
+    valid_candidates = []
+    range_center = (min_article + max_article) / 2
+
     for candidate in candidates:
         try:
             # Try to parse the candidate using ArticleNumberParser
@@ -912,12 +991,19 @@ def try_range_correction(
 
             # Check if the parsed base number is within valid range
             if min_article <= base_num <= max_article:
-                if candidate != article_number:
-                    warnings.append(f"Range-corrected: '{article_number}' → '{candidate}' (valid range: {min_article}-{max_article})")
-                return candidate, warnings
+                valid_candidates.append((candidate, base_num))
         except ValueError:
             # Invalid format, try next candidate
             continue
+
+    # If we have valid candidates, pick the one closest to range center
+    if valid_candidates:
+        # Sort by proximity to range center (prefer bases near middle of range)
+        valid_candidates.sort(key=lambda x: abs(x[1] - range_center))
+        best_candidate = valid_candidates[0][0]
+        if best_candidate != article_number:
+            warnings.append(f"Range-corrected: '{article_number}' → '{best_candidate}' (valid range: {min_article}-{max_article})")
+        return best_candidate, warnings
 
     # Step 4.5: If context available, validate candidates against neighbors
     if prev_article and next_article:
@@ -1039,8 +1125,18 @@ def validate_and_correct_article_number(
         elif corrected == article_number:
             # Context correction returned unchanged with no warnings
             # This could mean either: (a) it's valid, or (b) context was inconclusive
-            # Fall through to range correction to catch cases that exceed known ranges
-            pass  # Continue to range correction
+            # Fall through to consultant reference correction
+            pass  # Continue to consultant reference correction
+
+    # Step 3.5: Try consultant.ru reference correction (most accurate for ambiguous cases)
+    # Uses consultant.ru's authoritative article numbers to disambiguate
+    corrected, consultant_warnings = try_consultant_reference_correction(article_number, code_id)
+    if consultant_warnings:
+        warnings.extend(consultant_warnings)
+    if corrected:
+        # Consultant reference found a match
+        return corrected, warnings
+    # If consultant correction returns None, fall through to range correction
 
     # Step 4: Fall back to range-based correction (with context if available)
     corrected, range_warnings = try_range_correction(article_number, code_id, prev_article, next_article)
@@ -2861,35 +2957,39 @@ def scrape_article_numbers_from_consultant(doc_id: str) -> List[str]:
     return article_numbers
 
 
-def import_consultant_reference(code_id: str, article_numbers: List[str]) -> int:
+def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dict[str, any]:
     """
     Import consultant.ru article number reference to database.
 
     Creates mappings from our format (official sources) to consultant.ru format.
+    Also saves consultant articles that are missing from our database.
 
     Args:
         code_id: Code identifier
         article_numbers: List of article numbers from consultant.ru
 
     Returns:
-        Number of reference mappings created
+        Dictionary with import results (matched_count, missing_count, missing_articles)
     """
-    imported = 0
+    result = {
+        "matched_count": 0,
+        "missing_count": 0,
+        "missing_articles": [],
+    }
 
     try:
         with get_db_connection() as conn:
-            # Ensure reference table exists
+            # Ensure reference table exists with NULL support for missing articles
             create_table_query = text(
                 """
                 CREATE TABLE IF NOT EXISTS article_number_reference (
                     id SERIAL PRIMARY KEY,
                     code_id VARCHAR(50) NOT NULL,
-                    article_number_source VARCHAR(50) NOT NULL,
+                    article_number_source VARCHAR(50),  -- NULL for missing articles
                     article_number_consultant VARCHAR(50) NOT NULL,
                     is_verified BOOLEAN DEFAULT FALSE,
                     verification_notes TEXT,
-                    created_at TIMESTAMP DEFAULT now(),
-                    UNIQUE(code_id, article_number_source, article_number_consultant)
+                    created_at TIMESTAMP DEFAULT now()
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_article_number_reference_code_id
@@ -2897,6 +2997,11 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> int
 
                 CREATE INDEX IF NOT EXISTS idx_article_number_reference_consultant
                 ON article_number_reference(code_id, article_number_consultant);
+
+                -- Unique constraint allows NULL for missing articles
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_article_number_reference_unique
+                ON article_number_reference(code_id, article_number_source, article_number_consultant)
+                WHERE article_number_source IS NOT NULL;
                 """
             )
             conn.execute(create_table_query)
@@ -2909,18 +3014,16 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> int
                 WHERE code_id = :code_id
                 """
             )
-            result = conn.execute(our_articles_query, {"code_id": code_id})
-            our_articles = {row[0]: (row[1], row[2]) for row in result}
+            result_db = conn.execute(our_articles_query, {"code_id": code_id})
+            our_articles = {row[0]: (row[1], row[2]) for row in result_db}
             logger.info(f"Found {len(our_articles)} existing articles for {code_id}")
 
-            # Create mappings: our format -> consultant format
-            params_list = []
+            # Track matched and missing consultant articles
+            matched_params = []
+            missing_params = []
+            matched_consultant_articles = set()
 
             for consultant_article in article_numbers:
-                # Skip section numbers (single digit without dot)
-                if '.' not in consultant_article and len(consultant_article) <= 2:
-                    continue
-
                 # Try to find matching article by similar number pattern
                 possible_source_formats = []
                 if consultant_article.count('.') >= 2:
@@ -2929,25 +3032,55 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> int
                     if len(parts) == 3 and len(parts[1]) == 1:
                         possible_source_formats.append(f"{parts[0]}.{parts[1]}{parts[2]}")
                 elif consultant_article.count('.') == 1:
-                    # Direct match
+                    # Direct match for dotted articles (e.g., "5.1", "12.3")
+                    possible_source_formats.append(consultant_article)
+                else:
+                    # Simple numbered article (no dot) - direct match (e.g., "1", "2", "10")
                     possible_source_formats.append(consultant_article)
 
-                # Find matching article
+                # Find matching article in our database
+                found = False
                 for source_format in possible_source_formats:
                     if source_format in our_articles:
                         title, text_hash = our_articles[source_format]
-                        params = {
+                        matched_params.append({
                             "code_id": code_id,
                             "article_number_source": source_format,
                             "article_number_consultant": consultant_article,
                             "is_verified": True,
                             "verification_notes": f"Auto-matched: {source_format} -> {consultant_article}",
-                        }
-                        params_list.append(params)
+                        })
+                        matched_consultant_articles.add(consultant_article)
                         logger.debug(f"Matched: {source_format} -> {consultant_article}")
+                        found = True
                         break
 
-            if params_list:
+                # If not found in our DB, add to missing list
+                if not found and consultant_article not in matched_consultant_articles:
+                    # Check if this consultant article is already in reference table as missing
+                    existing_missing = conn.execute(
+                        text("""
+                            SELECT article_number_consultant FROM article_number_reference
+                            WHERE code_id = :code_id
+                            AND article_number_consultant = :consultant_article
+                            AND article_number_source IS NULL
+                        """),
+                        {"code_id": code_id, "consultant_article": consultant_article}
+                    ).fetchone()
+
+                    if not existing_missing:
+                        missing_params.append({
+                            "code_id": code_id,
+                            "article_number_source": None,  # NULL indicates missing
+                            "article_number_consultant": consultant_article,
+                            "is_verified": False,
+                            "verification_notes": "Missing from official sources - exists only in consultant.ru",
+                        })
+                        result["missing_articles"].append(consultant_article)
+                        logger.debug(f"Missing article in our DB: {consultant_article}")
+
+            # Insert matched articles
+            if matched_params:
                 insert_query = text(
                     """
                     INSERT INTO article_number_reference (
@@ -2963,16 +3096,38 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> int
                         verification_notes = EXCLUDED.verification_notes
                     """
                 )
-                conn.execute(insert_query, params_list)
-                imported = len(params_list)
-                conn.commit()
+                conn.execute(insert_query, matched_params)
+                result["matched_count"] = len(matched_params)
 
-            logger.info(f"Imported {imported} reference mappings for {code_id}")
+            # Insert missing articles (article_number_source is NULL)
+            if missing_params:
+                insert_missing_query = text(
+                    """
+                    INSERT INTO article_number_reference (
+                        code_id, article_number_source, article_number_consultant,
+                        is_verified, verification_notes
+                    ) VALUES (
+                        :code_id, :article_number_source, :article_number_consultant,
+                        :is_verified, :verification_notes
+                    )
+                    ON CONFLICT (code_id, article_number_consultant)
+                    WHERE article_number_source IS NULL
+                    DO NOTHING
+                    """
+                )
+                conn.execute(insert_missing_query, missing_params)
+                result["missing_count"] = len(missing_params)
+
+            conn.commit()
+            logger.info(
+                f"Imported {result['matched_count']} matched mappings and "
+                f"{result['missing_count']} missing articles for {code_id}"
+            )
 
     except Exception as e:
         logger.error(f"Failed to import reference for {code_id}: {e}")
 
-    return imported
+    return result
 
 
 def verify_with_consultant(code_id: str) -> Dict[str, any]:
@@ -3005,23 +3160,12 @@ def verify_with_consultant(code_id: str) -> Dict[str, any]:
             "reason": "Failed to scrape consultant.ru"
         }
 
-    # Import reference mappings
-    mappings_created = import_consultant_reference(code_id, consultant_articles)
+    # Import reference mappings (returns dict with matched_count, missing_count, missing_articles)
+    import_result = import_consultant_reference(code_id, consultant_articles)
 
     # Get verification statistics
     try:
         with get_db_connection() as conn:
-            # Get consultant reference
-            ref_query = text(
-                """
-                SELECT article_number_consultant
-                FROM article_number_reference
-                WHERE code_id = :code_id
-                """
-            )
-            result = conn.execute(ref_query, {"code_id": code_id})
-            consultant_mapped = set(row[0] for row in result)
-
             # Get imported articles
             imp_query = text(
                 """
@@ -3040,6 +3184,7 @@ def verify_with_consultant(code_id: str) -> Dict[str, any]:
                 SELECT article_number_source, article_number_consultant
                 FROM article_number_reference
                 WHERE code_id = :code_id
+                AND article_number_source IS NOT NULL
                 AND article_number_source != article_number_consultant
                 LIMIT 10
                 """
@@ -3053,7 +3198,9 @@ def verify_with_consultant(code_id: str) -> Dict[str, any]:
                 "status": "success",
                 "total_in_db": len(imported_articles),
                 "total_in_consultant": len(consultant_articles),
-                "mappings_created": mappings_created,
+                "matched_count": import_result.get("matched_count", 0),
+                "missing_count": import_result.get("missing_count", 0),
+                "missing_articles": import_result.get("missing_articles", []),
                 "format_differences": format_diffs,
             }
 
@@ -3158,7 +3305,12 @@ def main():
                                 if verify_result['status'] == 'success':
                                     print(f"  In DB: {verify_result['total_in_db']}")
                                     print(f"  In consultant.ru: {verify_result['total_in_consultant']}")
-                                    print(f"  Mappings: {verify_result['mappings_created']}")
+                                    print(f"  Matched: {verify_result['matched_count']}")
+                                    print(f"  Missing: {verify_result['missing_count']}")
+                                    if verify_result['missing_articles']:
+                                        print(f"  Missing articles (first 10):")
+                                        for art in verify_result['missing_articles'][:10]:
+                                            print(f"    - {art}")
                                     if verify_result['format_differences']:
                                         print(f"  Format differences (sample):")
                                         for diff in verify_result['format_differences'][:5]:
@@ -3186,7 +3338,12 @@ def main():
                         if verify_result['status'] == 'success':
                             print(f"In DB: {verify_result['total_in_db']}")
                             print(f"In consultant.ru: {verify_result['total_in_consultant']}")
-                            print(f"Mappings: {verify_result['mappings_created']}")
+                            print(f"Matched: {verify_result['matched_count']}")
+                            print(f"Missing: {verify_result['missing_count']}")
+                            if verify_result['missing_articles']:
+                                print(f"Missing articles (first 10):")
+                                for art in verify_result['missing_articles'][:10]:
+                                    print(f"  - {art}")
                             if verify_result['format_differences']:
                                 print(f"Format differences (sample):")
                                 for diff in verify_result['format_differences'][:5]:
