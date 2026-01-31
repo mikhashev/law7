@@ -3227,8 +3227,8 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dic
                 result["matched_count"] = len(matched_params)
 
             # Insert missing articles (article_number_source is NULL)
-            # Uses the idx_article_number_reference_missing_unique index
-            # which only covers rows where article_number_source IS NULL
+            # Uses the article_number_reference_full_unique index (from migration 002)
+            # which covers all three columns
             if final_missing_params:
                 insert_missing_query = text(
                     """
@@ -3239,7 +3239,7 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dic
                         :code_id, :article_number_source, :article_number_consultant,
                         :is_verified, :verification_notes
                     )
-                    ON CONFLICT (code_id, article_number_consultant)
+                    ON CONFLICT (code_id, article_number_source, article_number_consultant)
                     DO NOTHING
                     """
                 )
