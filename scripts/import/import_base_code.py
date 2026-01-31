@@ -2987,12 +2987,20 @@ def scrape_article_numbers_from_consultant(doc_id: str) -> List[str]:
         # Find all article links in the document
         for link in soup.find_all('a', href=True):
             href = link['href']
+            link_text = link.get_text()
+
+            # Skip chapter links (Глава) - we only want articles (Статья)
+            if 'Глава' in link_text:
+                continue
+
             # Match article pattern: e.g., "Статья 1.3.1" or just "1.3.1"
-            match = re.search(r'(?:Статья\s+)?(\d+(?:\.\d+)*)(?:\.|$)', link.get_text())
-            if match:
-                article_num = match.group(1)
-                if article_num not in article_numbers and _is_valid_article_number(article_num):
-                    article_numbers.append(article_num)
+            # But only if it's actually an article link (contains "Статья")
+            if 'Статья' in link_text:
+                match = re.search(r'(?:Статья\s+)?(\d+(?:\.\d+)*)(?:\.|$)', link_text)
+                if match:
+                    article_num = match.group(1)
+                    if article_num not in article_numbers and _is_valid_article_number(article_num):
+                        article_numbers.append(article_num)
 
         # Alternative: scrape from document text
         pattern = r'Статья\s+(\d+(?:\.\d+)*)(?:\.|\s|$)'
@@ -3008,6 +3016,57 @@ def scrape_article_numbers_from_consultant(doc_id: str) -> List[str]:
         logger.error(f"Failed to scrape article numbers from {url}: {e}")
 
     return article_numbers
+
+
+def fetch_missing_article_titles(code_id: str, missing_articles: List[str]) -> Dict[str, str]:
+    """
+    Fetch article titles from consultant.ru for missing articles.
+
+    Args:
+        code_id: Code identifier (e.g., 'LK_RF')
+        missing_articles: List of article numbers to fetch titles for
+
+    Returns:
+        Dictionary mapping article_number -> title
+    """
+    if code_id not in CONSULTANT_DOC_IDS:
+        logger.warning(f"Code {code_id} not in CONSULTANT_DOC_IDS, cannot fetch titles")
+        return {}
+
+    doc_id = CONSULTANT_DOC_IDS[code_id]
+    url = f"https://www.consultant.ru/document/{doc_id}/"
+    titles: Dict[str, str] = {}
+
+    try:
+        logger.info(f"Fetching titles for {len(missing_articles)} missing articles from {url}")
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        response.encoding = 'utf-8'
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Find all article links and extract titles
+        for link in soup.find_all('a', href=True):
+            link_text = link.get_text()
+            # Match "Статья X.Y" or "Статья X" pattern
+            match = re.search(r'Статья\s+([\d.]+)\.?\s+(.+?)(?:\s*$|\s*\(ред)', link_text)
+            if match:
+                article_num = match.group(1)
+                # Normalize article number (remove trailing dots)
+                article_num = article_num.rstrip('.')
+                if article_num in missing_articles:
+                    title = match.group(2).strip()
+                    # Clean up title (remove parenthetical notes, etc.)
+                    title = re.sub(r'\s*\(.*?\)', '', title).strip()
+                    titles[article_num] = title
+                    logger.debug(f"Found title for article {article_num}: {title}")
+
+        logger.info(f"Fetched {len(titles)} titles for missing articles")
+
+    except Exception as e:
+        logger.error(f"Failed to fetch article titles from {url}: {e}")
+
+    return titles
 
 
 def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dict[str, any]:
@@ -3115,27 +3174,44 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dic
 
                 # If not found in our DB, add to missing list
                 if not found and consultant_article not in matched_consultant_articles:
-                    # Check if this consultant article is already in reference table as missing
-                    existing_missing = conn.execute(
-                        text("""
-                            SELECT article_number_consultant FROM article_number_reference
-                            WHERE code_id = :code_id
-                            AND article_number_consultant = :consultant_article
-                            AND article_number_source IS NULL
-                        """),
-                        {"code_id": code_id, "consultant_article": consultant_article}
-                    ).fetchone()
+                    missing_params.append({
+                        "code_id": code_id,
+                        "article_number_source": None,  # NULL indicates missing
+                        "article_number_consultant": consultant_article,
+                        "is_verified": False,
+                        "verification_notes": "",  # Will be filled after fetching titles
+                    })
+                    result["missing_articles"].append(consultant_article)
+                    logger.debug(f"Missing article in our DB: {consultant_article}")
 
-                    if not existing_missing:
-                        missing_params.append({
-                            "code_id": code_id,
-                            "article_number_source": None,  # NULL indicates missing
-                            "article_number_consultant": consultant_article,
-                            "is_verified": False,
-                            "verification_notes": "Missing from official sources - exists only in consultant.ru",
-                        })
-                        result["missing_articles"].append(consultant_article)
-                        logger.debug(f"Missing article in our DB: {consultant_article}")
+            # Fetch titles for missing articles from consultant.ru
+            missing_articles_only = [p["article_number_consultant"] for p in missing_params]
+            missing_titles = {}
+            if missing_articles_only:
+                missing_titles = fetch_missing_article_titles(code_id, missing_articles_only)
+                result["missing_with_titles"] = missing_titles
+
+            # Update missing params with titles and check for existing entries
+            final_missing_params = []
+            for params in missing_params:
+                consultant_article = params["article_number_consultant"]
+
+                # Check if this consultant article is already in reference table as missing
+                existing_missing = conn.execute(
+                    text("""
+                        SELECT article_number_consultant FROM article_number_reference
+                        WHERE code_id = :code_id
+                        AND article_number_consultant = :consultant_article
+                        AND article_number_source IS NULL
+                    """),
+                    {"code_id": code_id, "consultant_article": consultant_article}
+                ).fetchone()
+
+                if not existing_missing:
+                    # Add title to verification_notes
+                    title = missing_titles.get(consultant_article, "Unknown title")
+                    params["verification_notes"] = f"Missing from official sources - Title: {title}"
+                    final_missing_params.append(params)
 
             # Insert matched articles
             if matched_params:
@@ -3160,7 +3236,7 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dic
             # Insert missing articles (article_number_source is NULL)
             # Uses the idx_article_number_reference_missing_unique index
             # which only covers rows where article_number_source IS NULL
-            if missing_params:
+            if final_missing_params:
                 insert_missing_query = text(
                     """
                     INSERT INTO article_number_reference (
@@ -3174,8 +3250,8 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dic
                     DO NOTHING
                     """
                 )
-                conn.execute(insert_missing_query, missing_params)
-                result["missing_count"] = len(missing_params)
+                conn.execute(insert_missing_query, final_missing_params)
+                result["missing_count"] = len(final_missing_params)
 
             conn.commit()
             logger.info(
@@ -3260,6 +3336,7 @@ def verify_with_consultant(code_id: str) -> Dict[str, any]:
                 "matched_count": import_result.get("matched_count", 0),
                 "missing_count": import_result.get("missing_count", 0),
                 "missing_articles": import_result.get("missing_articles", []),
+                "missing_with_titles": import_result.get("missing_with_titles", {}),
                 "format_differences": format_diffs,
             }
 
@@ -3368,8 +3445,13 @@ def main():
                                     print(f"  Missing: {verify_result['missing_count']}")
                                     if verify_result['missing_articles']:
                                         print(f"  Missing articles (first 10):")
+                                        missing_with_titles = verify_result.get('missing_with_titles', {})
                                         for art in verify_result['missing_articles'][:10]:
-                                            print(f"    - {art}")
+                                            title = missing_with_titles.get(art, "")
+                                            if title:
+                                                print(f"    - {art}: {title}")
+                                            else:
+                                                print(f"    - {art}")
                                     if verify_result['format_differences']:
                                         print(f"  Format differences (sample):")
                                         for diff in verify_result['format_differences'][:5]:
@@ -3401,8 +3483,13 @@ def main():
                             print(f"Missing: {verify_result['missing_count']}")
                             if verify_result['missing_articles']:
                                 print(f"Missing articles (first 10):")
+                                missing_with_titles = verify_result.get('missing_with_titles', {})
                                 for art in verify_result['missing_articles'][:10]:
-                                    print(f"  - {art}")
+                                    title = missing_with_titles.get(art, "")
+                                    if title:
+                                        print(f"  - {art}: {title}")
+                                    else:
+                                        print(f"  - {art}")
                             if verify_result['format_differences']:
                                 print(f"Format differences (sample):")
                                 for diff in verify_result['format_differences'][:5]:
