@@ -42,6 +42,9 @@ logger = logging.getLogger(__name__)
 # Singleton instance of the article parser for use throughout the module
 _article_parser = ArticleNumberParser()
 
+# Module-level cache for consultant.ru article numbers
+# Key: code_id, Value: set of article numbers
+_consultant_articles_cache: Dict[str, set[str]] = {}
 
 # Consultant.ru document IDs for verification
 # Used to cross-verify article numbers after import from official sources
@@ -797,7 +800,7 @@ def try_consultant_reference_correction(
         article_number: Raw article number from HTML (e.g., "1051")
         code_id: Code identifier (e.g., 'BK_RF')
         consultant_articles: Set of valid article numbers from consultant.ru
-                            (will be fetched if not provided)
+                            (will be fetched from cache if not provided)
 
     Returns:
         Tuple of (corrected_number or None, warnings)
@@ -815,12 +818,20 @@ def try_consultant_reference_correction(
 
     # Fetch consultant articles if not provided
     if consultant_articles is None:
-        if code_id not in CONSULTANT_DOC_IDS:
-            return None, warnings
-        doc_id = CONSULTANT_DOC_IDS[code_id]
-        consultant_articles = set(scrape_article_numbers_from_consultant(doc_id))
-        if not consultant_articles:
-            return None, warnings
+        # Check module-level cache first
+        if code_id in _consultant_articles_cache:
+            consultant_articles = _consultant_articles_cache[code_id]
+        else:
+            if code_id not in CONSULTANT_DOC_IDS:
+                return None, warnings
+            doc_id = CONSULTANT_DOC_IDS[code_id]
+            fetched_articles = scrape_article_numbers_from_consultant(doc_id)
+            if not fetched_articles:
+                return None, warnings
+            consultant_articles = set(fetched_articles)
+            # Cache for future use
+            _consultant_articles_cache[code_id] = consultant_articles
+            logger.info(f"Cached {len(consultant_articles)} consultant articles for {code_id}")
 
     # Generate all possible dot-notation candidates
     candidates = _generate_dot_candidates(article_number)
