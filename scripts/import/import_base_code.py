@@ -1213,8 +1213,11 @@ class BaseCodeImporter:
             return False, "section_symbol_header"
 
         # 2. Numbered section titles followed by parenthetical amendment note
+        # Only filter SHORT titles (under 100 chars) to avoid filtering real article content
+        # Real article content like part 5 of article 1.3 can be 300+ chars with amendment notes
         if re.match(r"^\d+\.\s+[А-Яа-яЁё].*\s*\(.*(?:дополнение| редакция| редакции| утратил).+\)", text, re.IGNORECASE):
-            return False, "subsection_title_with_amendment"
+            if len(text) < 100:
+                return False, "subsection_title_with_amendment"
 
         # First, clean text by removing UI noise that's embedded within content
         # This handles cases where UI elements are concatenated with legal text
