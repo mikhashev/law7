@@ -841,11 +841,23 @@ def try_consultant_reference_correction(
         )
         return corrected, warnings
 
-    # If multiple matches, prefer the one with fewer dots (more likely correct)
-    # Example: prefer "105.1" (1 dot) over "10.5.1" (2 dots)
+    # If multiple matches, prefer the one with MORE dots (proper sub-article format)
+    # Example: prefer "23.1" (1 dot) over "231" (0 dots)
+    # The original dotless format should only be used as fallback
     if len(matching_candidates) > 1:
-        matching_candidates.sort(key=lambda x: x.count('.'))
-        corrected = matching_candidates[0]
+        # Separate into corrected (with dots) and original (without dots)
+        with_dots = [c for c in matching_candidates if '.' in c]
+        without_dots = [c for c in matching_candidates if '.' not in c]
+
+        # If we have corrected versions with dots, prefer those
+        # Sort by MORE dots first (more specific sub-article format)
+        if with_dots:
+            with_dots.sort(key=lambda x: x.count('.'), reverse=True)
+            corrected = with_dots[0]
+        else:
+            # Only have dotless versions, use first
+            corrected = matching_candidates[0]
+
         warnings.append(
             f"Consultant-corrected: '{article_number}' -> '{corrected}' "
             f"(multiple matches, chose {len(matching_candidates)} options)"
