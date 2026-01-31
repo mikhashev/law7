@@ -616,14 +616,6 @@ def try_context_correction(
     # Continue to general context correction for all article numbers (including pure digits)
     # Don't return early here - let the dot insertion logic handle pure-digit numbers like 601 → 60.1
 
-    # Try to parse neighbor articles using the multi-dot parser
-    try:
-        prev_num = parse_article_number_for_comparison(prev_article)
-        next_num = parse_article_number_for_comparison(next_article)
-    except ValueError:
-        # Neighbors have complex formatting, can't use context
-        return article_number, warnings
-
     # IMPORTANT: Before accepting an article as valid, check if it could be a sub-article of the previous article
     # Example: "601" between "60" and "602" should become "60.1" (not stay as "601")
     # This happens because 60.0 < 601.0 < 602.0 is True, but "601" is more likely "60.1"
@@ -647,35 +639,29 @@ def try_context_correction(
                 pass
 
     # If current article fits between neighbors, it's correct
-    # SPECIAL CASE: Subsections (like "7.1") should come AFTER their base (like "7")
-    # So we check: prev_num < current_num OR (current_num == prev_num and article has subsection)
+    # Use ArticleNumber parser for proper hierarchy-aware comparison
+    # This correctly handles: "12" < "12.2" < "13"
     try:
-        current_num = parse_article_number_for_comparison(article_number)
-        current_has_subsection = '.' in article_number and article_number.split('.')[0].isdigit()
+        current_parsed = _article_parser.parse(article_number)
+        prev_parsed = _article_parser.parse(prev_article)
+        next_parsed = _article_parser.parse(next_article)
 
-        # Check if current article is after previous article
-        is_after_prev = current_num > prev_num or (current_num == prev_num and current_has_subsection)
-
-        # Check if current article is before next article
-        is_before_next = current_num < next_num
-
-        if is_after_prev and is_before_next:
+        # Check if current article fits between neighbors using ArticleNumber comparison
+        if prev_parsed < current_parsed < next_parsed:
             return article_number, warnings
     except ValueError:
         pass
 
-    # Try inserting a dot before the last digit (e.g., "71" → "7.1", "1201" → "120.1")
+    # Try inserting a dot before the last digit (e.g., "71" → "7.1", "122" → "12.2")
     if len(article_number) > 1:
         corrected = f"{article_number[:-1]}.{article_number[-1]}"
         try:
-            corrected_num = parse_article_number_for_comparison(corrected)
-            corrected_has_subsection = True  # We just inserted a dot, so it has a subsection
+            corrected_parsed = _article_parser.parse(corrected)
+            prev_parsed = _article_parser.parse(prev_article)
+            next_parsed = _article_parser.parse(next_article)
 
-            # Check if corrected article is after previous and before next
-            is_after_prev = corrected_num > prev_num or (corrected_num == prev_num and corrected_has_subsection)
-            is_before_next = corrected_num < next_num
-
-            if is_after_prev and is_before_next:
+            # Check if corrected article fits between neighbors using ArticleNumber comparison
+            if prev_parsed < corrected_parsed < next_parsed:
                 warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
                 return corrected, warnings
         except ValueError:
@@ -686,8 +672,10 @@ def try_context_correction(
         # Try "125.6"
         corrected = f"{article_number[:-1]}.{article_number[-1:]}"
         try:
-            corrected_num = parse_article_number_for_comparison(corrected)
-            if prev_num < corrected_num < next_num:
+            corrected_parsed = _article_parser.parse(corrected)
+            prev_parsed = _article_parser.parse(prev_article)
+            next_parsed = _article_parser.parse(next_article)
+            if prev_parsed < corrected_parsed < next_parsed:
                 warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
                 return corrected, warnings
         except ValueError:
@@ -696,8 +684,10 @@ def try_context_correction(
         # Try "12.56"
         corrected = f"{article_number[:-2]}.{article_number[-2:]}"
         try:
-            corrected_num = parse_article_number_for_comparison(corrected)
-            if prev_num < corrected_num < next_num:
+            corrected_parsed = _article_parser.parse(corrected)
+            prev_parsed = _article_parser.parse(prev_article)
+            next_parsed = _article_parser.parse(next_article)
+            if prev_parsed < corrected_parsed < next_parsed:
                 warnings.append(f"Context-corrected: '{article_number}' → '{corrected}' (between {prev_article} and {next_article})")
                 return corrected, warnings
         except ValueError:
@@ -2383,7 +2373,9 @@ class BaseCodeImporter:
             raw_number = raw_article["article_number"]
 
             # Get context for validation
-            prev_article = raw_articles[i - 1]["article_number"] if i > 0 else None
+            # Use corrected previous article for context (not raw) - this allows proper sub-article detection
+            prev_article = articles[i - 1]["article_number"] if i > 0 else None
+            # Use raw next article for context (not yet corrected)
             next_article = raw_articles[i + 1]["article_number"] if i < len(raw_articles) - 1 else None
 
             # Log what we're parsing (verbose mode shows raw number and context)
@@ -2636,7 +2628,9 @@ class BaseCodeImporter:
             raw_number = raw_article["article_number"]
 
             # Get context for validation
-            prev_article = raw_articles[i - 1]["article_number"] if i > 0 else None
+            # Use corrected previous article for context (not raw) - this allows proper sub-article detection
+            prev_article = articles[i - 1]["article_number"] if i > 0 else None
+            # Use raw next article for context (not yet corrected)
             next_article = raw_articles[i + 1]["article_number"] if i < len(raw_articles) - 1 else None
 
             # Log what we're parsing (verbose mode shows raw number and context)
