@@ -3214,6 +3214,8 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dic
                     final_missing_params.append(params)
 
             # Insert matched articles
+            # Note: Using ON CONFLICT DO NOTHING because partial indexes don't work with ON CONFLICT
+            # The unique index idx_article_number_reference_matched_unique has WHERE article_number_source IS NOT NULL
             if matched_params:
                 insert_query = text(
                     """
@@ -3224,10 +3226,7 @@ def import_consultant_reference(code_id: str, article_numbers: List[str]) -> Dic
                         :code_id, :article_number_source, :article_number_consultant,
                         :is_verified, :verification_notes
                     )
-                    ON CONFLICT (code_id, article_number_source, article_number_consultant)
-                    DO UPDATE SET
-                        is_verified = EXCLUDED.is_verified,
-                        verification_notes = EXCLUDED.verification_notes
+                    ON CONFLICT DO NOTHING
                     """
                 )
                 conn.execute(insert_query, matched_params)
