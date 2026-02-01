@@ -618,7 +618,8 @@ def try_context_correction(
 
     # IMPORTANT: Before accepting an article as valid, check if it could be a sub-article of the previous article
     # Example: "601" between "60" and "602" should become "60.1" (not stay as "601")
-    # This happens because 60.0 < 601.0 < 602.0 is True, but "601" is more likely "60.1"
+    # BUT: "232" between "23.1" and "233" should stay as "232" (not become "23.2")
+    # The key distinction: only convert if the ORIGINAL number doesn't fit between neighbors
     if prev_article and article_number.isdigit() and len(article_number) >= 3:
         prev_base = prev_article.split('.')[0] if '.' in prev_article else prev_article
         # If article_number starts with prev_base, it might be a sub-article
@@ -631,10 +632,14 @@ def try_context_correction(
                 cand_parsed = _article_parser.parse(candidate)
                 next_parsed = _article_parser.parse(next_article)
 
-                # Check if this candidate fits between neighbors using ArticleNumber comparison
-                if prev_parsed < cand_parsed < next_parsed:
-                    warnings.append(f"Context-corrected: '{article_number}' → '{candidate}' (between {prev_article} and {next_article})")
-                    return candidate, warnings
+                # CRITICAL FIX: Only apply sub-article conversion if the ORIGINAL number doesn't fit
+                # This prevents cascade errors like "232" → "23.2" when it's between "23.1" and "233"
+                original_parsed = _article_parser.parse(article_number)
+                if not (prev_parsed < original_parsed < next_parsed):
+                    # Original doesn't fit, but candidate does - apply conversion
+                    if prev_parsed < cand_parsed < next_parsed:
+                        warnings.append(f"Context-corrected: '{article_number}' → '{candidate}' (between {prev_article} and {next_article})")
+                        return candidate, warnings
             except ValueError:
                 pass
 
@@ -777,7 +782,9 @@ def _generate_dot_candidates(article_number: str) -> List[str]:
 def try_consultant_reference_correction(
     article_number: str,
     code_id: str,
-    consultant_articles: Optional[set[str]] = None
+    consultant_articles: Optional[set[str]] = None,
+    prev_article: Optional[str] = None,
+    next_article: Optional[str] = None
 ) -> tuple[Optional[str], List[str]]:
     """
     Attempt to correct article number using consultant.ru reference.
@@ -786,11 +793,17 @@ def try_consultant_reference_correction(
     For example, "1051" could be "105.1" or "10.51" - we check which one
     exists in consultant.ru and use that.
 
+    CRITICAL: If the original article_number fits in the sequence (between prev and next),
+    it is considered correct and no correction is applied. This prevents false positives
+    like "231" being corrected to "23.1" when "231" is the correct article in context.
+
     Args:
         article_number: Raw article number from HTML (e.g., "1051")
         code_id: Code identifier (e.g., 'BK_RF')
         consultant_articles: Set of valid article numbers from consultant.ru
                             (will be fetched from cache if not provided)
+        prev_article: Previous article number (for sequence validation)
+        next_article: Next article number (for sequence validation)
 
     Returns:
         Tuple of (corrected_number or None, warnings)
@@ -823,6 +836,26 @@ def try_consultant_reference_correction(
             _consultant_articles_cache[code_id] = consultant_articles
             logger.info(f"Cached {len(consultant_articles)} consultant articles for {code_id}")
 
+    # CRITICAL FIX: Check if original article fits in sequence before correcting
+    # If article_number fits between prev and next, it's already correct!
+    # Example: "231" with prev=230, next=232 is article 231, NOT 23.1
+    if prev_article and next_article:
+        try:
+            original_parsed = _article_parser.parse(article_number)
+            prev_parsed = _article_parser.parse(prev_article)
+            next_parsed = _article_parser.parse(next_article)
+            # If original fits in sequence, skip correction
+            if prev_parsed < original_parsed < next_parsed:
+                logger.debug(
+                    f"[{code_id}] Article '{article_number}' fits in sequence "
+                    f"({prev_article} < {article_number} < {next_article}), "
+                    f"skipping consultant correction"
+                )
+                return None, warnings
+        except ValueError:
+            # If parsing fails, continue to consultant correction
+            pass
+
     # Generate all possible dot-notation candidates
     candidates = _generate_dot_candidates(article_number)
 
@@ -847,7 +880,6 @@ def try_consultant_reference_correction(
     if len(matching_candidates) > 1:
         # Separate into corrected (with dots) and original (without dots)
         with_dots = [c for c in matching_candidates if '.' in c]
-        without_dots = [c for c in matching_candidates if '.' not in c]
 
         # If we have corrected versions with dots, prefer those
         # Sort by MORE dots first (more specific sub-article format)
@@ -965,27 +997,30 @@ def try_range_correction(
     if prev_article:
         try:
             prev_parsed = _article_parser.parse(prev_article)
-            prev_base = prev_parsed.to_float_for_comparison()
-            # Filter candidates: base should be after previous article
-            # Example: '1061' with prev='104' should prefer '106.1' (106 > 104) over '10.61' (10 < 104)
+            # Filter candidates using full ArticleNumber comparison (not base-only)
+            # This correctly handles sub-articles like 306.1 vs 30.62
             context_filtered_candidates = []
             for candidate in candidates:
                 try:
                     cand_parsed = _article_parser.parse(candidate)
-                    cand_base = cand_parsed.to_float_for_comparison()
-                    # Only keep candidates where base is after previous article
-                    if cand_base > prev_base:
-                        context_filtered_candidates.append((candidate, cand_base))
+                    # Only keep candidates that come after previous article
+                    # Use full comparison: "306.1" > "273" is TRUE
+                    if prev_parsed < cand_parsed:
+                        # Also check base is within valid range
+                        cand_base = cand_parsed.to_float_for_comparison()
+                        if min_article <= cand_base <= max_article:
+                            context_filtered_candidates.append((candidate, cand_parsed))
                 except ValueError:
                     continue
 
-            # If context filtering found candidates, use them for range validation
+            # If context filtering found candidates, use them
             if context_filtered_candidates:
-                for candidate, cand_base in context_filtered_candidates:
-                    if min_article <= cand_base <= max_article:
-                        if candidate != article_number:
-                            warnings.append(f"Range-corrected: '{article_number}' → '{candidate}' (valid range: {min_article}-{max_article}, after prev={prev_article})")
-                        return candidate, warnings
+                # Prefer candidates that maintain base consistency with prev
+                # Example: prev=273, prefer 306.1 (base 306) over 30.62 (base 30)
+                candidate, cand_parsed = context_filtered_candidates[0]
+                if candidate != article_number:
+                    warnings.append(f"Range-corrected: '{article_number}' → '{candidate}' (valid range: {min_article}-{max_article}, after prev={prev_article})")
+                return candidate, warnings
         except ValueError:
             # Context parsing failed, fall through to non-context validation
             pass
@@ -1020,22 +1055,22 @@ def try_range_correction(
 
     # Step 4.5: If context available, validate candidates against neighbors
     if prev_article and next_article:
-        # Try to parse prev/next to get their base numbers
+        # Try to parse prev/next for full ArticleNumber comparison
         try:
             prev_parsed = _article_parser.parse(prev_article)
             next_parsed = _article_parser.parse(next_article)
-            prev_base = prev_parsed.to_float_for_comparison()
-            next_base = next_parsed.to_float_for_comparison()
 
-            # Filter candidates that fit between prev and next
+            # Filter candidates that fit between prev and next using full comparison
             valid_candidates = []
             for candidate in candidates:
                 try:
                     cand_parsed = _article_parser.parse(candidate)
-                    cand_base = cand_parsed.to_float_for_comparison()
-                    # Candidate should be between prev and next (with tolerance)
-                    if prev_base < cand_base < next_base:
-                        valid_candidates.append((candidate, cand_base))
+                    # Use full ArticleNumber comparison: "306.1" < "306.2" < "306.3"
+                    if prev_parsed < cand_parsed < next_parsed:
+                        # Also verify base is within valid range
+                        cand_base = cand_parsed.to_float_for_comparison()
+                        if min_article <= cand_base <= max_article:
+                            valid_candidates.append((candidate, cand_base))
                 except ValueError:
                     continue
 
@@ -1143,7 +1178,9 @@ def validate_and_correct_article_number(
 
     # Step 3.5: Try consultant.ru reference correction (most accurate for ambiguous cases)
     # Uses consultant.ru's authoritative article numbers to disambiguate
-    corrected, consultant_warnings = try_consultant_reference_correction(article_number, code_id)
+    corrected, consultant_warnings = try_consultant_reference_correction(
+        article_number, code_id, None, prev_article, next_article
+    )
     if consultant_warnings:
         warnings.extend(consultant_warnings)
     if corrected:
@@ -2573,6 +2610,8 @@ class BaseCodeImporter:
 
         # Track processed elements to avoid processing nested elements multiple times
         processed = set()
+        # Track extracted article numbers to prevent duplicates from overlapping divs
+        extracted_article_numbers = set()
 
         # CRITICAL: government.ru has content in <div class="reader_article_body">
         # We must ONLY process elements within these divs to avoid picking up UI noise
@@ -2608,7 +2647,14 @@ class BaseCodeImporter:
                     # Save previous article
                     if current_article and current_paragraphs:
                         current_article["article_text"] = "\n\n".join(current_paragraphs)
-                        raw_articles.append(current_article)
+                        # Skip duplicate articles (can happen with overlapping divs)
+                        if current_article["article_number"] not in extracted_article_numbers:
+                            raw_articles.append(current_article)
+                            extracted_article_numbers.add(current_article["article_number"])
+                        else:
+                            logger.debug(
+                                f"[{code_id}] Skipping duplicate article {current_article['article_number']}"
+                            )
 
                     # Start new article (keep raw number for now)
                     article_number = article_match.group(1)  # Preserve original format
@@ -2639,7 +2685,13 @@ class BaseCodeImporter:
         # Don't forget the last article
         if current_article and current_paragraphs:
             current_article["article_text"] = "\n\n".join(current_paragraphs)
-            raw_articles.append(current_article)
+            # Skip duplicate articles (can happen with overlapping divs)
+            if current_article["article_number"] not in extracted_article_numbers:
+                raw_articles.append(current_article)
+            else:
+                logger.debug(
+                    f"[{code_id}] Skipping duplicate article {current_article['article_number']}"
+                )
 
         return raw_articles
 

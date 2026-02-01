@@ -67,6 +67,12 @@ class ArticleNumber:
             return NotImplemented
         # Compare base first
         if self.base != other.base:
+            # When comparing across different bases, if either has an insertion,
+            # compare as decimal values (e.g., "23.1" vs "230" -> 23.1 vs 230)
+            if self.insertion is not None or other.insertion is not None:
+                self_val = self._to_decimal_value()
+                other_val = other._to_decimal_value()
+                return self_val < other_val
             return self.base < other.base
         # If base equal, compare insertion (None < 1 < 2, etc.)
         if self.insertion != other.insertion:
@@ -83,6 +89,22 @@ class ArticleNumber:
                 return False
             return self.subdivision < other.subdivision
         return False  # Equal
+
+    def _to_decimal_value(self) -> float:
+        """
+        Convert article number to decimal value for cross-base comparison.
+
+        Articles with insertions are treated as decimals (e.g., "23.1" -> 23.1).
+        This allows proper comparison like "230 < 23.1 < 232".
+
+        Returns:
+            Float value representing the article number
+        """
+        if self.insertion is not None:
+            # Convert insertion to decimal (e.g., 1 -> 0.1, 12 -> 0.12, 123 -> 0.123)
+            insertion_decimal = self.insertion / (10 ** len(str(self.insertion)))
+            return float(self.base) + insertion_decimal
+        return float(self.base)
 
     def __le__(self, other) -> bool:
         """Compare article numbers for less-than-or-equal."""
