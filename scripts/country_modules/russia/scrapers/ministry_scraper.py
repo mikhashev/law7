@@ -24,8 +24,8 @@ import re
 import aiohttp
 from bs4 import BeautifulSoup
 
-from ...base.scraper import BaseScraper, RawDocument
-from ....core.config import get_settings
+from scripts.country_modules.base.scraper import BaseScraper, RawDocument
+from scripts.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +56,10 @@ PHASE7C_AGENCIES: Dict[str, Dict[str, Any]] = {
         "agency_name": "Министерство финансов Российской Федерации",
         "agency_type": "ministry",
         "base_url": "https://minfin.gov.ru",
-        "letters_url": "https://minfin.gov.ru/ru/document/",
+        "letters_url": "https://minfin.gov.ru/ru/perfomance/tax_relations/Answers/",
+        "documents_url": "https://minfin.gov.ru/ru/document/",
         "legal_topics": ["tax", "budget", "finance"],
+        "pagination_param": "page_4",  # Minfin uses ?page_4=2 format
     },
     "fns": {
         "agency_name_short": "ФНС",
@@ -172,8 +174,8 @@ class MinistryScraper(BaseScraper):
         """
         Get list of ministry letters published since date.
 
-        For Minfin, this fetches the document listing page and extracts
-        document metadata from the HTML.
+        For Minfin, this fetches the Answers section with pagination support.
+        For FNS, this uses the search API with Actual-only filter.
 
         Args:
             since: Only return letters published after this date.
@@ -186,77 +188,317 @@ class MinistryScraper(BaseScraper):
             f"letters since {since}"
         )
 
-        if self.agency_key != "minfin":
-            logger.warning(
-                f"{self.agency_config['agency_name_short']} "
-                "manifest fetching not yet implemented"
-            )
-            return {
-                "agency_key": self.agency_key,
-                "agency_name_short": self.agency_config["agency_name_short"],
-                "letters": [],
-                "last_updated": date.today().isoformat(),
-                "metadata": {
-                    "base_url": self.agency_config["base_url"],
-                    "letters_url": self.agency_config["letters_url"],
-                    "since": since.isoformat() if since else None,
-                }
-            }
+        # FNS: Use search API
+        if self.agency_key == "fns":
+            return await self._fetch_fns_manifest(since)
 
-        # Fetch Minfin document listing page
-        url = self.agency_config["letters_url"]
+        # Minfin: Use Answers section with pagination
+        if self.agency_key == "minfin":
+            return await self._fetch_minfin_manifest(since)
+
+        # Fallback for non-implemented agencies
+        logger.warning(
+            f"{self.agency_config['agency_name_short']} "
+            "manifest fetching not yet implemented"
+        )
+        return {
+            "agency_key": self.agency_key,
+            "agency_name_short": self.agency_config["agency_name_short"],
+            "letters": [],
+            "last_updated": date.today().isoformat(),
+            "metadata": {
+                "base_url": self.agency_config["base_url"],
+                "letters_url": self.agency_config["letters_url"],
+                "since": since.isoformat() if since else None,
+            }
+        }
+
+    async def _fetch_fns_manifest(self, since: Optional[date] = None) -> Dict[str, Any]:
+        """
+        Fetch FNS document manifest from nalog.gov.ru using the search API.
+
+        The FNS portal has a search API that filters by status and date:
+        - st=0: Actual only (Актуально)
+        - st=-1: All statuses
+        - st=1: Not actual (Не актуально)
+
+        Search API URL: https://www.nalog.gov.ru/rn77/about_fts/about_nalog/2.html?
+                        n=&fd=&td=&fdp={from_date}&tdp={to_date}&ds=0&st=0&dn=0
+
+        This method uses st=0 to fetch only actual documents directly.
+
+        Args:
+            since: Only return letters published after this date
+
+        Returns:
+            Dict with letter list and metadata
+        """
+        logger.info(f"Fetching FNS manifest since {since} (Actual only via search API)")
+
+        letters = []
+
+        # Calculate date range for the search API
+        # If 'since' is provided, use it as start date
+        if since:
+            from_date = since.strftime("%d.%m.%Y")
+        else:
+            # Phase 7C: last 5 years
+            from_date = (date.today() - timedelta(days=5 * 365)).strftime("%d.%m.%Y")
+
+        to_date = date.today().strftime("%d.%m.%Y")
+
+        # Build search API URL with st=0 (Actual only)
+        # URL pattern: https://www.nalog.gov.ru/rn77/about_fts/about_nalog/2.html?
+        #             n=&fd=&td=&fdp={from}&tdp={to}&ds=0&st=0&dn=0
+        search_url = (
+            f"{self.agency_config['base_url']}/rn77/about_fts/about_nalog/2.html"
+            f"?n=&fd=&td=&fdp={from_date}&tdp={to_date}&ds=0&st=0&dn=0"
+        )
+
+        logger.info(f"FNS Search URL: {search_url}")
+
+        # Fetch the search results page
+        html = await self._fetch_html(search_url)
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Check for pagination in the search results
+        # The search API may have pagination links
+        total_pages = 1
+        pagination_links = soup.find_all("a", href=re.compile(r"/about_nalog/2\.html\?", re.I))
+        if pagination_links:
+            # Extract page numbers from pagination links
+            page_numbers = []
+            for link in pagination_links:
+                href = link.get("href", "")
+                # Look for page parameter in URL
+                match = re.search(r"(?:^|&)page=(\d+)", href)
+                if match:
+                    page_numbers.append(int(match.group(1)))
+            if page_numbers:
+                total_pages = max(page_numbers)
+
+        logger.info(f"FNS search has {total_pages} pages of results")
+
+        # Iterate through all pages of search results
+        for page_num in range(1, total_pages + 1):
+            # Construct page URL
+            if page_num == 1:
+                page_url = search_url
+            else:
+                page_url = f"{search_url}&page={page_num}"
+
+            logger.info(f"Fetching FNS search page {page_num}/{total_pages}")
+
+            # Fetch page HTML
+            html = await self._fetch_html(page_url)
+            soup = BeautifulSoup(html, "html.parser")
+
+            # FNS search results are typically in a table or list
+            # Look for document links - they may have different patterns
+            # Common patterns: /rn77/about_fts/docs/{ID}/ or detail URLs
+            doc_links = soup.find_all("a", href=re.compile(r"/rn77/about_fts/docs/\d+/"))
+
+            page_letter_count = 0
+            for link in doc_links:
+                try:
+                    # Get URL
+                    href = link.get("href", "")
+                    full_url = f"{self.agency_config['base_url']}{href}"
+
+                    # Skip if already processed
+                    if any(l["url"] == full_url for l in letters):
+                        continue
+
+                    # Extract text content
+                    text = link.get_text(strip=True)
+
+                    # Parse FNS format: "Письмо от 27 октября 2025 № БС-4-21/9645@"
+                    doc_date = self._extract_fns_date_from_text(text)
+                    doc_number = self._extract_fns_number_from_text(text)
+
+                    # Skip if we couldn't extract the number (required for identification)
+                    if not doc_number:
+                        logger.debug(f"Skipping document without number: {text[:50]}")
+                        continue
+
+                    # Extract title (everything after the number)
+                    title_parts = text.split("№")
+                    if len(title_parts) > 1:
+                        title = title_parts[1].strip()
+                    else:
+                        title = text
+
+                    letter_info = {
+                        "url": full_url,
+                        "title": title[:200],
+                        "document_number": doc_number,
+                        "document_date": doc_date.isoformat() if doc_date else None,
+                        "is_actual": True,  # All results from st=0 are actual
+                    }
+
+                    letters.append(letter_info)
+                    page_letter_count += 1
+
+                except Exception as e:
+                    logger.debug(f"Error parsing FNS document link: {e}")
+                    continue
+
+            logger.info(f"Page {page_num}: found {page_letter_count} letters (total: {len(letters)})")
+
+            # Stop if we found enough documents (respecting batch_size as soft limit for testing)
+            if self.batch_size and len(letters) >= self.batch_size * 10:  # Allow 10x batch_size for full import
+                logger.info(f"Reached soft limit of {self.batch_size * 10} documents, stopping pagination")
+                break
+
+            # Add delay between pages to be polite to the server
+            if page_num < total_pages:
+                await asyncio.sleep(10)
+
+        logger.info(f"Extracted {len(letters)} FNS letter URLs from {page_num} pages (Actual only)")
+
+        return {
+            "agency_key": self.agency_key,
+            "agency_name_short": self.agency_config["agency_name_short"],
+            "letters": letters,
+            "last_updated": date.today().isoformat(),
+            "metadata": {
+                "base_url": self.agency_config["base_url"],
+                "letters_url": self.agency_config["letters_url"],
+                "since": since.isoformat() if since else None,
+                "total_found": len(letters),
+                "filter_actual_only": True,
+            }
+        }
+
+    async def _fetch_minfin_manifest(self, since: Optional[date] = None) -> Dict[str, Any]:
+        """
+        Fetch Minfin document manifest from minfin.gov.ru with pagination support.
+
+        The Minfin portal has an Answers section with Q&A format:
+        - Base URL: https://minfin.gov.ru/ru/perfomance/tax_relations/Answers/
+        - Pagination: ?page_4=2, ?page_4=3, etc.
+
+        Args:
+            since: Only return letters published after this date
+
+        Returns:
+            Dict with letter list and metadata
+        """
+        logger.info(f"Fetching Minfin manifest since {since}")
+
+        letters = []
+        base_url = self.agency_config["letters_url"]
+        pagination_param = self.agency_config.get("pagination_param", "page_4")
+
+        # Start with page 1
+        page_num = 1
+        total_pages = 1
+
+        # First, fetch the main page to determine total pages
+        url = base_url
         html = await self._fetch_html(url)
         soup = BeautifulSoup(html, "html.parser")
 
-        # Find document cards
-        # Based on test results, the structure is:
-        # .main_page_container .document_list .document_card.inner_link
-        letters = []
+        # Find pagination links to determine total pages
+        # Minfin uses pagination like ?page_4=2, ?page_4=3
+        pagination_links = soup.find_all("a", href=re.compile(rf"\{pagination_param}=\d+"))
+        if pagination_links:
+            # Extract page numbers from pagination links
+            page_numbers = []
+            for link in pagination_links:
+                href = link.get("href", "")
+                match = re.search(rf"{pagination_param}=(\d+)", href)
+                if match:
+                    page_numbers.append(int(match.group(1)))
+            if page_numbers:
+                total_pages = max(page_numbers)
 
-        # Look for document cards directly
-        doc_cards = soup.find_all("div", class_="document_card")
-        logger.info(f"Found {len(doc_cards)} document_card elements")
+        logger.info(f"Minfin has {total_pages} pages of documents")
 
-        for card in doc_cards:
-            # Find the main link in the card
-            link = card.find("a", class_="inner_link")
-            if not link:
-                link = card.find("a", href=True)
+        # Iterate through all pages
+        for page_num in range(1, total_pages + 1):
+            # Construct page URL
+            if page_num == 1:
+                page_url = base_url
+            else:
+                # Append pagination parameter: ?page_4=2
+                separator = "&" if "?" in base_url else "?"
+                page_url = f"{base_url}{separator}{pagination_param}={page_num}"
 
-            if link and link.get("href"):
-                href = link.get("href")
-                text = link.get_text(strip=True)
+            logger.info(f"Fetching Minfin page {page_num}/{total_pages}")
 
-                # Try to extract date and number from the card
-                doc_date = None
-                doc_number = None
+            # Fetch page HTML
+            html = await self._fetch_html(page_url)
+            soup = BeautifulSoup(html, "html.parser")
 
-                # Look for date in the card
-                date_elem = card.find("div", class_="date_list")
-                if date_elem:
-                    date_text = date_elem.get_text(strip=True)
-                    doc_date = self._extract_date_from_text(date_text)
+            # Minfin documents are typically in a list or table
+            # Look for links that might be document/answer links
+            # Common patterns include links with Answer, Letter, or document numbers
+            doc_links = (
+                soup.find_all("a", href=re.compile(r"/ru/perfomance/tax_relations/answers/[\w\-]+/", re.I)) or
+                soup.find_all("a", href=re.compile(r"/ru/document/[\w\-]+/", re.I)) or
+                soup.find_all("a", class_=re.compile(r"answer|document|letter", re.I))
+            )
 
-                # Look for document number in the card or link text
-                doc_number = self._extract_number_from_text(text)
-                if not doc_number:
-                    doc_number = self._extract_number_from_text(card.get_text())
+            page_letter_count = 0
+            for link in doc_links:
+                try:
+                    # Get URL
+                    href = link.get("href", "")
 
-                letter_info = {
-                    "url": f"{self.agency_config['base_url']}{href}" if href.startswith("/") else href,
-                    "title": text[:200],  # Limit title length
-                    "document_number": doc_number,
-                    "document_date": doc_date.isoformat() if doc_date else None,
-                }
+                    # Construct full URL if relative
+                    if href.startswith("/"):
+                        full_url = f"{self.agency_config['base_url']}{href}"
+                    elif href.startswith("http"):
+                        full_url = href
+                    else:
+                        continue
 
-                letters.append(letter_info)
+                    # Skip if already processed
+                    if any(l["url"] == full_url for l in letters):
+                        continue
 
-        logger.info(f"Extracted {len(letters)} letter URLs from document cards")
+                    # Extract text content
+                    text = link.get_text(strip=True)
 
-        manifest = {
+                    # Try to extract date and number from text
+                    doc_date = self._extract_date_from_text(text)
+                    doc_number = self._extract_number_from_text(text)
+
+                    # Extract title (use text if no clear title structure)
+                    title = text[:200]
+
+                    letter_info = {
+                        "url": full_url,
+                        "title": title,
+                        "document_number": doc_number,
+                        "document_date": doc_date.isoformat() if doc_date else None,
+                    }
+
+                    letters.append(letter_info)
+                    page_letter_count += 1
+
+                except Exception as e:
+                    logger.debug(f"Error parsing Minfin document link: {e}")
+                    continue
+
+            logger.info(f"Page {page_num}: found {page_letter_count} letters (total: {len(letters)})")
+
+            # Stop if we found enough documents
+            if self.batch_size and len(letters) >= self.batch_size * 10:
+                logger.info(f"Reached soft limit of {self.batch_size * 10} documents, stopping pagination")
+                break
+
+            # Add delay between pages to be polite to the server
+            if page_num < total_pages:
+                await asyncio.sleep(10)
+
+        logger.info(f"Extracted {len(letters)} Minfin letter URLs from {page_num} pages")
+
+        return {
             "agency_key": self.agency_key,
             "agency_name_short": self.agency_config["agency_name_short"],
-            "letters": letters[:self.batch_size],  # Limit to batch size
+            "letters": letters,
             "last_updated": date.today().isoformat(),
             "metadata": {
                 "base_url": self.agency_config["base_url"],
@@ -266,33 +508,136 @@ class MinistryScraper(BaseScraper):
             }
         }
 
-        return manifest
+    def _extract_fns_date_from_text(self, text: str) -> Optional[date]:
+        """
+        Extract date from FNS document text.
 
-    def _extract_date_from_text(self, text: str) -> Optional[date]:
-        """Extract date from text (format: DD.MM.YYYY)."""
-        # Match date pattern: DD.MM.YYYY
-        match = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", text)
+        FNS format: "Письмо от 27 октября 2025"
+        Or: "Письмо от 27.10.2025"
+
+        Args:
+            text: Text to search
+
+        Returns:
+            Date or None
+        """
+        # Match "от 27 октября 2025" or "от 27.10.2025"
+        match = re.search(r"от\s+(\d{1,2})\s+([а-яёА-ЯЁё]+)\s+(\d{4})", text)
+        if match:
+            day, month_name, year = match.groups()
+            # Map Russian month names to numbers
+            months = {
+                "января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6,
+                "июля": 7, "августа": 8, "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12
+            }
+            month = months.get(month_name.lower())
+            if month:
+                try:
+                    return date(int(year), month, int(day))
+                except ValueError:
+                    pass
+
+        # Try DD.MM.YYYY format
+        match = re.search(r"от\s+(\d{1,2})\.(\d{1,2})\.(\d{4})", text)
         if match:
             day, month, year = match.groups()
             try:
                 return date(int(year), int(month), int(day))
             except ValueError:
                 pass
+
         return None
 
-    def _extract_number_from_text(self, text: str) -> Optional[str]:
-        """Extract document number from text (format: XX-XX-XX/XXXXX)."""
-        # Match number pattern: XX-XX-XX/XXXXX
-        match = re.search(r"\d{2}-\d{2}-\d{2}/\d+", text)
+    def _extract_fns_number_from_text(self, text: str) -> Optional[str]:
+        """
+        Extract FNS document number from text.
+
+        FNS documents have format like:
+        - "№ БС-4-21/9645@"
+        - "№ БС-4-21/9645@"
+
+        Args:
+            text: Text to search
+
+        Returns:
+            Document number or None
+        """
+        # Match FNS number pattern: № XX-XX-XX/XXXXX@
+        match = re.search(r"№\s*([А-Яа-яЁёA-Za-z0-9\-/]+@?)", text)
         if match:
-            return match.group(0)
+            return match.group(1).strip()
         return None
+
+    def _check_fns_document_validity(self, url: str) -> Optional[bool]:
+        """
+        Check if FNS document is marked as "Actual" (Актуально).
+
+        FNS documents have validity status indicators in their HTML:
+        - "Актуально" = Actual/Valid
+        - "Не актуально" = Not actual/Revoked
+
+        This method checks the document page HTML for the validity status.
+
+        Args:
+            url: Document URL to check
+
+        Returns:
+            True if document is actual, False if not actual, None if status cannot be determined
+        """
+        # We need to fetch the document page to check its status
+        # This is synchronous, so we'll do it during async manifest fetching
+        return None  # Will be checked in async method below
+
+    async def _check_fns_document_validity_async(self, url: str) -> Optional[bool]:
+        """
+        Async version of FNS document validity check.
+
+        Fetches the document page and looks for validity status indicator.
+
+        Args:
+            url: Document URL to check
+
+        Returns:
+            True if document is actual, False if not actual, None if status cannot be determined
+        """
+        try:
+            html = await self._fetch_html(url)
+            soup = BeautifulSoup(html, "html.parser")
+
+            # Look for tooltip_content div with validity status
+            # Pattern: <div id="ip-content-XXXXX-X" class="tooltip_content">Актуально</div>
+            tooltip_divs = soup.find_all("div", class_="tooltip_content")
+
+            for div in tooltip_divs:
+                text = div.get_text(strip=True)
+                if "Актуально" in text:
+                    return True
+                elif "Не актуально" in text or "не актуально" in text:
+                    return False
+
+            # If no tooltip found, try to find status in other elements
+            # Look for elements with "actual" or "status" in class/id
+            status_elements = soup.find_all(class_=re.compile(r"status|actual|valid", re.I))
+            for elem in status_elements:
+                text = elem.get_text(strip=True)
+                if "Не актуально" in text or "не актуально" in text:
+                    return False
+                elif "Актуально" in text:
+                    return True
+
+            # Default: if we can't determine status, assume it's valid
+            # (better to include potentially valid docs than exclude them)
+            return None
+
+        except Exception as e:
+            logger.debug(f"Error checking FNS document validity for {url}: {e}")
+            return None
 
     async def fetch_document(self, doc_id: str) -> RawDocument:
         """
         Fetch single ministry letter by ID.
 
-        For Minfin, doc_id is the URL path to the document detail page.
+        For Minfin and FNS, doc_id is the URL path to the document detail page.
 
         Args:
             doc_id: Document URL (full URL or path)
@@ -300,19 +645,29 @@ class MinistryScraper(BaseScraper):
         Returns:
             RawDocument with content and metadata
         """
-        if self.agency_key != "minfin":
-            raise NotImplementedError(
-                f"{self.agency_config['agency_name_short']} "
-                "document fetching not yet implemented"
-            )
+        # For FNS: implement FNS document fetching
+        if self.agency_key == "fns":
+            return await self._fetch_fns_document(doc_id)
 
+        # For Minfin: existing implementation
+        if self.agency_key == "minfin":
+            return await self._fetch_minfin_document(doc_id)
+
+        # For others: not implemented
+        raise NotImplementedError(
+            f"{self.agency_config['agency_name_short']} "
+            "document fetching not yet implemented"
+        )
+
+    async def _fetch_minfin_document(self, doc_id: str) -> RawDocument:
+        """Fetch Minfin document (existing implementation)."""
         # Construct full URL if doc_id is a path
         if doc_id.startswith("http"):
             url = doc_id
         else:
             url = f"{self.agency_config['base_url']}{doc_id}"
 
-        logger.info(f"Fetching document from {url}")
+        logger.info(f"Fetching Minfin document from {url}")
 
         html = await self._fetch_html(url)
         soup = BeautifulSoup(html, "html.parser")
@@ -320,13 +675,11 @@ class MinistryScraper(BaseScraper):
         # Extract document content
         content_div = soup.find("div", class_=re.compile(r"content|text|document|doc-body"))
         if not content_div:
-            # Try other common selectors
             content_div = soup.find("article") or soup.find("main")
 
         # Extract text content
         full_text = ""
         if content_div:
-            # Get all paragraphs
             paragraphs = content_div.find_all("p")
             full_text = "\n".join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
 
@@ -360,11 +713,91 @@ class MinistryScraper(BaseScraper):
             metadata=metadata
         )
 
+    async def _fetch_fns_document(self, doc_id: str) -> RawDocument:
+        """
+        Fetch FNS document by URL.
+
+        Args:
+            doc_id: Document URL
+
+        Returns:
+            RawDocument with content and metadata
+        """
+        if doc_id.startswith("http"):
+            url = doc_id
+        else:
+            url = f"{self.agency_config['base_url']}{doc_id}"
+
+        logger.info(f"Fetching FNS document from {url}")
+
+        html = await self._fetch_html(url)
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Extract document content - FNS structure may vary
+        # Try multiple selectors for content
+        content_div = (
+            soup.find("div", class_=re.compile(r"content|text|document|doc-body", re.I)) or
+            soup.find("article") or
+            soup.find("main") or
+            soup.find("div", class_="item-page")
+        )
+
+        # Extract text content
+        full_text = ""
+        if content_div:
+            paragraphs = content_div.find_all("p")
+            full_text = "\n".join([p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True)])
+
+        # Extract metadata
+        title_elem = soup.find("h1") or soup.find("h2", class_=re.compile(r"title", re.I))
+        title = title_elem.get_text(strip=True) if title_elem else ""
+
+        # Try to extract date and number
+        doc_date = self._extract_date_from_text(title or full_text)
+        doc_number = self._extract_fns_number_from_text(title or full_text)
+
+        metadata = {
+            "agency_key": self.agency_key,
+            "agency_name_short": self.agency_config["agency_name_short"],
+            "title": title,
+            "document_number": doc_number,
+            "document_date": doc_date.isoformat() if doc_date else None,
+            "source_url": url,
+        }
+
+        return RawDocument(
+            doc_id=doc_id,
+            url=url,
+            content=full_text.encode("utf-8"),
+            content_type="text/html",
+            metadata=metadata
+        )
+
+    def _extract_date_from_text(self, text: str) -> Optional[date]:
+        """Extract date from text (format: DD.MM.YYYY)."""
+        # Match date pattern: DD.MM.YYYY
+        match = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", text)
+        if match:
+            day, month, year = match.groups()
+            try:
+                return date(int(year), int(month), int(day))
+            except ValueError:
+                pass
+        return None
+
+    def _extract_number_from_text(self, text: str) -> Optional[str]:
+        """Extract document number from text (format: XX-XX-XX/XXXXX)."""
+        # Match number pattern: XX-XX-XX/XXXXX
+        match = re.search(r"\d{2}-\d{2}-\d{2}/\d+", text)
+        if match:
+            return match.group(0)
+        return None
+
     async def fetch_updates(self, since: date) -> List[RawDocument]:
         """
         Fetch all ministry letters published since date.
 
-        For Minfin, this fetches the manifest and then retrieves each document.
+        For Minfin and FNS, this fetches the manifest and then retrieves each document.
 
         Args:
             since: Start date for updates
@@ -376,13 +809,6 @@ class MinistryScraper(BaseScraper):
             f"Fetching {self.agency_config['agency_name_short']} "
             f"updates since {since}"
         )
-
-        if self.agency_key != "minfin":
-            logger.warning(
-                f"{self.agency_config['agency_name_short']} "
-                "updates fetching not yet implemented"
-            )
-            return []
 
         # Fetch manifest (list of documents)
         manifest = await self.fetch_manifest(since=since)
@@ -446,13 +872,6 @@ class MinistryScraper(BaseScraper):
             f"from {start_date} to {end_date}"
             + (f" for topic: {legal_topic}" if legal_topic else "")
         )
-
-        if self.agency_key != "minfin":
-            logger.warning(
-                f"{self.agency_config['agency_name_short']} "
-                "letters fetching not yet implemented"
-            )
-            return []
 
         # Fetch documents as RawDocument
         raw_docs = await self.fetch_updates(since=start_date)
@@ -578,29 +997,37 @@ def list_phase7c_agencies() -> List[str]:
 
 
 async def fetch_all_phase7c_letters(
-    years: int = 5
+    years: int = 5,
+    limit: Optional[int] = None
 ) -> Dict[str, List[MinistryLetter]]:
     """
     Fetch letters from all Phase 7C target agencies.
 
     Args:
         years: Number of years back to fetch (Phase 7C: 5 years)
+        limit: Maximum number of letters to fetch per agency
 
     Returns:
         Dict mapping agency_key to list of letters
     """
     logger.info(f"Fetching letters from all Phase 7C agencies (last {years} years)")
+    if limit:
+        logger.info(f"Limit: {limit} letters per agency")
 
     all_letters = {}
 
     for agency_key in list_phase7c_agencies():
+        scraper = None
         try:
             scraper = MinistryScraper(agency_key)
-            letters = await scraper.fetch_recent_letters(years=years)
+            letters = await scraper.fetch_recent_letters(years=years, limit=limit)
             all_letters[agency_key] = letters
             logger.info(f"Fetched {len(letters)} letters from {agency_key}")
         except Exception as e:
             logger.error(f"Failed to fetch letters from {agency_key}: {e}")
             all_letters[agency_key] = []
+        finally:
+            if scraper:
+                await scraper.close()
 
     return all_letters

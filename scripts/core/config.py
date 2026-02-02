@@ -164,6 +164,8 @@ class Config:
     import_request_delay: int = IMPORT_REQUEST_DELAY
     import_request_timeout: int = IMPORT_REQUEST_TIMEOUT
     import_max_pages: int = IMPORT_MAX_PAGES
+    http_timeout: int = IMPORT_REQUEST_TIMEOUT  # Alias for import_request_timeout
+    batch_size: int = SYNC_BATCH_SIZE  # Alias for sync_batch_size
 
     # Qdrant
     qdrant_url: str = QDRANT_URL
@@ -189,3 +191,8 @@ class Config:
 
 # Export configuration instance
 config = Config()
+
+
+def get_settings() -> Config:
+    """Get the configuration instance (for compatibility with existing code)."""
+    return config
