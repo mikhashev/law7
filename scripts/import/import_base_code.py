@@ -829,11 +829,12 @@ def try_consultant_reference_correction(
                 return None, warnings
             doc_id = CONSULTANT_DOC_IDS[code_id]
             fetched_articles = scrape_article_numbers_from_consultant(doc_id)
-            if not fetched_articles:
-                return None, warnings
-            consultant_articles = set(fetched_articles)
-            # Cache for future use
+            # ALWAYS cache, even if empty (prevents retry loop on failed scrapes)
+            consultant_articles = set(fetched_articles) if fetched_articles else set()
             _consultant_articles_cache[code_id] = consultant_articles
+            if not fetched_articles:
+                logger.warning(f"No articles found for {code_id}, caching empty result to prevent retry loop")
+                return None, warnings
             logger.info(f"Cached {len(consultant_articles)} consultant articles for {code_id}")
 
     # CRITICAL FIX: Check if original article fits in sequence before correcting
@@ -3045,7 +3046,7 @@ def _is_valid_article_number(article_num: str) -> bool:
 
     # Check each part of the article number
     parts = article_num.split('.')
-    for part in parts:
+    for i, part in enumerate(parts):
         # Must be a valid number
         if not part.isdigit():
             return False
@@ -3053,14 +3054,12 @@ def _is_valid_article_number(article_num: str) -> bool:
         num = int(part)
 
         # Filter out obvious false positives:
-        # - Single part numbers > 500 (likely years like 1875, 2026, 6731)
-        # - Parts that are years (1000-2999)
-        if num > 500 and len(parts) == 1:
-            return False
-        if num >= 1000 and num <= 2999:
-            return False
-        # Sub-article parts shouldn't be > 100
-        if len(parts) > 1 and num > 99:
+        # Note: Numeric filters (> 500, 1000-2999) removed because:
+        # - GK_RF_4 articles start at 1225
+        # - GK_RF_3 and GK_RF_2 have articles > 500
+        # The link-based scraping with "Статья" prefix provides sufficient signal
+        # Sub-article parts (parts after the first) shouldn't be > 100
+        if i > 0 and num > 99:  # Only check sub-article parts, not main article number
             return False
 
     return True
@@ -3099,20 +3098,21 @@ def scrape_article_numbers_from_consultant(doc_id: str) -> List[str]:
             # Match article pattern: e.g., "Статья 1.3.1" or just "1.3.1"
             # But only if it's actually an article link (contains "Статья")
             if 'Статья' in link_text:
-                match = re.search(r'(?:Статья\s+)?(\d+(?:\.\d+)*)(?:\.|$)', link_text)
+                match = re.search(r'(?:Статья\s+)?(\d+(?:[\.\-]\d+)*)(?:\.|$)', link_text)
                 if match:
                     article_num = match.group(1)
-                    if article_num not in article_numbers and _is_valid_article_number(article_num):
+                    if article_num not in article_numbers and is_valid_article_number_format(article_num):
                         article_numbers.append(article_num)
 
         # Alternative: scrape from document text
-        pattern = r'Статья\s+(\d+(?:\.\d+)*)(?:\.|\s|$)'
+        pattern = r'Статья\s+(\d+(?:[\.\-]\d+)*)(?:\.|\s|$)'
         for match in re.finditer(pattern, response.text):
             article_num = match.group(1)
-            if article_num not in article_numbers and _is_valid_article_number(article_num):
+            if article_num not in article_numbers and is_valid_article_number_format(article_num):
                 article_numbers.append(article_num)
 
-        article_numbers.sort(key=lambda x: [int(p) for p in x.split('.')])
+        # Sort using ArticleNumberParser for proper handling of hyphenated formats
+        article_numbers.sort(key=lambda x: _article_parser.parse(x))
         logger.info(f"Found {len(article_numbers)} articles in consultant.ru structure")
 
     except Exception as e:
@@ -3629,7 +3629,7 @@ def main():
                         status_symbol = "OK" if verify_result['status'] == 'success' else ("SKIP" if verify_result['status'] == 'skipped' else "ERR")
                         print(f"  [{status_symbol}] {code_id}: ", end="")
                         if verify_result['status'] == 'success':
-                            print(f"DB={verify_result['total_in_db']}, consultant={verify_result['total_in_consultant']}, mappings={verify_result['mappings_created']}")
+                            print(f"DB={verify_result['total_in_db']}, consultant={verify_result['total_in_consultant']}, mappings={verify_result['matched_count']}")
                         else:
                             print(f"{verify_result.get('reason', 'Unknown')}")
                     else:
