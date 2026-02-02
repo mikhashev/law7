@@ -293,10 +293,13 @@ class MinistryScraper(BaseScraper):
             html = await self._fetch_html(page_url)
             soup = BeautifulSoup(html, "html.parser")
 
+            # Debug: log HTML length
+            logger.debug(f"Page HTML length: {len(html)} chars")
+
             # FNS search results are typically in a table or list
-            # Look for document links - they may have different patterns
-            # Common patterns: /rn77/about_fts/docs/{ID}/ or detail URLs
-            doc_links = soup.find_all("a", href=re.compile(r"/rn77/about_fts/docs/\d+/"))
+            # Look for document links - they use pattern: /rn77/about_fts/about_nalog/{ID}/
+            doc_links = soup.find_all("a", href=re.compile(r"/rn77/about_fts/about_nalog/\d+/"))
+            logger.debug(f"Found {len(doc_links)} document links on page {page_num}")
 
             page_letter_count = 0
             for link in doc_links:
@@ -316,10 +319,15 @@ class MinistryScraper(BaseScraper):
                     doc_date = self._extract_fns_date_from_text(text)
                     doc_number = self._extract_fns_number_from_text(text)
 
-                    # Skip if we couldn't extract the number (required for identification)
+                    # For FNS search results, the document number is often not in the link text
+                    # Extract ID from URL as fallback: /rn77/about_fts/about_nalog/{ID}/
                     if not doc_number:
-                        logger.debug(f"Skipping document without number: {text[:50]}")
-                        continue
+                        match = re.search(r"/about_nalog/(\d+)/", href)
+                        if match:
+                            doc_number = f"FNS-{match.group(1)}"  # Use ID as temporary identifier
+                        else:
+                            logger.debug(f"Skipping document without number or ID: {text[:50]}")
+                            continue
 
                     # Extract title (everything after the number)
                     title_parts = text.split("№")
@@ -401,7 +409,7 @@ class MinistryScraper(BaseScraper):
 
         # Find pagination links to determine total pages
         # Minfin uses pagination like ?page_4=2, ?page_4=3
-        pagination_links = soup.find_all("a", href=re.compile(rf"\{pagination_param}=\d+"))
+        pagination_links = soup.find_all("a", href=re.compile(rf"{pagination_param}=\d+"))
         if pagination_links:
             # Extract page numbers from pagination links
             page_numbers = []
