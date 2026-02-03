@@ -1312,7 +1312,8 @@ class MinistryScraper(BaseScraper):
     async def fetch_recent_letters(
         self,
         years: Optional[int] = 5,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        source: Optional[str] = None
     ) -> List[MinistryLetter]:
         """
         Fetch recent ministry letters from the last N years.
@@ -1320,6 +1321,7 @@ class MinistryScraper(BaseScraper):
         Args:
             years: Number of years back to fetch (None for all dates, Phase 7C: 5 years)
             limit: Maximum number of letters to fetch
+            source: For Minfin: "answers" (default), "general_documents", or None for default
 
         Returns:
             List of ministry letters
@@ -1365,7 +1367,8 @@ def list_phase7c_agencies() -> List[str]:
 
 async def fetch_all_phase7c_letters(
     years: Optional[int] = 5,
-    limit: Optional[int] = None
+    limit: Optional[int] = None,
+    source: Optional[str] = None
 ) -> Dict[str, List[MinistryLetter]]:
     """
     Fetch letters from all Phase 7C target agencies.
@@ -1373,6 +1376,7 @@ async def fetch_all_phase7c_letters(
     Args:
         years: Number of years back to fetch (None for all dates, Phase 7C: 5 years)
         limit: Maximum number of letters to fetch per agency
+        source: For Minfin: "answers" (default), "general_documents", or "both"
 
     Returns:
         Dict mapping agency_key to list of letters
@@ -1383,6 +1387,8 @@ async def fetch_all_phase7c_letters(
         logger.info(f"Fetching letters from all Phase 7C agencies (last {years} years)")
     if limit:
         logger.info(f"Limit: {limit} letters per agency")
+    if source:
+        logger.info(f"Minfin source: {source}")
 
     all_letters = {}
 
@@ -1390,9 +1396,35 @@ async def fetch_all_phase7c_letters(
         scraper = None
         try:
             scraper = MinistryScraper(agency_key)
-            letters = await scraper.fetch_recent_letters(years=years, limit=limit)
-            all_letters[agency_key] = letters
-            logger.info(f"Fetched {len(letters)} letters from {agency_key}")
+
+            # For Minfin with "both" source, fetch from Answers and General Documents separately
+            if agency_key == "minfin" and source == "both":
+                # Fetch Answers
+                answers_manifest = await scraper.fetch_manifest(since=None, limit=limit, source="answers")
+                answers_letters = await _manifest_to_letters(scraper, answers_manifest)
+                all_letters[f"{agency_key}_answers"] = answers_letters
+                logger.info(f"Fetched {len(answers_letters)} letters from {agency_key} (Answers)")
+
+                # Fetch General Documents
+                general_manifest = await scraper.fetch_manifest(since=None, limit=limit, source="general_documents")
+                general_letters = await _manifest_to_letters(scraper, general_manifest)
+                all_letters[f"{agency_key}_general"] = general_letters
+                logger.info(f"Fetched {len(general_letters)} letters from {agency_key} (General Documents)")
+            # For Minfin with specific source
+            elif agency_key == "minfin" and source:
+                if source == "general_documents":
+                    source_param = "general_documents"
+                else:
+                    source_param = "answers"
+
+                manifest = await scraper.fetch_manifest(since=None, limit=limit, source=source_param)
+                letters = await _manifest_to_letters(scraper, manifest)
+                all_letters[agency_key] = letters
+                logger.info(f"Fetched {len(letters)} letters from {agency_key} ({source_param})")
+            else:
+                letters = await scraper.fetch_recent_letters(years=years, limit=limit)
+                all_letters[agency_key] = letters
+                logger.info(f"Fetched {len(letters)} letters from {agency_key}")
         except Exception as e:
             logger.error(f"Failed to fetch letters from {agency_key}: {e}")
             all_letters[agency_key] = []
@@ -1401,3 +1433,35 @@ async def fetch_all_phase7c_letters(
                 await scraper.close()
 
     return all_letters
+
+
+async def _manifest_to_letters(
+    scraper: MinistryScraper,
+    manifest: Dict[str, Any]
+) -> List[MinistryLetter]:
+    """
+    Convert manifest to MinistryLetter objects.
+
+    Args:
+        scraper: MinistryScraper instance
+        manifest: Manifest from fetch_manifest()
+
+    Returns:
+        List of MinistryLetter objects
+    """
+    letters = []
+    for letter_info in manifest.get("letters", []):
+        # Create a basic MinistryLetter object
+        letter = MinistryLetter(
+            agency_id="",  # Will be filled by import script
+            agency_name_short=manifest.get("agency_name_short", scraper.agency_config["agency_name_short"]),
+            document_type="letter",
+            document_number=letter_info.get("document_number", ""),
+            document_date=date.today(),
+            title=letter_info.get("title", ""),
+            full_content="",  # Will be filled when fetching document
+            binding_nature="informational",
+            source_url=letter_info["url"]
+        )
+        letters.append(letter)
+    return letters

@@ -197,7 +197,8 @@ class MinistryLetterImporter:
     def import_all_phase7c_letters(
         self,
         years: Optional[int] = 5,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        source: Optional[str] = None
     ) -> Dict[str, Dict[str, int]]:
         """
         Import letters from all Phase 7C target agencies.
@@ -205,6 +206,7 @@ class MinistryLetterImporter:
         Args:
             years: Number of years back to import (None for all dates, default: 5)
             limit: Maximum number of letters to import per agency
+            source: For Minfin: "answers" (default), "general_documents", or "both"
 
         Returns:
             Dict mapping agency_key to import statistics
@@ -215,9 +217,11 @@ class MinistryLetterImporter:
             logger.info(f"Starting Phase 7C ministry letters import (last {years} years)")
         if limit:
             logger.info(f"Limit: {limit} letters per agency")
+        if source:
+            logger.info(f"Minfin source: {source}")
 
         # Fetch letters from all agencies
-        all_letters = asyncio.run(fetch_all_phase7c_letters(years=years, limit=limit))
+        all_letters = asyncio.run(fetch_all_phase7c_letters(years=years, limit=limit, source=source))
 
         # Import letters
         all_stats = {}
@@ -312,6 +316,13 @@ def main():
     parser.add_argument("--years", type=int, default=5, help="Number of years back to import (default: 5)")
     parser.add_argument("--all", action="store_true", help="Fetch all documents (no date filter)")
     parser.add_argument("--limit", type=int, default=None, help="Maximum letters to import per agency")
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="answers",
+        choices=["answers", "general", "both"],
+        help="Minfin source: answers (Q&A, default), general (PDF/DOCX docs), or both"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -327,11 +338,26 @@ def main():
     if args.limit:
         logger.info(f"Test mode: limited to {args.limit} letters per agency")
 
+    # Map source argument to internal source value
+    source_map = {
+        "answers": "answers",
+        "general": "general_documents",
+        "both": "both",
+    }
+    source = source_map[args.source]
+
+    if args.source != "answers":
+        logger.info(f"Minfin source: {args.source} ({source})")
+
     # Create importer
     importer = MinistryLetterImporter()
 
     # Import all Phase 7C letters
-    stats = importer.import_all_phase7c_letters(years=None if args.all else args.years, limit=args.limit)
+    stats = importer.import_all_phase7c_letters(
+        years=None if args.all else args.years,
+        limit=args.limit,
+        source=source
+    )
 
     # Get statistics
     statistics = importer.get_import_statistics()
