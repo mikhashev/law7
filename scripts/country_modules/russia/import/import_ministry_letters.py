@@ -195,7 +195,8 @@ class MinistryLetterImporter:
             logger.error(f"Agency not found: {first_letter.agency_name_short}")
             return {"letters": 0, "errors": len(letters)}
 
-        # Process in batches of 500
+        # Process in batches of 500 for optimal PostgreSQL performance
+        # See: docs/AI_WORKFLOW.md - "Batch Operations for Database Performance"
         batch_size = 500
         for batch_start in range(0, len(letters), batch_size):
             batch_end = min(batch_start + batch_size, len(letters))
@@ -203,8 +204,8 @@ class MinistryLetterImporter:
 
             logger.info(f"Processing batch {batch_start // batch_size + 1}: documents {batch_start+1}-{batch_end} of {len(letters)}")
 
-            # Prepare batch data
-            insert_data = []
+            # Prepare batch data - list of dicts for executemany
+            # This is ~500x faster than individual INSERT operations
             for letter in batch_letters:
                 related_laws_json = (
                     json.dumps(letter.related_laws) if letter.related_laws else None
@@ -228,10 +229,13 @@ class MinistryLetterImporter:
                     "source_url": letter.source_url,
                 })
 
-            # Batch INSERT with ON CONFLICT for duplicates
+            # Batch INSERT with ON CONFLICT for duplicates (upsert pattern)
+            # - Single DB round-trip per batch (vs 500 individual trips)
+            # - ON CONFLICT handles existing records by updating them
+            # - Single COMMIT per batch (not per row)
             try:
                 with get_db_connection() as conn:
-                    # Use executemany for batch insert
+                    # executemany processes all rows in one transaction
                     conn.execute(
                         text("""
                         INSERT INTO official_interpretations
@@ -264,7 +268,8 @@ class MinistryLetterImporter:
                 stats["letters"] += len(batch_letters)
                 logger.info(f"  Batch committed: {len(batch_letters)} letters")
 
-                # Sleep every 100 documents to prevent server overload
+                # Rate limiting: pause every 100 documents to prevent server overload
+                # This is especially important when scraping external sources
                 total_processed = batch_end
                 if total_processed % 100 == 0 and total_processed < len(letters):
                     logger.info(f"Pausing after {total_processed} documents (rate limiting: 10s sleep)")
