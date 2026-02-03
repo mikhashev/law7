@@ -198,7 +198,8 @@ class MinistryLetterImporter:
         self,
         years: Optional[int] = 5,
         limit: Optional[int] = None,
-        source: Optional[str] = None
+        source: Optional[str] = None,
+        agency: Optional[str] = None
     ) -> Dict[str, Dict[str, int]]:
         """
         Import letters from all Phase 7C target agencies.
@@ -207,6 +208,7 @@ class MinistryLetterImporter:
             years: Number of years back to import (None for all dates, default: 5)
             limit: Maximum number of letters to import per agency
             source: For Minfin: "answers" (default), "general_documents", or "both"
+            agency: Import from specific agency only ("minfin", "fns", or "rostrud")
 
         Returns:
             Dict mapping agency_key to import statistics
@@ -219,9 +221,11 @@ class MinistryLetterImporter:
             logger.info(f"Limit: {limit} letters per agency")
         if source:
             logger.info(f"Minfin source: {source}")
+        if agency:
+            logger.info(f"Agency filter: {agency}")
 
         # Fetch letters from all agencies
-        all_letters = asyncio.run(fetch_all_phase7c_letters(years=years, limit=limit, source=source))
+        all_letters = asyncio.run(fetch_all_phase7c_letters(years=years, limit=limit, source=source, agency=agency))
 
         # Import letters
         all_stats = {}
@@ -323,6 +327,13 @@ def main():
         choices=["answers", "general", "both"],
         help="Minfin source: answers (Q&A, default), general (PDF/DOCX docs), or both"
     )
+    parser.add_argument(
+        "--agency",
+        type=str,
+        default=None,
+        choices=["minfin", "fns", "rostrud"],
+        help="Import from specific agency only (default: all agencies)"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -349,6 +360,9 @@ def main():
     if args.source != "answers":
         logger.info(f"Minfin source: {args.source} ({source})")
 
+    if args.agency:
+        logger.info(f"Importing from agency: {args.agency}")
+
     # Create importer
     importer = MinistryLetterImporter()
 
@@ -356,7 +370,8 @@ def main():
     stats = importer.import_all_phase7c_letters(
         years=None if args.all else args.years,
         limit=args.limit,
-        source=source
+        source=source,
+        agency=args.agency
     )
 
     # Get statistics

@@ -1368,7 +1368,8 @@ def list_phase7c_agencies() -> List[str]:
 async def fetch_all_phase7c_letters(
     years: Optional[int] = 5,
     limit: Optional[int] = None,
-    source: Optional[str] = None
+    source: Optional[str] = None,
+    agency: Optional[str] = None
 ) -> Dict[str, List[MinistryLetter]]:
     """
     Fetch letters from all Phase 7C target agencies.
@@ -1377,6 +1378,7 @@ async def fetch_all_phase7c_letters(
         years: Number of years back to fetch (None for all dates, Phase 7C: 5 years)
         limit: Maximum number of letters to fetch per agency
         source: For Minfin: "answers" (default), "general_documents", or "both"
+        agency: Fetch from specific agency only ("minfin", "fns", or "rostrud")
 
     Returns:
         Dict mapping agency_key to list of letters
@@ -1389,10 +1391,18 @@ async def fetch_all_phase7c_letters(
         logger.info(f"Limit: {limit} letters per agency")
     if source:
         logger.info(f"Minfin source: {source}")
+    if agency:
+        logger.info(f"Agency filter: {agency}")
+
+    # Determine which agencies to fetch from
+    if agency:
+        agencies_to_fetch = [agency]
+    else:
+        agencies_to_fetch = list_phase7c_agencies()
 
     all_letters = {}
 
-    for agency_key in list_phase7c_agencies():
+    for agency_key in agencies_to_fetch:
         scraper = None
         try:
             scraper = MinistryScraper(agency_key)
