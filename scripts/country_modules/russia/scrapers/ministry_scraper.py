@@ -810,10 +810,16 @@ class MinistryScraper(BaseScraper):
 
         # Fetch each document
         documents = []
-        for letter_info in manifest["letters"]:
+        for i, letter_info in enumerate(manifest["letters"]):
             try:
                 doc = await self.fetch_document(letter_info["url"])
                 documents.append(doc)
+
+                # Add small delay between documents to prevent rate limiting
+                # Sleep every 50 documents to avoid excessive delays
+                if (i + 1) % 50 == 0 and i < len(manifest["letters"]) - 1:
+                    logger.info(f"Pausing after {i + 1} documents (rate limiting)")
+                    await asyncio.sleep(10)
             except Exception as e:
                 logger.error(f"Failed to fetch document {letter_info.get('url')}: {e}")
                 continue
@@ -841,7 +847,8 @@ class MinistryScraper(BaseScraper):
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         legal_topic: Optional[str] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        _use_default_dates: bool = True
     ) -> List[MinistryLetter]:
         """
         Fetch ministry letters for a date range and topic.
@@ -850,17 +857,18 @@ class MinistryScraper(BaseScraper):
         converts them to MinistryLetter objects.
 
         Args:
-            start_date: Start date for letters (None for all dates, default: 5 years ago)
+            start_date: Start date for letters (None for all dates when _use_default_dates=False)
             end_date: End date for letters (default: today)
             legal_topic: Filter by legal topic (not yet implemented for Minfin)
             limit: Maximum number of letters to fetch (if None, fetch all)
+            _use_default_dates: If True (default), use 5-year default when start_date=None
 
         Returns:
             List of ministry letters
         """
-        # Only set default start_date if both start_date and end_date are None
-        # This allows start_date=None to mean "all dates"
-        if start_date is None and end_date is None:
+        # Only set default start_date when explicitly requested (_use_default_dates=True)
+        # This allows start_date=None with _use_default_dates=False to mean "all dates"
+        if _use_default_dates and start_date is None and end_date is None:
             # Phase 7C: last 5 years as default
             start_date = date.today() - timedelta(days=5 * 365)
             end_date = date.today()
@@ -967,9 +975,9 @@ class MinistryScraper(BaseScraper):
             List of ministry letters
         """
         # If years is None, fetch all letters (no date filter)
-        # Pass limit through to fetch_letters for early stopping
+        # Pass _use_default_dates=False to prevent setting 5-year default
         if years is None:
-            letters = await self.fetch_letters(start_date=None, limit=limit)
+            letters = await self.fetch_letters(start_date=None, limit=limit, _use_default_dates=False)
         else:
             start_date = date.today() - timedelta(days=years * 365)
             letters = await self.fetch_letters(start_date=start_date, limit=limit)
