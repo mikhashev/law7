@@ -433,12 +433,20 @@ class MinistryScraper(BaseScraper):
         """
         Fetch Minfin document manifest from Answers section.
 
-        Minfin Answers section has 11 topics, each IS a document page with Q&A content:
+        Minfin Answers section has 11 topics, each IS a document page with Q&A content.
+        Some topics have AJAX pagination using ?page_57=2 pattern.
+
         - URL: https://minfin.gov.ru/ru/perfomance/tax_relations/Answers/{topic}/
         - Topics: commonlaw, orgprofit, fizprofit, property, indirect,
                   international, special, transfert, foreign, customs_value, imposition
 
-        Each topic page contains Q&A content that will be fetched by fetch_document().
+        Topics with pagination (2 pages each):
+        - orgprofit, fizprofit, indirect, international, special, transfert, imposition
+
+        Topics without pagination (single page):
+        - commonlaw, property, foreign, customs_value
+
+        Each page contains Q&A content that will be fetched by fetch_document().
 
         Args:
             since: Only return letters published after this date
@@ -451,6 +459,7 @@ class MinistryScraper(BaseScraper):
 
         letters = []
         topics = self.agency_config.get("answers_topics", [])
+        pagination_param = self.agency_config.get("ajax_pagination_param", "page_57")
 
         for topic in topics:
             # Check limit before processing each topic
@@ -459,19 +468,76 @@ class MinistryScraper(BaseScraper):
 
             topic_url = f"{self.agency_config['letters_url']}{topic}/"
 
-            # Use the topic name as a document identifier
-            letter_info = {
-                "url": topic_url,
-                "title": f"Minfin Answers: {topic}",
-                "document_number": f"MINFIN-{topic.upper()}",
-                "document_date": None,
-                "source": "answers",
-                "topic": topic,
-            }
+            # Fetch the topic page to check for pagination
+            try:
+                html = await self._fetch_html(topic_url)
+                soup = BeautifulSoup(html, "html.parser")
 
-            letters.append(letter_info)
+                # Look for pagination links with page_57 parameter
+                pagination_links = soup.find_all("a", href=re.compile(rf"{pagination_param}=\d+"))
 
-        logger.info(f"Found {len(letters)} Minfin Answer topics")
+                if pagination_links:
+                    # Extract page numbers from pagination links
+                    page_numbers = set([1])  # Always include page 1
+                    for link in pagination_links:
+                        href = link.get("href", "")
+                        match = re.search(rf"{pagination_param}=(\d+)", href)
+                        if match:
+                            page_numbers.add(int(match.group(1)))
+
+                    # Create a letter entry for each page
+                    for page_num in sorted(page_numbers):
+                        # Check limit before adding each page
+                        if limit and len(letters) >= limit:
+                            break
+
+                        if page_num == 1:
+                            page_url = topic_url
+                            page_suffix = ""
+                        else:
+                            page_url = f"{topic_url}?{pagination_param}={page_num}"
+                            page_suffix = f" (page {page_num})"
+
+                        letter_info = {
+                            "url": page_url,
+                            "title": f"Minfin Answers: {topic}{page_suffix}",
+                            "document_number": f"MINFIN-{topic.upper()}-P{page_num}",
+                            "document_date": None,
+                            "source": "answers",
+                            "topic": topic,
+                            "page": page_num,
+                        }
+                        letters.append(letter_info)
+
+                    logger.info(f"Topic '{topic}': found {len(page_numbers)} pages")
+                else:
+                    # No pagination, single page
+                    letter_info = {
+                        "url": topic_url,
+                        "title": f"Minfin Answers: {topic}",
+                        "document_number": f"MINFIN-{topic.upper()}",
+                        "document_date": None,
+                        "source": "answers",
+                        "topic": topic,
+                        "page": 1,
+                    }
+                    letters.append(letter_info)
+
+            except Exception as e:
+                logger.error(f"Error fetching topic '{topic}': {e}")
+                # Add the base topic URL as fallback
+                letter_info = {
+                    "url": topic_url,
+                    "title": f"Minfin Answers: {topic}",
+                    "document_number": f"MINFIN-{topic.upper()}",
+                    "document_date": None,
+                    "source": "answers",
+                    "topic": topic,
+                    "page": 1,
+                }
+                letters.append(letter_info)
+
+        logger.info(f"Found {len(letters)} Minfin Answer pages across {len(topics)} topics")
 
         return {
             "agency_key": self.agency_key,
