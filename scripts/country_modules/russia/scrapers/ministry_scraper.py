@@ -840,7 +840,8 @@ class MinistryScraper(BaseScraper):
         self,
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
-        legal_topic: Optional[str] = None
+        legal_topic: Optional[str] = None,
+        limit: Optional[int] = None
     ) -> List[MinistryLetter]:
         """
         Fetch ministry letters for a date range and topic.
@@ -852,6 +853,7 @@ class MinistryScraper(BaseScraper):
             start_date: Start date for letters (None for all dates, default: 5 years ago)
             end_date: End date for letters (default: today)
             legal_topic: Filter by legal topic (not yet implemented for Minfin)
+            limit: Maximum number of letters to fetch (if None, fetch all)
 
         Returns:
             List of ministry letters
@@ -868,18 +870,18 @@ class MinistryScraper(BaseScraper):
         if start_date is None:
             logger.info(
                 f"Fetching {self.agency_config['agency_name_short']} letters "
-                f"(ALL dates)"
+                f"(ALL dates)" + (f" (limit: {limit})" if limit else "")
                 + (f" for topic: {legal_topic}" if legal_topic else "")
             )
         else:
             logger.info(
                 f"Fetching {self.agency_config['agency_name_short']} letters "
-                f"from {start_date} to {end_date}"
+                f"from {start_date} to {end_date}" + (f" (limit: {limit})" if limit else "")
                 + (f" for topic: {legal_topic}" if legal_topic else "")
             )
 
-        # Fetch documents as RawDocument (pass None for all dates)
-        raw_docs = await self.fetch_updates(since=start_date, limit=None)
+        # Fetch documents as RawDocument (pass None for all dates, and limit)
+        raw_docs = await self.fetch_updates(since=start_date, limit=limit)
 
         # Convert to MinistryLetter objects
         letters = []
@@ -965,14 +967,12 @@ class MinistryScraper(BaseScraper):
             List of ministry letters
         """
         # If years is None, fetch all letters (no date filter)
+        # Pass limit through to fetch_letters for early stopping
         if years is None:
-            letters = await self.fetch_letters(start_date=None)
+            letters = await self.fetch_letters(start_date=None, limit=limit)
         else:
             start_date = date.today() - timedelta(days=years * 365)
-            letters = await self.fetch_letters(start_date=start_date)
-
-        if limit:
-            letters = letters[:limit]
+            letters = await self.fetch_letters(start_date=start_date, limit=limit)
 
         return letters
 
