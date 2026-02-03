@@ -167,7 +167,7 @@ class MinistryLetterImporter:
         letters: List[MinistryLetter]
     ) -> Dict[str, int]:
         """
-        Import letters from a specific agency.
+        Import letters from a specific agency using batch INSERT.
 
         Args:
             agency_key: Agency key (e.g., 'minfin', 'fns', 'rostrud')
@@ -178,28 +178,104 @@ class MinistryLetterImporter:
         """
         import asyncio
         import time
+        from sqlalchemy import text
 
         stats = {
             "letters": 0,
             "errors": 0
         }
 
-        for i, letter in enumerate(letters):
+        if not letters:
+            return stats
+
+        # Get agency_id once (for all letters)
+        first_letter = letters[0]
+        agency_id = self.get_agency_id(first_letter.agency_name_short)
+        if not agency_id:
+            logger.error(f"Agency not found: {first_letter.agency_name_short}")
+            return {"letters": 0, "errors": len(letters)}
+
+        # Process in batches of 500
+        batch_size = 500
+        for batch_start in range(0, len(letters), batch_size):
+            batch_end = min(batch_start + batch_size, len(letters))
+            batch_letters = letters[batch_start:batch_end]
+
+            logger.info(f"Processing batch {batch_start // batch_size + 1}: documents {batch_start+1}-{batch_end} of {len(letters)}")
+
+            # Prepare batch data
+            insert_data = []
+            for letter in batch_letters:
+                related_laws_json = (
+                    json.dumps(letter.related_laws) if letter.related_laws else None
+                )
+
+                insert_data.append({
+                    "country_id": self.country_id,
+                    "country_code": self.country_code,
+                    "agency_id": agency_id,
+                    "document_type": letter.document_type,
+                    "document_number": letter.document_number,
+                    "document_date": letter.document_date,
+                    "title": letter.title or "",
+                    "question": letter.question or "",
+                    "answer": letter.answer or "",
+                    "full_content": letter.full_content or "",
+                    "legal_topic": letter.legal_topic,
+                    "related_laws": related_laws_json,
+                    "binding_nature": letter.binding_nature,
+                    "validity_status": "valid",
+                    "source_url": letter.source_url,
+                })
+
+            # Batch INSERT with ON CONFLICT for duplicates
             try:
-                self.import_ministry_letter(letter)
-                stats["letters"] += 1
+                with get_db_connection() as conn:
+                    # Use executemany for batch insert
+                    conn.execute(
+                        text("""
+                        INSERT INTO official_interpretations
+                        (country_id, country_code, agency_id, document_type,
+                         document_number, document_date, title, question, answer,
+                         full_content, legal_topic, related_laws, binding_nature,
+                         validity_status, source_url)
+                        VALUES
+                        (:country_id, :country_code, :agency_id, :document_type,
+                         :document_number, :document_date, :title, :question, :answer,
+                         :full_content, :legal_topic, :related_laws, :binding_nature,
+                         :validity_status, :source_url)
+                        ON CONFLICT (country_id, agency_id, document_number, document_date)
+                        DO UPDATE SET
+                            title = EXCLUDED.title,
+                            question = EXCLUDED.question,
+                            answer = EXCLUDED.answer,
+                            full_content = EXCLUDED.full_content,
+                            legal_topic = EXCLUDED.legal_topic,
+                            related_laws = EXCLUDED.related_laws,
+                            binding_nature = EXCLUDED.binding_nature,
+                            source_url = EXCLUDED.source_url,
+                            validity_status = 'valid',
+                            updated_at = NOW()
+                        """),
+                        insert_data
+                    )
+                    conn.commit()
+
+                stats["letters"] += len(batch_letters)
+                logger.info(f"  Batch committed: {len(batch_letters)} letters")
 
                 # Sleep every 100 documents to prevent server overload
-                if (i + 1) % 100 == 0 and (i + 1) < len(letters):
-                    logger.info(f"Pausing after {i + 1} documents (rate limiting: 10s sleep)")
+                total_processed = batch_end
+                if total_processed % 100 == 0 and total_processed < len(letters):
+                    logger.info(f"Pausing after {total_processed} documents (rate limiting: 10s sleep)")
                     time.sleep(10)
 
             except Exception as e:
                 logger.error(
-                    f"Failed to import letter {letter.document_number}: {e}",
+                    f"Failed to import batch {batch_start // batch_size + 1}: {e}",
                     exc_info=True
                 )
-                stats["errors"] += 1
+                stats["errors"] += len(batch_letters)
 
         return stats
 
