@@ -196,20 +196,23 @@ class MinistryLetterImporter:
 
     def import_all_phase7c_letters(
         self,
-        years: int = 5,
+        years: Optional[int] = 5,
         limit: Optional[int] = None
     ) -> Dict[str, Dict[str, int]]:
         """
         Import letters from all Phase 7C target agencies.
 
         Args:
-            years: Number of years back to import (Phase 7C: 5 years)
+            years: Number of years back to import (None for all dates, default: 5)
             limit: Maximum number of letters to import per agency
 
         Returns:
             Dict mapping agency_key to import statistics
         """
-        logger.info(f"Starting Phase 7C ministry letters import (last {years} years)")
+        if years is None:
+            logger.info("Starting Phase 7C ministry letters import (ALL dates)")
+        else:
+            logger.info(f"Starting Phase 7C ministry letters import (last {years} years)")
         if limit:
             logger.info(f"Limit: {limit} letters per agency")
 
@@ -306,7 +309,8 @@ class MinistryLetterImporter:
 def main():
     """Main entry point for ministry letters import."""
     parser = argparse.ArgumentParser(description="Import ministry letters")
-    parser.add_argument("--years", type=int, default=5, help="Number of years back to import")
+    parser.add_argument("--years", type=int, default=5, help="Number of years back to import (default: 5)")
+    parser.add_argument("--all", action="store_true", help="Fetch all documents (no date filter)")
     parser.add_argument("--limit", type=int, default=None, help="Maximum letters to import per agency")
     args = parser.parse_args()
 
@@ -316,6 +320,10 @@ def main():
     )
 
     logger.info("Starting ministry letters import")
+    if args.all:
+        logger.info("Fetching ALL documents (no date filter)")
+    else:
+        logger.info(f"Fetching documents from last {args.years} years")
     if args.limit:
         logger.info(f"Test mode: limited to {args.limit} letters per agency")
 
@@ -323,7 +331,7 @@ def main():
     importer = MinistryLetterImporter()
 
     # Import all Phase 7C letters
-    stats = importer.import_all_phase7c_letters(years=args.years, limit=args.limit)
+    stats = importer.import_all_phase7c_letters(years=None if args.all else args.years, limit=args.limit)
 
     # Get statistics
     statistics = importer.get_import_statistics()

@@ -909,27 +909,37 @@ class MinistryScraper(BaseScraper):
         converts them to MinistryLetter objects.
 
         Args:
-            start_date: Start date for letters (default: 5 years ago)
+            start_date: Start date for letters (None for all dates, default: 5 years ago)
             end_date: End date for letters (default: today)
             legal_topic: Filter by legal topic (not yet implemented for Minfin)
 
         Returns:
             List of ministry letters
         """
-        if not start_date:
-            # Phase 7C: last 5 years
+        # Only set default start_date if both start_date and end_date are None
+        # This allows start_date=None to mean "all dates"
+        if start_date is None and end_date is None:
+            # Phase 7C: last 5 years as default
             start_date = date.today() - timedelta(days=5 * 365)
-        if not end_date:
+            end_date = date.today()
+        elif end_date is None:
             end_date = date.today()
 
-        logger.info(
-            f"Fetching {self.agency_config['agency_name_short']} letters "
-            f"from {start_date} to {end_date}"
-            + (f" for topic: {legal_topic}" if legal_topic else "")
-        )
+        if start_date is None:
+            logger.info(
+                f"Fetching {self.agency_config['agency_name_short']} letters "
+                f"(ALL dates)"
+                + (f" for topic: {legal_topic}" if legal_topic else "")
+            )
+        else:
+            logger.info(
+                f"Fetching {self.agency_config['agency_name_short']} letters "
+                f"from {start_date} to {end_date}"
+                + (f" for topic: {legal_topic}" if legal_topic else "")
+            )
 
-        # Fetch documents as RawDocument
-        raw_docs = await self.fetch_updates(since=start_date)
+        # Fetch documents as RawDocument (pass None for all dates)
+        raw_docs = await self.fetch_updates(since=start_date, limit=None)
 
         # Convert to MinistryLetter objects
         letters = []
@@ -1001,21 +1011,25 @@ class MinistryScraper(BaseScraper):
 
     async def fetch_recent_letters(
         self,
-        years: int = 5,
+        years: Optional[int] = 5,
         limit: Optional[int] = None
     ) -> List[MinistryLetter]:
         """
         Fetch recent ministry letters from the last N years.
 
         Args:
-            years: Number of years back to fetch (Phase 7C: 5 years)
+            years: Number of years back to fetch (None for all dates, Phase 7C: 5 years)
             limit: Maximum number of letters to fetch
 
         Returns:
             List of ministry letters
         """
-        start_date = date.today() - timedelta(days=years * 365)
-        letters = await self.fetch_letters(start_date=start_date)
+        # If years is None, fetch all letters (no date filter)
+        if years is None:
+            letters = await self.fetch_letters(start_date=None)
+        else:
+            start_date = date.today() - timedelta(days=years * 365)
+            letters = await self.fetch_letters(start_date=start_date)
 
         if limit:
             letters = letters[:limit]
@@ -1052,20 +1066,23 @@ def list_phase7c_agencies() -> List[str]:
 
 
 async def fetch_all_phase7c_letters(
-    years: int = 5,
+    years: Optional[int] = 5,
     limit: Optional[int] = None
 ) -> Dict[str, List[MinistryLetter]]:
     """
     Fetch letters from all Phase 7C target agencies.
 
     Args:
-        years: Number of years back to fetch (Phase 7C: 5 years)
+        years: Number of years back to fetch (None for all dates, Phase 7C: 5 years)
         limit: Maximum number of letters to fetch per agency
 
     Returns:
         Dict mapping agency_key to list of letters
     """
-    logger.info(f"Fetching letters from all Phase 7C agencies (last {years} years)")
+    if years is None:
+        logger.info("Fetching letters from all Phase 7C agencies (ALL dates)")
+    else:
+        logger.info(f"Fetching letters from all Phase 7C agencies (last {years} years)")
     if limit:
         logger.info(f"Limit: {limit} letters per agency")
 
