@@ -59,7 +59,21 @@ PHASE7C_AGENCIES: Dict[str, Dict[str, Any]] = {
         "letters_url": "https://minfin.gov.ru/ru/perfomance/tax_relations/Answers/",
         "documents_url": "https://minfin.gov.ru/ru/document/",
         "legal_topics": ["tax", "budget", "finance"],
-        "pagination_param": "page_4",  # Minfin uses ?page_4=2 format
+        "pagination_param": "page_4",  # Minfin general documents use ?page_4=2
+        "ajax_pagination_param": "page_57",  # Minfin Answers use AJAX ?page_57=2
+        "answers_topics": [
+            "commonlaw",      # Общие вопросы
+            "orgprofit",      # Прибыль организаций
+            "fizprofit",      # НДФЛ
+            "property",       # Имущественные налоги
+            "indirect",       # Косвенные налоги (НДС, акцизы)
+            "international",  # Международные налоги
+            "special",        # Специальные налоговые режимы
+            "transfert",      # Transfer pricing
+            "foreign",        # Налоги за пределами РФ
+            "customs_value",  # Таможенная стоимость
+            "imposition",     # Обложение природных ресурсов
+        ],
     },
     "fns": {
         "agency_name_short": "ФНС",
@@ -417,11 +431,14 @@ class MinistryScraper(BaseScraper):
         limit: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Fetch Minfin document manifest from minfin.gov.ru with pagination support.
+        Fetch Minfin document manifest from Answers section.
 
-        The Minfin portal has an Answers section with Q&A format:
-        - Base URL: https://minfin.gov.ru/ru/perfomance/tax_relations/Answers/
-        - Pagination: ?page_4=2, ?page_4=3, etc.
+        Minfin Answers section has 11 topics, each IS a document page with Q&A content:
+        - URL: https://minfin.gov.ru/ru/perfomance/tax_relations/Answers/{topic}/
+        - Topics: commonlaw, orgprofit, fizprofit, property, indirect,
+                  international, special, transfert, foreign, customs_value, imposition
+
+        Each topic page contains Q&A content that will be fetched by fetch_document().
 
         Args:
             since: Only return letters published after this date
@@ -433,117 +450,28 @@ class MinistryScraper(BaseScraper):
         logger.info(f"Fetching Minfin manifest since {since}" + (f" (limit: {limit})" if limit else ""))
 
         letters = []
-        base_url = self.agency_config["letters_url"]
-        pagination_param = self.agency_config.get("pagination_param", "page_4")
+        topics = self.agency_config.get("answers_topics", [])
 
-        # Start with page 1
-        page_num = 1
-        total_pages = 1
-
-        # First, fetch the main page to determine total pages
-        url = base_url
-        html = await self._fetch_html(url)
-        soup = BeautifulSoup(html, "html.parser")
-
-        # Find pagination links to determine total pages
-        # Minfin uses pagination like ?page_4=2, ?page_4=3
-        pagination_links = soup.find_all("a", href=re.compile(rf"{pagination_param}=\d+"))
-        if pagination_links:
-            # Extract page numbers from pagination links
-            page_numbers = []
-            for link in pagination_links:
-                href = link.get("href", "")
-                match = re.search(rf"{pagination_param}=(\d+)", href)
-                if match:
-                    page_numbers.append(int(match.group(1)))
-            if page_numbers:
-                total_pages = max(page_numbers)
-
-        logger.info(f"Minfin has {total_pages} pages of documents")
-
-        # Iterate through all pages
-        for page_num in range(1, total_pages + 1):
-            # Construct page URL
-            if page_num == 1:
-                page_url = base_url
-            else:
-                # Append pagination parameter: ?page_4=2
-                separator = "&" if "?" in base_url else "?"
-                page_url = f"{base_url}{separator}{pagination_param}={page_num}"
-
-            logger.info(f"Fetching Minfin page {page_num}/{total_pages}")
-
-            # Fetch page HTML
-            html = await self._fetch_html(page_url)
-            soup = BeautifulSoup(html, "html.parser")
-
-            # Minfin documents are typically in a list or table
-            # Look for links that might be document/answer links
-            # Common patterns include links with Answer, Letter, or document numbers
-            doc_links = (
-                soup.find_all("a", href=re.compile(r"/ru/perfomance/tax_relations/answers/[\w\-]+/", re.I)) or
-                soup.find_all("a", href=re.compile(r"/ru/document/[\w\-]+/", re.I)) or
-                soup.find_all("a", class_=re.compile(r"answer|document|letter", re.I))
-            )
-
-            page_letter_count = 0
-            for link in doc_links:
-                # Check limit before processing each document
-                if limit and len(letters) >= limit:
-                    break
-
-                try:
-                    # Get URL
-                    href = link.get("href", "")
-
-                    # Construct full URL if relative
-                    if href.startswith("/"):
-                        full_url = f"{self.agency_config['base_url']}{href}"
-                    elif href.startswith("http"):
-                        full_url = href
-                    else:
-                        continue
-
-                    # Skip if already processed
-                    if any(l["url"] == full_url for l in letters):
-                        continue
-
-                    # Extract text content
-                    text = link.get_text(strip=True)
-
-                    # Try to extract date and number from text
-                    doc_date = self._extract_date_from_text(text)
-                    doc_number = self._extract_number_from_text(text)
-
-                    # Extract title (use text if no clear title structure)
-                    title = text[:200]
-
-                    letter_info = {
-                        "url": full_url,
-                        "title": title,
-                        "document_number": doc_number,
-                        "document_date": doc_date.isoformat() if doc_date else None,
-                    }
-
-                    letters.append(letter_info)
-                    page_letter_count += 1
-
-                except Exception as e:
-                    logger.debug(f"Error parsing Minfin document link: {e}")
-                    continue
-
-            logger.info(f"Page {page_num}: found {page_letter_count} letters (total: {len(letters)})")
-
-            # Stop if we reached the limit (if specified)
+        for topic in topics:
+            # Check limit before processing each topic
             if limit and len(letters) >= limit:
-                logger.info(f"Reached limit of {limit} documents, stopping pagination")
                 break
 
-            # Add delay between pages to be polite to the server
-            if page_num < total_pages:
-                await asyncio.sleep(10)
+            topic_url = f"{self.agency_config['letters_url']}{topic}/"
 
-        logger.info(f"Extracted {len(letters)} Minfin letter URLs from {page_num} pages")
+            # Use the topic name as a document identifier
+            letter_info = {
+                "url": topic_url,
+                "title": f"Minfin Answers: {topic}",
+                "document_number": f"MINFIN-{topic.upper()}",
+                "document_date": None,
+                "source": "answers",
+                "topic": topic,
+            }
+
+            letters.append(letter_info)
+
+        logger.info(f"Found {len(letters)} Minfin Answer topics")
 
         return {
             "agency_key": self.agency_key,
@@ -555,8 +483,20 @@ class MinistryScraper(BaseScraper):
                 "letters_url": self.agency_config["letters_url"],
                 "since": since.isoformat() if since else None,
                 "total_found": len(letters),
+                "sources": ["answers"],
             }
         }
+
+    async def _fetch_minfin_answers_topics(
+        self,
+        since: Optional[date] = None,
+        limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        DEPRECATED: This method is no longer used.
+        Each Answers topic page IS a document, not a container of documents.
+        """
+        return []
 
     def _extract_fns_date_from_text(self, text: str) -> Optional[date]:
         """
