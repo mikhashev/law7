@@ -597,9 +597,10 @@ class MinistryScraper(BaseScraper):
 
         # Fetch pages until we run out of documents or hit the limit
         page_num = 1
-        max_pages = 100  # Safety limit to prevent infinite loops
+        consecutive_empty_pages = 0  # Stop after 3 consecutive empty pages (safety measure)
+        max_consecutive_empty = 3
 
-        while page_num <= max_pages:
+        while consecutive_empty_pages < max_consecutive_empty:
             # Check limit before fetching each page
             if limit and len(documents) >= limit:
                 logger.info(f"Reached limit of {limit} documents, stopping pagination")
@@ -622,7 +623,11 @@ class MinistryScraper(BaseScraper):
 
                 if not doc_links:
                     logger.info(f"No more documents found on page {page_num}, stopping pagination")
-                    break
+                    consecutive_empty_pages += 1
+                    if consecutive_empty_pages >= max_consecutive_empty:
+                        break
+                    page_num += 1
+                    continue
 
                 page_doc_count = 0
                 for link in doc_links:
@@ -665,20 +670,24 @@ class MinistryScraper(BaseScraper):
 
                 logger.info(f"Page {page_num}: found {page_doc_count} documents (total: {len(documents)})")
 
-                # If no documents were found on this page, stop pagination
-                if page_doc_count == 0:
-                    logger.info(f"No documents found on page {page_num}, stopping pagination")
-                    break
+                # Reset empty page counter if we found documents
+                if page_doc_count > 0:
+                    consecutive_empty_pages = 0
+                else:
+                    consecutive_empty_pages += 1
+                    logger.info(f"Empty page {page_num}, consecutive empty: {consecutive_empty_pages}/{max_consecutive_empty}")
 
                 # Add delay between pages to be polite
-                if page_num < max_pages:
-                    await asyncio.sleep(5)
+                await asyncio.sleep(5)
 
                 page_num += 1
 
             except Exception as e:
                 logger.error(f"Error fetching page {page_num}: {e}")
-                break
+                consecutive_empty_pages += 1
+                if consecutive_empty_pages >= max_consecutive_empty:
+                    break
+                page_num += 1
 
         logger.info(f"Found {len(documents)} Minfin General Documents")
 

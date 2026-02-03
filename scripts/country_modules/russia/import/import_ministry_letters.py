@@ -176,15 +176,24 @@ class MinistryLetterImporter:
         Returns:
             Dict with import statistics
         """
+        import asyncio
+        import time
+
         stats = {
             "letters": 0,
             "errors": 0
         }
 
-        for letter in letters:
+        for i, letter in enumerate(letters):
             try:
                 self.import_ministry_letter(letter)
                 stats["letters"] += 1
+
+                # Sleep every 100 documents to prevent server overload
+                if (i + 1) % 100 == 0 and (i + 1) < len(letters):
+                    logger.info(f"Pausing after {i + 1} documents (rate limiting: 10s sleep)")
+                    time.sleep(10)
+
             except Exception as e:
                 logger.error(
                     f"Failed to import letter {letter.document_number}: {e}",
