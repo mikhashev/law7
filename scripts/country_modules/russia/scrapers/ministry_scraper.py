@@ -251,7 +251,7 @@ class MinistryScraper(BaseScraper):
         # URL pattern: https://www.nalog.gov.ru/rn77/about_fts/about_nalog/2.html?
         #             n=&fd=&td=&fdp={from}&tdp={to}&ds=0&st=0&dn=0
         search_url = (
-            f"{self.agency_config['base_url']}/rn77/about_fts/about_nalog/2.html"
+            f"{self.agency_config['base_url']}/rn77/about_fts/about_nalog/1.html"
             f"?n=&fd=&td=&fdp={from_date}&tdp={to_date}&ds=0&st=0&dn=0"
         )
 
@@ -262,16 +262,16 @@ class MinistryScraper(BaseScraper):
         soup = BeautifulSoup(html, "html.parser")
 
         # Check for pagination in the search results
-        # The search API may have pagination links
+        # The search API has pagination like /about_nalog/1.html?, /about_nalog/2.html?, etc.
         total_pages = 1
-        pagination_links = soup.find_all("a", href=re.compile(r"/about_nalog/2\.html\?", re.I))
+        pagination_links = soup.find_all("a", href=re.compile(r"/about_nalog/\d+\.html\?", re.I))
         if pagination_links:
             # Extract page numbers from pagination links
             page_numbers = []
             for link in pagination_links:
                 href = link.get("href", "")
-                # Look for page parameter in URL
-                match = re.search(r"(?:^|&)page=(\d+)", href)
+                # Look for page number in URL: /about_nalog/{page}.html
+                match = re.search(r"/about_nalog/(\d+)\.html", href)
                 if match:
                     page_numbers.append(int(match.group(1)))
             if page_numbers:
@@ -281,11 +281,16 @@ class MinistryScraper(BaseScraper):
 
         # Iterate through all pages of search results
         for page_num in range(1, total_pages + 1):
-            # Construct page URL
+            # Construct page URL - use the pattern /about_nalog/{page}.html?{params}
+            # Page 1: /about_nalog/1.html?params...
+            # Page 2: /about_nalog/2.html?params...
             if page_num == 1:
                 page_url = search_url
             else:
-                page_url = f"{search_url}&page={page_num}"
+                # Replace the page number in the path: /about_nalog/1.html -> /about_nalog/{page_num}.html
+                # Keep all query parameters the same
+                params = search_url.split("?")[1] if "?" in search_url else ""
+                page_url = f"{self.agency_config['base_url']}/rn77/about_fts/about_nalog/{page_num}.html?{params}"
 
             logger.info(f"Fetching FNS search page {page_num}/{total_pages}")
 
