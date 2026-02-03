@@ -170,7 +170,11 @@ class MinistryScraper(BaseScraper):
             self._session = None
             self._connector = None
 
-    async def fetch_manifest(self, since: Optional[date] = None) -> Dict[str, Any]:
+    async def fetch_manifest(
+        self,
+        since: Optional[date] = None,
+        limit: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
         Get list of ministry letters published since date.
 
@@ -179,18 +183,19 @@ class MinistryScraper(BaseScraper):
 
         Args:
             since: Only return letters published after this date.
+            limit: Maximum number of letters to fetch (if None, fetch all).
 
         Returns:
             Dict with letter list and metadata
         """
         logger.info(
             f"Fetching {self.agency_config['agency_name_short']} "
-            f"letters since {since}"
+            f"letters since {since}" + (f" (limit: {limit})" if limit else "")
         )
 
         # FNS: Use search API
         if self.agency_key == "fns":
-            return await self._fetch_fns_manifest(since)
+            return await self._fetch_fns_manifest(since, limit)
 
         # Minfin: Use Answers section with pagination
         if self.agency_key == "minfin":
@@ -213,7 +218,11 @@ class MinistryScraper(BaseScraper):
             }
         }
 
-    async def _fetch_fns_manifest(self, since: Optional[date] = None) -> Dict[str, Any]:
+    async def _fetch_fns_manifest(
+        self,
+        since: Optional[date] = None,
+        limit: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
         Fetch FNS document manifest from nalog.gov.ru using the search API.
 
@@ -226,9 +235,11 @@ class MinistryScraper(BaseScraper):
                         n=&fd=&td=&fdp={from_date}&tdp={to_date}&ds=0&st=0&dn=0
 
         This method uses st=0 to fetch only actual documents directly.
+        When 'since' is None, no date filter is applied (fdp=&tdp=).
 
         Args:
-            since: Only return letters published after this date
+            since: Only return letters published after this date (if None, no date filter)
+            limit: Maximum number of letters to fetch (if None, fetch all)
 
         Returns:
             Dict with letter list and metadata
@@ -238,14 +249,14 @@ class MinistryScraper(BaseScraper):
         letters = []
 
         # Calculate date range for the search API
-        # If 'since' is provided, use it as start date
+        # If 'since' is provided, use it as start date; otherwise leave empty (all dates)
         if since:
             from_date = since.strftime("%d.%m.%Y")
+            to_date = date.today().strftime("%d.%m.%Y")
         else:
-            # Phase 7C: last 5 years
-            from_date = (date.today() - timedelta(days=5 * 365)).strftime("%d.%m.%Y")
-
-        to_date = date.today().strftime("%d.%m.%Y")
+            # No date filter - fetch all Actual documents
+            from_date = ""
+            to_date = ""
 
         # Build search API URL with st=0 (Actual only)
         # URL pattern: https://www.nalog.gov.ru/rn77/about_fts/about_nalog/2.html?
@@ -262,8 +273,8 @@ class MinistryScraper(BaseScraper):
         soup = BeautifulSoup(html, "html.parser")
 
         # Check for pagination in the search results
-        # The search API has pagination like /about_nalog/1.html, /about_nalog/2.html, etc.
-        # The "всего: 1597" text indicates total documents
+        # The FNS pagination shows pages like: 1 ... 103 104 105 106 [107]
+        # We need to find the highest page number from all pagination links
         total_pages = 1
         # Look for pagination links - they may or may not have query params
         pagination_links = soup.find_all("a", href=re.compile(r"/about_nalog/\d+\.html"))
@@ -278,6 +289,17 @@ class MinistryScraper(BaseScraper):
                     page_numbers.append(int(match.group(1)))
             if page_numbers:
                 total_pages = max(page_numbers)
+
+        # Also check for the active page number (class="active" or class="pagination__show")
+        # This handles cases where only the first page shows low numbers, but we need the last
+        # The active page is marked with class="active"
+        active_page = soup.find("a", class_="active")
+        if active_page:
+            active_text = active_page.get_text(strip=True)
+            if active_text.isdigit():
+                active_num = int(active_text)
+                if active_num > total_pages:
+                    total_pages = active_num
 
         logger.info(f"FNS search has {total_pages} pages of results")
 
@@ -310,6 +332,10 @@ class MinistryScraper(BaseScraper):
 
             page_letter_count = 0
             for link in doc_links:
+                # Check limit before processing each document
+                if limit and len(letters) >= limit:
+                    break
+
                 try:
                     # Get URL
                     href = link.get("href", "")
@@ -360,9 +386,9 @@ class MinistryScraper(BaseScraper):
 
             logger.info(f"Page {page_num}: found {page_letter_count} letters (total: {len(letters)})")
 
-            # Stop if we found enough documents (respecting batch_size as soft limit for testing)
-            if self.batch_size and len(letters) >= self.batch_size * 10:  # Allow 10x batch_size for full import
-                logger.info(f"Reached soft limit of {self.batch_size * 10} documents, stopping pagination")
+            # Stop if we reached the limit (if specified)
+            if limit and len(letters) >= limit:
+                logger.info(f"Reached limit of {limit} documents, stopping pagination")
                 break
 
             # Add delay between pages to be polite to the server
@@ -385,7 +411,11 @@ class MinistryScraper(BaseScraper):
             }
         }
 
-    async def _fetch_minfin_manifest(self, since: Optional[date] = None) -> Dict[str, Any]:
+    async def _fetch_minfin_manifest(
+        self,
+        since: Optional[date] = None,
+        limit: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
         Fetch Minfin document manifest from minfin.gov.ru with pagination support.
 
@@ -395,11 +425,12 @@ class MinistryScraper(BaseScraper):
 
         Args:
             since: Only return letters published after this date
+            limit: Maximum number of letters to fetch (if None, fetch all)
 
         Returns:
             Dict with letter list and metadata
         """
-        logger.info(f"Fetching Minfin manifest since {since}")
+        logger.info(f"Fetching Minfin manifest since {since}" + (f" (limit: {limit})" if limit else ""))
 
         letters = []
         base_url = self.agency_config["letters_url"]
@@ -457,6 +488,10 @@ class MinistryScraper(BaseScraper):
 
             page_letter_count = 0
             for link in doc_links:
+                # Check limit before processing each document
+                if limit and len(letters) >= limit:
+                    break
+
                 try:
                     # Get URL
                     href = link.get("href", "")
@@ -499,9 +534,9 @@ class MinistryScraper(BaseScraper):
 
             logger.info(f"Page {page_num}: found {page_letter_count} letters (total: {len(letters)})")
 
-            # Stop if we found enough documents
-            if self.batch_size and len(letters) >= self.batch_size * 10:
-                logger.info(f"Reached soft limit of {self.batch_size * 10} documents, stopping pagination")
+            # Stop if we reached the limit (if specified)
+            if limit and len(letters) >= limit:
+                logger.info(f"Reached limit of {limit} documents, stopping pagination")
                 break
 
             # Add delay between pages to be polite to the server
@@ -808,7 +843,11 @@ class MinistryScraper(BaseScraper):
             return match.group(0)
         return None
 
-    async def fetch_updates(self, since: date) -> List[RawDocument]:
+    async def fetch_updates(
+        self,
+        since: date,
+        limit: Optional[int] = None
+    ) -> List[RawDocument]:
         """
         Fetch all ministry letters published since date.
 
@@ -816,17 +855,18 @@ class MinistryScraper(BaseScraper):
 
         Args:
             since: Start date for updates
+            limit: Maximum number of letters to fetch (if None, fetch all)
 
         Returns:
             List of RawDocument objects
         """
         logger.info(
             f"Fetching {self.agency_config['agency_name_short']} "
-            f"updates since {since}"
+            f"updates since {since}" + (f" (limit: {limit})" if limit else "")
         )
 
         # Fetch manifest (list of documents)
-        manifest = await self.fetch_manifest(since=since)
+        manifest = await self.fetch_manifest(since=since, limit=limit)
 
         # Fetch each document
         documents = []
