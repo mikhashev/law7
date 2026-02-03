@@ -187,17 +187,22 @@ class MinistryScraper(BaseScraper):
     async def fetch_manifest(
         self,
         since: Optional[date] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        source: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Get list of ministry letters published since date.
 
-        For Minfin, this fetches the Answers section with pagination support.
+        For Minfin, this can fetch from:
+        - Answers section (Q&A content, default)
+        - General Documents section (PDF/DOCX files)
+
         For FNS, this uses the search API with Actual-only filter.
 
         Args:
             since: Only return letters published after this date.
             limit: Maximum number of letters to fetch (if None, fetch all).
+            source: For Minfin: "answers" (default) or "general_documents"
 
         Returns:
             Dict with letter list and metadata
@@ -205,15 +210,19 @@ class MinistryScraper(BaseScraper):
         logger.info(
             f"Fetching {self.agency_config['agency_name_short']} "
             f"letters since {since}" + (f" (limit: {limit})" if limit else "")
+            + (f" (source: {source})" if source else "")
         )
 
         # FNS: Use search API
         if self.agency_key == "fns":
             return await self._fetch_fns_manifest(since, limit)
 
-        # Minfin: Use Answers section with pagination
+        # Minfin: Use Answers or General Documents
         if self.agency_key == "minfin":
-            return await self._fetch_minfin_manifest(since)
+            if source == "general_documents":
+                return await self._fetch_minfin_general_documents(since, limit)
+            else:
+                return await self._fetch_minfin_manifest(since, limit)
 
         # Fallback for non-implemented agencies
         logger.warning(
@@ -553,6 +562,140 @@ class MinistryScraper(BaseScraper):
             }
         }
 
+    async def _fetch_minfin_general_documents(
+        self,
+        since: Optional[date] = None,
+        limit: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Fetch Minfin General Documents manifest.
+
+        The General Documents section contains ~30,000+ documents in multiple formats:
+        - PDF, DOCX, DOC, XPS files
+        - AJAX pagination using ?page_4=2 pattern
+        - URL: https://minfin.gov.ru/ru/document/
+
+        Documents are listed with:
+        - Document ID (id_4 parameter)
+        - Title
+        - Date
+        - Download links (PDF, DOCX)
+        - File size
+
+        Args:
+            since: Only return documents published after this date
+            limit: Maximum number of documents to fetch (if None, fetch all)
+
+        Returns:
+            Dict with document list and metadata
+        """
+        logger.info(f"Fetching Minfin General Documents since {since}" + (f" (limit: {limit})" if limit else ""))
+
+        documents = []
+        base_url = self.agency_config['documents_url']  # https://minfin.gov.ru/ru/document/
+        pagination_param = self.agency_config.get('pagination_param', 'page_4')
+
+        # Fetch pages until we run out of documents or hit the limit
+        page_num = 1
+        max_pages = 100  # Safety limit to prevent infinite loops
+
+        while page_num <= max_pages:
+            # Check limit before fetching each page
+            if limit and len(documents) >= limit:
+                logger.info(f"Reached limit of {limit} documents, stopping pagination")
+                break
+
+            # Construct page URL
+            if page_num == 1:
+                page_url = base_url
+            else:
+                page_url = f"{base_url}?{pagination_param}={page_num}"
+
+            logger.info(f"Fetching General Documents page {page_num}")
+
+            try:
+                html = await self._fetch_html(page_url)
+                soup = BeautifulSoup(html, 'html.parser')
+
+                # Look for document links with id_4 parameter
+                doc_links = soup.find_all("a", href=re.compile(r"\?id_4=\d+"))
+
+                if not doc_links:
+                    logger.info(f"No more documents found on page {page_num}, stopping pagination")
+                    break
+
+                page_doc_count = 0
+                for link in doc_links:
+                    # Check limit before processing each document
+                    if limit and len(documents) >= limit:
+                        break
+
+                    try:
+                        href = link.get("href", "")
+                        text = link.get_text(strip=True)
+
+                        # Extract document ID
+                        match = re.search(r"id_4=(\d+)", href)
+                        if not match:
+                            continue
+
+                        doc_id = match.group(1)
+
+                        # Skip duplicates
+                        if any(d.get("doc_id") == doc_id for d in documents):
+                            continue
+
+                        # Build full URL for document detail page
+                        detail_url = f"{self.agency_config['base_url']}{href}" if href.startswith("/") else href
+
+                        doc_info = {
+                            "url": detail_url,
+                            "doc_id": doc_id,
+                            "title": text[:200],
+                            "document_number": f"MINFIN-DOC-{doc_id}",
+                            "document_date": None,
+                            "source": "general_documents",
+                        }
+                        documents.append(doc_info)
+                        page_doc_count += 1
+
+                    except Exception as e:
+                        logger.debug(f"Error parsing document link: {e}")
+                        continue
+
+                logger.info(f"Page {page_num}: found {page_doc_count} documents (total: {len(documents)})")
+
+                # If no documents were found on this page, stop pagination
+                if page_doc_count == 0:
+                    logger.info(f"No documents found on page {page_num}, stopping pagination")
+                    break
+
+                # Add delay between pages to be polite
+                if page_num < max_pages:
+                    await asyncio.sleep(5)
+
+                page_num += 1
+
+            except Exception as e:
+                logger.error(f"Error fetching page {page_num}: {e}")
+                break
+
+        logger.info(f"Found {len(documents)} Minfin General Documents")
+
+        return {
+            "agency_key": self.agency_key,
+            "agency_name_short": self.agency_config["agency_name_short"],
+            "letters": documents,  # Use same key for compatibility
+            "last_updated": date.today().isoformat(),
+            "metadata": {
+                "base_url": self.agency_config['base_url'],
+                "documents_url": base_url,
+                "since": since.isoformat() if since else None,
+                "total_found": len(documents),
+                "sources": ["general_documents"],
+            }
+        }
+
     async def _fetch_minfin_answers_topics(
         self,
         since: Optional[date] = None,
@@ -716,7 +859,18 @@ class MinistryScraper(BaseScraper):
         )
 
     async def _fetch_minfin_document(self, doc_id: str) -> RawDocument:
-        """Fetch Minfin document (existing implementation)."""
+        """
+        Fetch Minfin document (supports Answers and General Documents).
+
+        For Answers pages: Extracts Q&A content from HTML.
+        For General Documents: Extracts PDF/DOCX download links and metadata.
+
+        Args:
+            doc_id: Document URL (full URL or path)
+
+        Returns:
+            RawDocument with content and metadata
+        """
         # Construct full URL if doc_id is a path
         if doc_id.startswith("http"):
             url = doc_id
@@ -728,6 +882,135 @@ class MinistryScraper(BaseScraper):
         html = await self._fetch_html(url)
         soup = BeautifulSoup(html, "html.parser")
 
+        # Check if this is a General Document (has id_4 parameter or download links)
+        is_general_doc = (
+            "id_4=" in url or
+            soup.find("a", href=re.compile(r"\.(pdf|docx|doc)", re.I))
+        )
+
+        if is_general_doc:
+            # This is a General Document - extract file download links
+            return await self._fetch_minfin_general_document(url, soup)
+        else:
+            # This is an Answers page - extract Q&A content
+            return await self._fetch_minfin_answers_document(url, soup)
+
+    async def _fetch_minfin_general_document(self, url: str, soup: BeautifulSoup) -> RawDocument:
+        """
+        Fetch Minfin General Document with PDF/DOCX download links.
+
+        Extracts:
+        - Title
+        - Document date
+        - Download links (PDF, DOCX, DOC)
+        - File sizes
+        - Document ID
+
+        Args:
+            url: Document detail page URL
+            soup: BeautifulSoup object of the page
+
+        Returns:
+            RawDocument with metadata and file URLs
+        """
+        # Extract title
+        title_elem = soup.find("h1")
+        title = title_elem.get_text(strip=True) if title_elem else ""
+
+        # Extract document ID from URL
+        doc_id = None
+        match = re.search(r"id_4=(\d+)", url)
+        if match:
+            doc_id = match.group(1)
+
+        # Find all download links
+        all_links = soup.find_all("a", href=True)
+        download_links = {
+            "pdf": [],
+            "docx": [],
+            "doc": [],
+            "other": []
+        }
+
+        for link in all_links:
+            href = link.get("href", "")
+            text = link.get_text(strip=True)
+
+            # Build full URL
+            full_url = f"{self.agency_config['base_url']}{href}" if href.startswith("/") else href
+
+            if ".pdf" in href.lower() or "pdf" in text.lower():
+                download_links["pdf"].append(full_url)
+            elif ".docx" in href.lower() or "docx" in text.lower():
+                download_links["docx"].append(full_url)
+            elif ".doc" in href.lower() and ".docx" not in href.lower():
+                download_links["doc"].append(full_url)
+            elif "/upload/" in href:
+                download_links["other"].append(full_url)
+
+        # Extract date from page
+        doc_date = self._extract_date_from_text(title)
+
+        # Build full text with download information
+        full_text = f"Title: {title}\n"
+        if doc_id:
+            full_text += f"Document ID: {doc_id}\n"
+        if doc_date:
+            full_text += f"Date: {doc_date.isoformat()}\n"
+        full_text += f"URL: {url}\n"
+
+        if download_links["pdf"]:
+            full_text += f"\nPDF files ({len(download_links['pdf'])}):\n"
+            for pdf_url in download_links["pdf"]:
+                full_text += f"  - {pdf_url}\n"
+
+        if download_links["docx"]:
+            full_text += f"\nDOCX files ({len(download_links['docx'])}):\n"
+            for docx_url in download_links["docx"]:
+                full_text += f"  - {docx_url}\n"
+
+        # Try to extract some description from the page
+        content_div = soup.find("div", class_=re.compile(r"content|text|document", re.I))
+        if content_div:
+            paragraphs = content_div.find_all("p")
+            if paragraphs:
+                full_text += "\nDescription:\n"
+                for p in paragraphs[:5]:  # First 5 paragraphs
+                    text = p.get_text(strip=True)
+                    if text and len(text) > 20:
+                        full_text += f"{text}\n"
+
+        metadata = {
+            "agency_key": self.agency_key,
+            "agency_name_short": self.agency_config["agency_name_short"],
+            "title": title,
+            "document_number": f"MINFIN-DOC-{doc_id}" if doc_id else "",
+            "document_date": doc_date.isoformat() if doc_date else None,
+            "source_url": url,
+            "doc_id": doc_id,
+            "download_urls": download_links,
+            "source": "general_documents",
+        }
+
+        return RawDocument(
+            doc_id=url,
+            url=url,
+            content=full_text.encode("utf-8"),
+            content_type="text/html",
+            metadata=metadata
+        )
+
+    async def _fetch_minfin_answers_document(self, url: str, soup: BeautifulSoup) -> RawDocument:
+        """
+        Fetch Minfin Answers document (Q&A content).
+
+        Args:
+            url: Document URL
+            soup: BeautifulSoup object of the page
+
+        Returns:
+            RawDocument with Q&A content
+        """
         # Extract document content
         content_div = soup.find("div", class_=re.compile(r"content|text|document|doc-body"))
         if not content_div:
@@ -759,10 +1042,11 @@ class MinistryScraper(BaseScraper):
             "document_number": doc_number,
             "document_date": doc_date.isoformat() if doc_date else None,
             "source_url": url,
+            "source": "answers",
         }
 
         return RawDocument(
-            doc_id=doc_id,
+            doc_id=url,
             url=url,
             content=full_text.encode("utf-8"),
             content_type="text/html",
