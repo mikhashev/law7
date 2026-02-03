@@ -374,10 +374,19 @@ def main():
         agency=args.agency
     )
 
-    # Get statistics
-    statistics = importer.get_import_statistics()
+    # Log session statistics (from this import)
+    logger.info("Session statistics (this import):")
+    session_letters = sum(s["letters"] for s in stats.values())
+    session_errors = sum(s["errors"] for s in stats.values())
+    logger.info(f"  Imported: {session_letters} letters")
+    logger.info(f"  Errors: {session_errors}")
+    for agency_key, agency_stats in stats.items():
+        if agency_stats["letters"] > 0 or agency_stats["errors"] > 0:
+            logger.info(f"    {agency_key}: {agency_stats['letters']} letters, {agency_stats['errors']} errors")
 
-    logger.info("Ministry letters import statistics:")
+    # Get total database statistics (optional)
+    statistics = importer.get_import_statistics()
+    logger.info("Database statistics (total):")
     logger.info(f"  Total letters: {statistics['totals'].get('total_letters', 0)}")
     logger.info(f"  Valid letters: {statistics['totals'].get('valid_letters', 0)}")
     logger.info(f"  Agencies: {statistics['totals'].get('agency_count', 0)}")
