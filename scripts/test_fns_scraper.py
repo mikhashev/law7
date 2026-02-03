@@ -78,11 +78,11 @@ async def test_fns_document_fetch():
 
 async def test_fns_letters():
     """Test FNS letters fetching."""
-    logger.info("Testing FNS letters fetching (last 1 year, limit 3)...")
+    logger.info("Testing FNS letters fetching (last 5 years, limit 3)...")
 
     scraper = MinistryScraper("fns")
-    # fetch_recent_letters accepts 'years' parameter
-    letters = await scraper.fetch_recent_letters(years=1)
+    # fetch_recent_letters accepts 'years' parameter - use 5 years for more results
+    letters = await scraper.fetch_recent_letters(years=5)
     letters = letters[:3]  # Limit to 3 for testing
 
     logger.info(f"Fetched {len(letters)} letters:")

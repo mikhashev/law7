@@ -262,9 +262,11 @@ class MinistryScraper(BaseScraper):
         soup = BeautifulSoup(html, "html.parser")
 
         # Check for pagination in the search results
-        # The search API has pagination like /about_nalog/1.html?, /about_nalog/2.html?, etc.
+        # The search API has pagination like /about_nalog/1.html, /about_nalog/2.html, etc.
+        # The "всего: 1597" text indicates total documents
         total_pages = 1
-        pagination_links = soup.find_all("a", href=re.compile(r"/about_nalog/\d+\.html\?", re.I))
+        # Look for pagination links - they may or may not have query params
+        pagination_links = soup.find_all("a", href=re.compile(r"/about_nalog/\d+\.html"))
         if pagination_links:
             # Extract page numbers from pagination links
             page_numbers = []
