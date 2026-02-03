@@ -311,6 +311,80 @@ docker exec law7-postgres psql -U law7 -d law7 -c "
 4. Look for foreign key relationships before deleting data
 5. Test queries with `SELECT` before running `INSERT/UPDATE/DELETE`
 
+## Batch Operations for Database Performance
+
+**CRITICAL**: When performing bulk INSERT/UPDATE operations (100+ rows), use batch operations instead of individual row operations.
+
+**Why?** Individual INSERT/UPDATE operations have significant overhead:
+- **Network round-trips**: Each operation requires a separate database request
+- **Transaction overhead**: Each operation commits separately
+- **Index updates**: Indexes are rebuilt for each individual row
+- **Performance impact**: 30,000 individual inserts = hours; 60 batch inserts = seconds
+
+**Batch INSERT with SQLAlchemy**:
+```python
+from sqlalchemy import text
+
+# Prepare batch data (list of dictionaries)
+insert_data = [
+    {"col1": "value1", "col2": "value2", ...},
+    {"col1": "value3", "col2": "value4", ...},
+    # ... up to 500-1000 rows per batch
+]
+
+# Use executemany for batch insert
+with get_db_connection() as conn:
+    conn.execute(
+        text("""
+        INSERT INTO table_name
+        (col1, col2, col3)
+        VALUES
+        (:col1, :col2, :col3)
+        ON CONFLICT (unique_constraint_columns)
+        DO UPDATE SET
+            col1 = EXCLUDED.col1,
+            col2 = EXCLUDED.col2,
+            updated_at = NOW()
+        """),
+        insert_data  # Pass list of dicts to executemany
+    )
+    conn.commit()
+```
+
+**Best practices for batch operations**:
+1. **Batch size**: Use 500-1000 rows per batch (optimal for PostgreSQL)
+2. **Use ON CONFLICT**: Handle duplicates with upsert instead of separate queries
+3. **Single commit per batch**: Commit once after the batch, not per row
+4. **Rate limiting**: For scraping, add sleep between batches (e.g., 10s per 100 docs)
+5. **Error handling**: Log batch failures without losing progress
+
+**When to use batch operations**:
+| Scenario | Individual | Batch |
+|----------|------------|-------|
+| < 10 rows | ✅ Acceptable | Not worth overhead |
+| 10-100 rows | ⚠️ Consider | ✅ Recommended |
+| 100-1000 rows | ❌ Too slow | ✅ Use batch (500 per batch) |
+| 1000+ rows | ❌ Unacceptable | ✅ Critical (500-1000 per batch) |
+
+**Example: Performance comparison**
+- Individual: 30,000 documents × 50ms = 25 minutes
+- Batch (500): 60 batches × 100ms = 6 seconds (~250x faster)
+
+**Anti-patterns to avoid**:
+```python
+# ❌ WRONG - Individual operations in loop
+for item in items:
+    conn.execute(text("INSERT INTO ... VALUES (...)"), {"col": item})
+    conn.commit()  # Separate commit for each row!
+
+# ✅ CORRECT - Batch operation
+batch_size = 500
+for batch_start in range(0, len(items), batch_size):
+    batch = items[batch_start:batch_start + batch_size]
+    conn.execute(text("INSERT ..."), batch)
+    conn.commit()  # Single commit per batch
+```
+
 ## API Research with AI
 
 When exploring new APIs or data sources:
