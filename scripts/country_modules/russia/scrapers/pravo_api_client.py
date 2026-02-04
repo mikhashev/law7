@@ -304,6 +304,73 @@ class PravoApiClient:
 
         return result if isinstance(result, list) else []
 
+    def get_court_decisions(
+        self,
+        start_date: str,
+        end_date: Optional[str] = None,
+        page_size: int = 100,
+        decision_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get court decisions from pravo.gov.ru (Constitutional Court decisions).
+
+        Note: This returns decisions published on pravo.gov.ru, which primarily includes
+        Constitutional Court decisions and other high-level court publications.
+        For comprehensive court decisions (arbitration, general jurisdiction),
+        use the dedicated scrapers (kad_scraper, sudrf_scraper).
+
+        Args:
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format (defaults to today)
+            page_size: Number of items per page (max 1000)
+            decision_type: Optional filter by decision type
+
+        Returns:
+            List of court decision documents
+
+        Example:
+            >>> client = PravoApiClient()
+            >>> decisions = client.get_court_decisions("2022-01-01", "2024-12-31")
+            >>> print(f"Found {len(decisions)} court decisions")
+        """
+        if end_date is None:
+            end_date = datetime.now().strftime("%Y-%m-%d")
+
+        logger.info(f"Fetching court decisions from {start_date} to {end_date}")
+
+        # Use 'court' publication block to filter for court documents
+        return self.get_documents_by_date_range(
+            start_date=start_date,
+            end_date=end_date,
+            block="court",
+            page_size=page_size,
+        )
+
+    def get_court_blocks(self) -> List[Dict[str, Any]]:
+        """
+        Get court-related publication blocks.
+
+        Returns:
+            List of court publication blocks (supreme, constitutional, etc.)
+
+        Example:
+            >>> client = PravoApiClient()
+            >>> blocks = client.get_court_blocks()
+            >>> for block in blocks:
+            ...     print(block['code'], block['short_name'])
+        """
+        logger.info("Fetching court publication blocks")
+
+        all_blocks = self.get_public_blocks()
+        # Filter for court-related blocks
+        court_blocks = [
+            b for b in all_blocks
+            if b.get('code') in ['court', 'president', 'government']
+            or 'суд' in b.get('short_name', '').lower()
+        ]
+
+        return court_blocks
+
     def close(self):
         """Close the HTTP session."""
         self.session.close()

@@ -372,6 +372,148 @@ CREATE TRIGGER update_consolidated_codes_updated_at BEFORE UPDATE ON consolidate
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- =============================================================================
+-- Court Decisions System
+-- =============================================================================
+
+-- Courts metadata (reference table for court information)
+CREATE TABLE IF NOT EXISTS courts (
+  id VARCHAR(50) PRIMARY KEY,  -- court code (e.g., 'ASGM' for Arbitration Court of Moscow)
+  name TEXT NOT NULL,  -- Full court name
+  name_short VARCHAR(200),  -- Short name
+  court_type VARCHAR(50) NOT NULL,  -- 'arbitration', 'general', 'supreme', 'constitutional'
+  url TEXT,  -- Official court website
+  jurisdiction TEXT,  -- Geographic or subject jurisdiction
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Court decisions (main table for storing court decisions)
+CREATE TABLE IF NOT EXISTS court_decisions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  -- Foreign keys
+  country_id INTEGER REFERENCES countries(id) ON DELETE CASCADE,
+  court_id VARCHAR(50) REFERENCES courts(id) ON DELETE SET NULL,
+
+  -- Case identification
+  case_number VARCHAR(255) NOT NULL,  -- e.g., 'А40-12345/2023'
+  decision_date DATE NOT NULL,  -- Date of decision
+
+  -- Court and case information
+  court_name TEXT NOT NULL,  -- Denormalized court name for performance
+  case_type VARCHAR(100),  -- Type of case (e.g., 'economic_dispute', 'civil', 'criminal')
+  instance VARCHAR(50),  -- Court instance ('first', 'appeal', 'cassation', 'supreme')
+
+  -- Decision content
+  decision_text TEXT,  -- Full text of the decision
+  summary TEXT,  -- Summary/abstract (for embeddings)
+
+  -- Source information
+  source_url TEXT,  -- URL to original decision
+  source_type VARCHAR(50),  -- 'pravo_api', 'kad_scraper', 'sudrf_scraper', 'vsrf_scraper'
+
+  -- Text hash for change detection
+  text_hash VARCHAR(64),
+
+  -- Timestamps
+  publish_date DATE,  -- Date decision was published
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+
+  -- Unique constraint on case number (may need adjustment for different court systems)
+  CONSTRAINT court_decisions_case_unique UNIQUE (case_number, court_id)
+);
+
+-- Article references from court decisions (links decisions to legal articles)
+CREATE TABLE IF NOT EXISTS court_decision_article_references (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  -- Foreign key to court decision
+  court_decision_id UUID NOT NULL REFERENCES court_decisions(id) ON DELETE CASCADE,
+
+  -- Article being referenced
+  code_id VARCHAR(50) NOT NULL,  -- e.g., 'GK_RF', 'UK_RF', 'TK_RF'
+  article_number VARCHAR(50) NOT NULL,  -- e.g., '123', '124.1', '15-3'
+
+  -- Reference context
+  reference_context TEXT,  -- Excerpt showing how article was interpreted
+  reference_type VARCHAR(50),  -- 'cited', 'interpreted', 'applied', 'distinguished'
+
+  -- Position in decision (for locating the reference)
+  position_in_text INTEGER,  -- Character position where reference appears
+
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexes for court decision tables
+CREATE INDEX IF NOT EXISTS idx_court_decisions_country_id ON court_decisions(country_id);
+CREATE INDEX IF NOT EXISTS idx_court_decisions_court_id ON court_decisions(court_id);
+CREATE INDEX IF NOT EXISTS idx_court_decisions_decision_date ON court_decisions(decision_date DESC);
+CREATE INDEX IF NOT EXISTS idx_court_decisions_case_number ON court_decisions(case_number);
+CREATE INDEX IF NOT EXISTS idx_court_decisions_case_type ON court_decisions(case_type);
+CREATE INDEX IF NOT EXISTS idx_court_decisions_instance ON court_decisions(instance);
+CREATE INDEX IF NOT EXISTS idx_court_decisions_source_type ON court_decisions(source_type);
+
+-- Full-text search indexes for court decisions (Russian and English)
+CREATE INDEX IF NOT EXISTS idx_court_decisions_text_trgm ON court_decisions USING gin(decision_text gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_court_decisions_summary_trgm ON court_decisions USING gin(summary gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_court_decisions_full_text_russian ON court_decisions
+  USING gin(to_tsvector('russian', decision_text));
+CREATE INDEX IF NOT EXISTS idx_court_decisions_full_text_english ON court_decisions
+  USING gin(to_tsvector('english', decision_text));
+
+-- Indexes for article references
+CREATE INDEX IF NOT EXISTS idx_court_decision_article_refs_decision_id ON court_decision_article_references(court_decision_id);
+CREATE INDEX IF NOT EXISTS idx_court_decision_article_refs_code_article ON court_decision_article_references(code_id, article_number);
+CREATE INDEX IF NOT EXISTS idx_court_decision_article_refs_code_id ON court_decision_article_references(code_id);
+CREATE INDEX IF NOT EXISTS idx_court_decision_article_refs_reference_type ON court_decision_article_references(reference_type);
+
+-- Indexes for courts
+CREATE INDEX IF NOT EXISTS idx_courts_court_type ON courts(court_type);
+CREATE INDEX IF NOT EXISTS idx_courts_name_trgm ON courts USING gin(name gin_trgm_ops);
+
+-- Triggers for updated_at
+CREATE TRIGGER update_courts_updated_at BEFORE UPDATE ON courts
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_court_decisions_updated_at BEFORE UPDATE ON court_decisions
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- =============================================================================
+-- View: Court decisions with article references
+-- =============================================================================
+CREATE OR REPLACE VIEW court_decisions_with_articles AS
+SELECT
+  cd.id,
+  cd.case_number,
+  cd.decision_date,
+  cd.court_name,
+  cd.case_type,
+  cd.instance,
+  cd.summary,
+  cd.source_url,
+  c.code AS country_code,
+  ct.court_type,
+  COALESCE(
+    json_agg(
+      json_build_object(
+        'code_id', ref.code_id,
+        'article_number', ref.article_number,
+        'reference_type', ref.reference_type,
+        'reference_context', ref.reference_context
+      ) ORDER BY ref.code_id, ref.article_number
+    ) FILTER (WHERE ref.id IS NOT NULL),
+    '[]'::json
+  ) AS article_references
+FROM court_decisions cd
+JOIN countries c ON cd.country_id = c.id
+LEFT JOIN courts ct ON cd.court_id = ct.id
+LEFT JOIN court_decision_article_references ref ON cd.id = ref.court_decision_id
+GROUP BY
+  cd.id, cd.case_number, cd.decision_date, cd.court_name, cd.case_type,
+  cd.instance, cd.summary, cd.source_url, c.code, ct.court_type;
+
+-- =============================================================================
 -- Helper functions
 -- =============================================================================
 
