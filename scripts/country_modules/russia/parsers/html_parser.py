@@ -362,7 +362,8 @@ class PravoContentParser:
             driver.switch_to.frame(iframe)
 
             # Wait for content to load (JavaScript execution)
-            time.sleep(5)
+            # Increased to 60 seconds for court decisions with more complex content
+            time.sleep(60)
 
             # Get page source after JavaScript execution
             page_source = driver.page_source

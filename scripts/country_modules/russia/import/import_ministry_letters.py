@@ -211,6 +211,9 @@ class MinistryLetterImporter:
                 related_laws_json = (
                     json.dumps(letter.related_laws) if letter.related_laws else None
                 )
+                download_urls_json = (
+                    json.dumps(letter.download_urls) if letter.download_urls else None
+                )
 
                 insert_data.append({
                     "country_id": self.country_id,
@@ -228,6 +231,7 @@ class MinistryLetterImporter:
                     "binding_nature": letter.binding_nature,
                     "validity_status": "valid",
                     "source_url": letter.source_url,
+                    "download_urls": download_urls_json,
                 })
 
             # Batch INSERT with ON CONFLICT for duplicates (upsert pattern)
@@ -243,12 +247,12 @@ class MinistryLetterImporter:
                         (country_id, country_code, agency_id, document_type,
                          document_number, document_date, title, question, answer,
                          full_content, legal_topic, related_laws, binding_nature,
-                         validity_status, source_url)
+                         validity_status, source_url, download_urls)
                         VALUES
                         (:country_id, :country_code, :agency_id, :document_type,
                          :document_number, :document_date, :title, :question, :answer,
                          :full_content, :legal_topic, :related_laws, :binding_nature,
-                         :validity_status, :source_url)
+                         :validity_status, :source_url, :download_urls)
                         ON CONFLICT (country_id, agency_id, document_number, document_date)
                         DO UPDATE SET
                             title = EXCLUDED.title,
@@ -259,6 +263,7 @@ class MinistryLetterImporter:
                             related_laws = EXCLUDED.related_laws,
                             binding_nature = EXCLUDED.binding_nature,
                             source_url = EXCLUDED.source_url,
+                            download_urls = EXCLUDED.download_urls,
                             validity_status = 'valid',
                             updated_at = NOW()
                         """),

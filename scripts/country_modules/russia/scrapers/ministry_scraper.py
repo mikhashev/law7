@@ -47,6 +47,7 @@ class MinistryLetter:
     related_laws: Optional[Dict[str, List[str]]] = None
     binding_nature: str = "informational"  # 'official', 'informational', 'recommendation'
     source_url: Optional[str] = None
+    download_urls: Optional[Dict[str, List[str]]] = None  # PDF, DOCX, etc. download links
 
 
 # Agency configuration for Phase 7C
@@ -653,6 +654,38 @@ class MinistryScraper(BaseScraper):
                         # Build full URL for document detail page
                         detail_url = f"{self.agency_config['base_url']}{href}" if href.startswith("/") else href
 
+                        # Fetch document detail page to extract content
+                        full_content = ""
+                        download_urls = {"pdf": [], "docx": [], "doc": [], "other": []}
+                        try:
+                            html = await self._fetch_html(detail_url)
+                            doc_soup = BeautifulSoup(html, 'html.parser')
+
+                            # Extract content from .text_wrapper
+                            text_wrapper = doc_soup.find("div", class_="text_wrapper")
+                            if text_wrapper:
+                                paragraphs = text_wrapper.find_all("p")
+                                full_content = "\n".join([p.get_text(strip=False) for p in paragraphs])
+
+                            # Extract download links
+                            all_links = doc_soup.find_all("a", href=True)
+                            for link in all_links:
+                                link_href = link.get("href", "")
+                                link_text = link.get_text(strip=True)
+                                full_link = f"{self.agency_config['base_url']}{link_href}" if link_href.startswith("/") else link_href
+
+                                if ".pdf" in link_href.lower():
+                                    download_urls["pdf"].append(full_link)
+                                elif ".docx" in link_href.lower():
+                                    download_urls["docx"].append(full_link)
+                                elif "/upload/" in link_href:
+                                    download_urls["other"].append(full_link)
+
+                            # Small delay to be polite
+                            await asyncio.sleep(0.5)
+                        except Exception as e:
+                            logger.debug(f"Error fetching detail page {doc_id}: {e}")
+
                         doc_info = {
                             "url": detail_url,
                             "doc_id": doc_id,
@@ -660,6 +693,8 @@ class MinistryScraper(BaseScraper):
                             "document_number": f"MINFIN-DOC-{doc_id}",
                             "document_date": None,
                             "source": "general_documents",
+                            "full_content": full_content,
+                            "download_urls": download_urls,
                         }
                         documents.append(doc_info)
                         page_doc_count += 1
@@ -978,16 +1013,30 @@ class MinistryScraper(BaseScraper):
             for docx_url in download_links["docx"]:
                 full_text += f"  - {docx_url}\n"
 
-        # Try to extract some description from the page
-        content_div = soup.find("div", class_=re.compile(r"content|text|document", re.I))
-        if content_div:
-            paragraphs = content_div.find_all("p")
-            if paragraphs:
-                full_text += "\nDescription:\n"
-                for p in paragraphs[:5]:  # First 5 paragraphs
-                    text = p.get_text(strip=True)
-                    if text and len(text) > 20:
-                        full_text += f"{text}\n"
+        # Extract full document content from .text_wrapper
+        # Minfin General Documents display the full text content on the page
+        content_text = ""
+        text_wrapper = soup.find("div", class_="text_wrapper")
+        if text_wrapper:
+            # Extract all paragraphs as full content
+            paragraphs = text_wrapper.find_all("p")
+            for p in paragraphs:
+                text = p.get_text(strip=False)  # Preserve formatting
+                if text:
+                    content_text += text + "\n"
+        else:
+            # Fallback: try to find content in any content-like div
+            content_div = soup.find("div", class_=re.compile(r"content|text|document", re.I))
+            if content_div:
+                paragraphs = content_div.find_all("p")
+                for p in paragraphs:
+                    text = p.get_text(strip=False)
+                    if text:
+                        content_text += text + "\n"
+
+        # Include full content in the returned document
+        if content_text:
+            full_text += f"\nFull Content:\n{content_text}"
 
         metadata = {
             "agency_key": self.agency_key,
@@ -1470,17 +1519,27 @@ async def _manifest_to_letters(
     """
     letters = []
     for letter_info in manifest.get("letters", []):
-        # Create a basic MinistryLetter object
+        # Parse document date if available
+        doc_date = date.today()
+        date_str = letter_info.get("document_date")
+        if date_str:
+            try:
+                doc_date = date.fromisoformat(date_str) if isinstance(date_str, str) else date_str
+            except:
+                pass
+
+        # Create MinistryLetter object with content from manifest
         letter = MinistryLetter(
             agency_id="",  # Will be filled by import script
             agency_name_short=manifest.get("agency_name_short", scraper.agency_config["agency_name_short"]),
             document_type="letter",
             document_number=letter_info.get("document_number", ""),
-            document_date=date.today(),
+            document_date=doc_date,
             title=letter_info.get("title", ""),
-            full_content="",  # Will be filled when fetching document
+            full_content=letter_info.get("full_content", ""),
             binding_nature="informational",
-            source_url=letter_info["url"]
+            source_url=letter_info.get("url", ""),
+            download_urls=letter_info.get("download_urls", None)
         )
         letters.append(letter)
     return letters

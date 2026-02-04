@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from country_modules.russia.scrapers.pravo_api_client import PravoApiClient
 from country_modules.russia.parsers.court_decision_parser import CourtDecisionParser
+from country_modules.russia.parsers.html_parser import PravoContentParser
 from core.config import PRAVO_API_TIMEOUT
 from core.db import get_db_connection
 from utils.progress import ProgressTracker
@@ -82,6 +83,7 @@ class CourtSyncService:
         self.dry_run = dry_run
         self.api_client = PravoApiClient()
         self.parser = CourtDecisionParser()
+        self.content_parser = PravoContentParser(use_ocr=False)  # For fetching full HTML
         self.progress = ProgressTracker()
 
     def run(
@@ -206,8 +208,21 @@ class CourtSyncService:
 
             for doc in batch:
                 try:
-                    # Parse decision
-                    parsed = self.parser.parse_court_decision({'full_text': doc.get('name', '')})
+                    # Fetch full HTML content using Selenium (Phase 2 enhancement)
+                    eo_number = doc.get('eoNumber', '')
+                    full_text = doc.get('name', '')  # Fallback to metadata
+
+                    if eo_number:
+                        logger.debug(f"Fetching full HTML for {eo_number}...")
+                        html_content = self.content_parser.fetch_with_selenium(eo_number)
+                        if html_content and len(html_content) > 100:
+                            full_text = html_content
+                            logger.debug(f"Fetched {len(html_content)} chars from Selenium")
+                        else:
+                            logger.debug(f"Selenium returned no content, using metadata")
+
+                    # Parse decision with full text
+                    parsed = self.parser.parse_court_decision({'full_text': full_text})
 
                     # Generate text hash
                     text_hash = parsed['text_hash']
@@ -218,15 +233,15 @@ class CourtSyncService:
                         'country_code': 'RU',
                         'court_type': 'constitutional',  # pravo.gov.ru mostly has Constitutional Court
                         'decision_type': 'ruling',  # Default type
-                        'case_number': doc.get('id', doc.get('documentNumber', '')),
+                        'case_number': eo_number or doc.get('id', doc.get('documentNumber', '')),
                         'decision_date': doc.get('documentDate'),
                         'publication_date': doc.get('publishDate'),
                         'title': doc.get('title', ''),
                         'summary': parsed['summary'],
-                        'full_text': doc.get('name', ''),
+                        'full_text': full_text,
                         'text_hash': text_hash,
-                        'source_url': f"http://publication.pravo.gov.ru/Document/View/{doc.get('eoNumber', '')}",
-                        'source_type': 'pravo_api',
+                        'source_url': f"http://publication.pravo.gov.ru/Document/View/{eo_number}",
+                        'source_type': 'pravo_api_selenium' if html_content else 'pravo_api',
                     }
                     decisions_data.append(decision_data)
 
@@ -241,6 +256,11 @@ class CourtSyncService:
                             'reference_type': ref['reference_type'],
                             'position_in_text': ref['position_in_text'],
                         })
+
+                    # Add delay after Selenium fetch (Selenium is slower)
+                    if html_content:
+                        import time
+                        time.sleep(2)  # 2 second delay per Selenium fetch
 
                 except Exception as e:
                     logger.warning(f"Failed to parse decision {doc.get('eoNumber', 'unknown')}: {e}")
