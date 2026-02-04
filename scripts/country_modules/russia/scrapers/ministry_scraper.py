@@ -15,17 +15,20 @@ Sources:
 
 import asyncio
 import logging
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Set
 from datetime import date, timedelta
 from dataclasses import dataclass
 import hashlib
 import re
+from pathlib import Path
 
 import aiohttp
 from bs4 import BeautifulSoup
 
 from scripts.country_modules.base.scraper import BaseScraper, RawDocument
 from scripts.core.config import get_settings
+from scripts.core.db import get_db_connection
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +96,52 @@ PHASE7C_AGENCIES: Dict[str, Dict[str, Any]] = {
         "legal_topics": ["labor", "employment", "social_protection"],
     },
 }
+
+
+# ============================================================================
+# HELPER FUNCTIONS FOR RESUME AND FAILED DOCUMENT TRACKING
+# ============================================================================
+
+FAILED_DOCS_FILE = Path("logs/minfin_failed_docs.txt")
+
+
+def load_failed_documents() -> Set[str]:
+    """Load set of failed document URLs from file."""
+    if FAILED_DOCS_FILE.exists():
+        with open(FAILED_DOCS_FILE, "r", encoding="utf-8") as f:
+            return set(line.strip() for line in f if line.strip())
+    return set()
+
+
+def save_failed_document(url: str):
+    """Append a failed document URL to the file."""
+    FAILED_DOCS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(FAILED_DOCS_FILE, "a", encoding="utf-8") as f:
+        f.write(f"{url}\n")
+
+
+def document_has_content(document_number: str) -> bool:
+    """
+    Check if a document already has content in the database.
+
+    Args:
+        document_number: The document number (e.g., "MINFIN-DOC-12345")
+
+    Returns:
+        True if document exists with content, False otherwise
+    """
+    try:
+        with get_db_connection() as conn:
+            result = conn.execute(text("""
+                SELECT LENGTH(full_content) > 0 as has_content
+                FROM official_interpretations
+                WHERE document_number = :doc_number
+            """), {"doc_number": document_number})
+            row = result.fetchone()
+            return row and row[0]
+    except Exception as e:
+        logger.debug(f"Error checking document content: {e}")
+        return False
 
 
 class MinistryScraper(BaseScraper):
@@ -592,6 +641,16 @@ class MinistryScraper(BaseScraper):
         """
         logger.info(f"Fetching Minfin General Documents since {since}" + (f" (limit: {limit})" if limit else ""))
 
+        # Load previously failed documents to avoid retrying them
+        failed_urls = load_failed_documents()
+        if failed_urls:
+            logger.info(f"Loaded {len(failed_urls)} previously failed documents (will skip)")
+
+        # Track statistics
+        skipped_already_has_content = 0
+        skipped_failed = 0
+        newly_failed = 0
+
         documents = []
         base_url = self.agency_config['documents_url']  # https://minfin.gov.ru/ru/document/
         pagination_param = self.agency_config.get('pagination_param', 'page_4')
@@ -646,6 +705,7 @@ class MinistryScraper(BaseScraper):
                             continue
 
                         doc_id = match.group(1)
+                        document_number = f"MINFIN-DOC-{doc_id}"
 
                         # Skip duplicates
                         if any(d.get("doc_id") == doc_id for d in documents):
@@ -653,6 +713,18 @@ class MinistryScraper(BaseScraper):
 
                         # Build full URL for document detail page
                         detail_url = f"{self.agency_config['base_url']}{href}" if href.startswith("/") else href
+
+                        # Resume capability: skip if previously failed
+                        if detail_url in failed_urls:
+                            logger.debug(f"Skipping previously failed document: {document_number}")
+                            skipped_failed += 1
+                            continue
+
+                        # Resume capability: skip if already has content in DB
+                        if document_has_content(document_number):
+                            logger.debug(f"Skipping document with existing content: {document_number}")
+                            skipped_already_has_content += 1
+                            continue
 
                         # Fetch document detail page to extract content
                         full_content = ""
@@ -681,16 +753,21 @@ class MinistryScraper(BaseScraper):
                                 elif "/upload/" in link_href:
                                     download_urls["other"].append(full_link)
 
-                            # Small delay to be polite
-                            await asyncio.sleep(0.5)
+                            # Delay to be polite and avoid rate limiting (1s = ~30K docs in 8 hours)
+                            await asyncio.sleep(1.0)
                         except Exception as e:
-                            logger.debug(f"Error fetching detail page {doc_id}: {e}")
+                            # Failed to fetch document - save for later retry
+                            logger.warning(f"Failed to fetch {document_number}: {e}")
+                            save_failed_document(detail_url)
+                            newly_failed += 1
+                            # Continue with next document instead of failing the page
+                            continue
 
                         doc_info = {
                             "url": detail_url,
                             "doc_id": doc_id,
                             "title": text[:200],
-                            "document_number": f"MINFIN-DOC-{doc_id}",
+                            "document_number": document_number,
                             "document_date": None,
                             "source": "general_documents",
                             "full_content": full_content,
@@ -726,6 +803,14 @@ class MinistryScraper(BaseScraper):
 
         logger.info(f"Found {len(documents)} Minfin General Documents")
 
+        # Log resume statistics
+        total_skipped = skipped_already_has_content + skipped_failed
+        if total_skipped > 0:
+            logger.info(f"Resume statistics: Skipped {skipped_already_has_content} with existing content, "
+                       f"{skipped_failed} previously failed, {newly_failed} newly failed")
+        if newly_failed > 0:
+            logger.warning(f"{newly_failed} documents failed this session (saved to {FAILED_DOCS_FILE})")
+
         return {
             "agency_key": self.agency_key,
             "agency_name_short": self.agency_config["agency_name_short"],
@@ -737,6 +822,9 @@ class MinistryScraper(BaseScraper):
                 "since": since.isoformat() if since else None,
                 "total_found": len(documents),
                 "sources": ["general_documents"],
+                "skipped_existing": skipped_already_has_content,
+                "skipped_failed": skipped_failed,
+                "newly_failed": newly_failed,
             }
         }
 
