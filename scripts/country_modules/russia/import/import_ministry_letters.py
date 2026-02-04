@@ -206,6 +206,7 @@ class MinistryLetterImporter:
 
             # Prepare batch data - list of dicts for executemany
             # This is ~500x faster than individual INSERT operations
+            insert_data = []
             for letter in batch_letters:
                 related_laws_json = (
                     json.dumps(letter.related_laws) if letter.related_laws else None
