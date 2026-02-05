@@ -512,56 +512,56 @@ poetry run python scripts/sync/court_sync.py --start-date 2022-01-01 --end-date 
 
 ### General Jurisdiction Courts (SUDRF)
 
-**Status:** Framework implementation with anti-bot protection handling
+**Status:** Selenium WebDriver implementation with Russian IP requirement
 
-The SUDRF scraper (`sudrf_scraper.py`) provides a structured framework that attempts:
-- Multiple search URL endpoints (sf.php, ms.php, ks.php, vs.php)
-- Session management with cookie jar
-- Browser-like headers for compatibility
-- Retry logic with fallback URLs
+The SUDRF scraper (`sudrf_scraper.py`) fetches court decisions from the Russian
+State Automated System "Justice" (ГАС РФ "Правосудие").
 
-**Current Limitation:**
-- SUDRF returns HTTP 403 (Forbidden) for all direct HTTP requests
-- Site requires JavaScript execution and has strict anti-bot measures
-- Access requires proper browser fingerprinting
+**Implementation:**
+- Selenium WebDriver with Chrome (via webdriver-manager)
+- Official search portal: https://sudrf.ru/index.php?id=300&searchtype=sp
+- Anti-detection Chrome options (headless, no-sandbox, disable-blink-features)
+- Form submission pattern for search queries
+- Result parsing with BeautifulSoup
 
-**Path Forward (Full Integration):**
+**Current Limitations:**
 
-Option 1: **Selenium WebDriver** (Recommended)
-- Uses Firefox WebDriver as per [tochno-st/sudrfscraper](https://github.com/tochno-st/sudrfscraper)
-- Handles JavaScript rendering and CAPTCHA
-- Requires Russian IP address for better access
+1. **Russian IP Required** 🇷🇺
+   - SUDRF blocks access from outside Russia
+   - Error: "недоступна" (unavailable)
+   - Solution: Use Russian VPS (Yandex Cloud, Selectel)
+
+2. **Strong Anti-Bot Protection**
+   - Browser fingerprinting detects automation
+   - Even Selenium with anti-detection measures may be blocked
+   - May require CAPTCHA solving
+
+3. **Geographic Restrictions**
+   - Blocks non-Russian IP addresses at infrastructure level
+   - Cannot bypass with headers alone
+
+**Production Recommendations:**
+
+| Approach | Description | Complexity |
+|----------|-------------|------------|
+| **Russian Server** | Run scraper from Russian VPS/proxy | Medium |
+| **Commercial API** | parser-api.com/sudrf, api-assist.com/api/sudrf | Low |
+| **Regional Portals** | Use individual court websites (less restricted) | Medium |
+| **Official Access** | Institutional API access from SUDRF | High |
+
+**Testing (from Russian IP only):**
 
 ```bash
-# Install Selenium dependencies
-poetry add selenium
-poetry add webdriver-manager
-
-# Then implement using Selenium pattern
-```
-
-Option 2: **Third-party API**
-- [api-parser.ru/sudrf-ru](https://api-parser.ru/sudrf-ru) - Commercial API service
-- Provides structured data without scraping complexity
-
-Option 3: **Use official portal (bsr.sudrf.ru)**
-- Official SUDRF aggregator
-- May have API access for registered users
-
-**Testing the Framework:**
-```bash
-# Test the scraper framework
+# Test SUDRF scraper (requires Russian IP)
 poetry run python scripts/tests/test_sudrf_scraper.py
+
+# Expected output: Found N decisions
+# If blocked: "недоступна - ошибка 403"
 ```
 
-**Database Table:** `court_decisions
-```
-
-**Current Implementation:**
-- URL pattern matching for SUDRF decisions (`/sf-{id}.html`, `/ms/{id}.html`, etc.)
-- Case ID extraction from URLs
-- 60-second timeout support
-- Reference to [tochno-st/sudrfscraper](https://github.com/tochno-st/sudrfscraper) for enhancement
+**Code Reference:**
+- [scripts/country_modules/russia/scrapers/sudrf_scraper.py](scripts/country_modules/russia/scrapers/sudrf_scraper.py)
+- Reference: [tochno-st/sudrfscraper](https://github.com/tochno-st/sudrfscraper)
 
 **Database Table:** `court_decisions`
 

@@ -1,5 +1,27 @@
 """
-Test SUDRF scraper with AJAX integration.
+Test SUDRF scraper with Selenium integration.
+
+IMPORTANT LIMITATIONS:
+-----------------------
+SUDRF (ГАС РФ "Правосудие") has strict access restrictions:
+
+1. **Russian IP Required**: SUDRF blocks access from outside Russia
+   - Error: "недоступна" (unavailable)
+   - Solution: Use Russian VPS/proxy
+
+2. **Anti-Bot Protection**: Even Selenium is blocked
+   - Browser fingerprinting detects automation
+   - May require CAPTCHA solving
+
+3. **Production Recommendations**:
+   - Run from Russian server (Yandex Cloud, Selectel)
+   - Use undetected-chromedriver or selenium-stealth
+   - Consider commercial APIs: parser-api.com/sudrf
+
+Alternative approaches:
+- Commercial APIs: parser-api.com, api-assist.com
+- Regional court portals (less restricted)
+- Official institutional access
 
 Usage:
     poetry run python scripts/tests/test_sudrf_scraper.py

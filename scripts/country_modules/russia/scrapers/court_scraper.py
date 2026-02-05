@@ -7,20 +7,38 @@ Phase 7C focuses on:
 - Constitutional Court: Rulings (Постановления), determinations (Определения)
 
 Sources:
-- Supreme Court: https://vsrf.gov.ru
+- Supreme Court: https://vsrf.ru
 - Constitutional Court: http://www.ksrf.ru
+
+IMPORTANT: vsrf.ru uses JavaScript (Bitrix CMS) to load documents dynamically.
+This requires Selenium WebDriver to wait for AJAX content to load.
 """
 
 import asyncio
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import date
+from datetime import date, datetime
 from dataclasses import dataclass
 import hashlib
 import re
+import time
+import aiohttp
+from bs4 import BeautifulSoup
 
-from ...base.scraper import BaseScraper, RawDocument
-from ....core.config import get_settings
+# Selenium imports (lazy-loaded)
+SELENIUM_AVAILABLE = False
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.chrome.options import Options as ChromeOptions
+    from webdriver_manager.chrome import ChromeDriverManager
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+    logging.getLogger(__name__).info("Selenium not available, vsrf.ru scraper will have limited functionality")
+
+from country_modules.base.scraper import BaseScraper, RawDocument
+from core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +95,11 @@ class CourtScraper(BaseScraper):
     Phase 7C focuses on Supreme Court and Constitutional Court.
     """
 
+    # vsrf.ru URLs (Supreme Court)
+    VSRF_BASE_URL = "https://vsrf.ru"
+    VSRF_DOCUMENTS_URL = "https://vsrf.ru/documents/own/"
+    VSRF_PRACTICE_URL = "https://vsrf.ru/documents/practice/"
+
     def __init__(self, court_type: str = "supreme"):
         """
         Initialize court scraper.
@@ -94,14 +117,101 @@ class CourtScraper(BaseScraper):
         self.timeout = settings.http_timeout
         self.batch_size = settings.batch_size
         self._session = None
+        self._connector = None
+        self._driver = None  # ChromeDriver for JavaScript-rendered pages
 
     def _get_court_url(self, court_type: str) -> str:
         """Get base URL for court type."""
         urls = {
-            "supreme": "https://vsrf.gov.ru",
+            "supreme": "https://vsrf.ru",
             "constitutional": "http://www.ksrf.ru"
         }
         return urls.get(court_type, "")
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """
+        Get or create aiohttp session with proper headers for vsrf.ru.
+
+        vsrf.ru requires browser-like headers to avoid 403 Forbidden.
+        """
+        if self._session and not self._session.closed:
+            return self._session
+
+        # Create connector with connection limit
+        connector = aiohttp.TCPConnector(limit=10)
+        self._connector = connector
+
+        # vsrf.ru requires proper browser headers
+        timeout = aiohttp.ClientTimeout(total=60, connect=30)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.6",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+        }
+
+        self._session = aiohttp.ClientSession(
+            connector=connector,
+            timeout=timeout,
+            headers=headers
+        )
+        return self._session
+
+    async def close(self):
+        """Close the session, connector, and ChromeDriver."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+        if self._connector:
+            await self._connector.close()
+        if self._driver:
+            try:
+                self._driver.quit()
+                logger.debug("ChromeDriver closed")
+            except Exception:
+                pass
+            self._driver = None
+
+    async def __aenter__(self):
+        await self._get_session()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+    def _get_driver(self):
+        """
+        Get or create reusable ChromeDriver instance for vsrf.ru.
+
+        vsrf.ru uses JavaScript (Bitrix CMS) to load documents dynamically.
+        This requires Selenium to wait for AJAX content.
+
+        Returns:
+            ChromeDriver instance (cached or newly created)
+        """
+        if not SELENIUM_AVAILABLE:
+            raise RuntimeError("Selenium not available. Install with: poetry add selenium webdriver-manager")
+
+        if self._driver is None:
+            options = ChromeOptions()
+            options.add_argument('--headless=new')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-software-rasterizer')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-default-apps')
+            options.add_argument('--disable-sync')
+            options.add_argument('--disable-infobars')
+            options.add_argument('--disable-notifications')
+            options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+
+            service = Service(ChromeDriverManager().install())
+            self._driver = webdriver.Chrome(service=service, options=options)
+            self._driver.set_page_load_timeout(60)
+            logger.info("ChromeDriver initialized for vsrf.ru scraping")
+        return self._driver
 
     @property
     def country_id(self) -> str:
@@ -196,29 +306,320 @@ class CourtScraper(BaseScraper):
         computed_hash = hashlib.sha256(doc.content).hexdigest()
         return computed_hash == content_hash
 
-    async def fetch_supreme_plenary_resolutions(self, since: Optional[date] = None) -> List[CourtDecision]:
+    async def fetch_supreme_plenary_resolutions(
+        self,
+        since: Optional[date] = None,
+        year: Optional[int] = None,
+        limit: Optional[int] = None,
+        use_selenium: bool = True
+    ) -> List[Dict[str, Any]]:
         """
         Fetch Supreme Court plenary resolutions (Постановления Пленума ВС РФ).
 
+        vsrf.ru uses JavaScript (Bitrix CMS) to load documents dynamically.
+        Selenium is required to wait for AJAX content to load.
+
         Args:
             since: Only fetch resolutions after this date
+            year: Filter by specific year (e.g., 2026)
+            limit: Maximum number of resolutions to fetch
+            use_selenium: Use Selenium WebDriver (recommended for vsrf.ru)
 
         Returns:
-            List of plenary resolution decisions
+            List of plenary resolution metadata with URLs
         """
         if self.court_type != "supreme":
             raise ValueError("This method requires Supreme Court scraper")
 
-        logger.info(f"Fetching Supreme Court plenary resolutions since {since}")
+        # Default to current year if not specified
+        if year is None:
+            year = datetime.now().year
 
-        # TODO: Implement scraping from https://vsrf.gov.ru/documents/own/
-        # Pattern: Постановления Пленума Верховного Суда РФ
+        logger.info(f"Fetching Supreme Court plenary resolutions for {year}")
 
-        # Placeholder structure
+        # Try Selenium first (recommended for vsrf.ru)
+        if use_selenium and SELENIUM_AVAILABLE:
+            logger.info("Using Selenium to fetch vsrf.ru (JavaScript-loaded content)")
+            resolutions = await self._fetch_supreme_plenary_with_selenium(year, limit)
+            if resolutions:
+                return resolutions
+
+        # Fallback to HTTP (may not work for AJAX-loaded content)
+        logger.warning("Selenium not available or failed, trying HTTP (may not find documents)")
+        return await self._fetch_supreme_plenary_http(year, limit)
+
+    async def _fetch_supreme_plenary_with_selenium(
+        self,
+        year: int,
+        limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch Supreme Court plenary resolutions using Selenium.
+
+        vsrf.ru uses Bitrix CMS with AJAX to load documents.
+        Selenium waits for JavaScript to execute and content to load.
+
+        Args:
+            year: Year to fetch
+            limit: Maximum number of resolutions
+
+        Returns:
+            List of resolution metadata
+        """
         resolutions = []
 
-        logger.warning("Supreme Court plenary resolutions fetching not yet implemented")
+        try:
+            driver = self._get_driver()
+
+            # Construct URL for Plenary Resolutions by year
+            url = f"{self.VSRF_DOCUMENTS_URL}?category=resolutions_plenum_supreme_court_russian&year={year}"
+            logger.info(f"Navigating to: {url}")
+
+            # Navigate to page
+            driver.get(url)
+
+            # Wait for AJAX content to load (vsrf.ru uses Bitrix with AJAX)
+            # The "vs-ajax-request-indicator" class shows when loading
+            time.sleep(15)  # Initial wait for page load
+
+            # Wait for AJAX loading to complete
+            # Check if the loading indicator is still present
+            for _ in range(10):  # Max 10 additional seconds
+                loading_indicators = driver.find_elements("css selector", ".vs-ajax-request-indicator.loading")
+                if not loading_indicators:
+                    break
+                logger.debug("Waiting for AJAX content to load...")
+                time.sleep(1)
+
+            # Get page source after JavaScript execution
+            html = driver.page_source
+            logger.info(f"Fetched {len(html)} chars from vsrf.ru (with Selenium)")
+
+            # Parse HTML for document links
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # vsrf.ru documents can have various URL patterns
+            # Look for any links that might be documents
+            all_links = soup.find_all("a", href=True)
+
+            logger.info(f"Found {len(all_links)} total links on page")
+
+            # Look for document-like links
+            for link in all_links[:limit] if limit else all_links:
+                try:
+                    href = link.get("href", "")
+                    if not href:
+                        continue
+
+                    # Skip non-document links and navigation
+                    if any(skip in href for skip in [
+                        "/press_center/", "/about/", "/appeals/", "/contacts/", "/search/",
+                        "http", "vk.com", "youtube", "rutube", "flickr", "max.ru",
+                        "/documents$",  # Generic documents index page
+                        "/documents/?$",  # Generic documents index page with trailing slash
+                        "/documents/own",  # Generic own page without ID
+                        "/lk/",  # Personal cabinet
+                        "#",  # Anchor links
+                    ]):
+                        continue
+
+                    # vsrf.ru uses relative numeric URLs for documents (e.g., "35296/", "35295/")
+                    # These are relative to /documents/own/ directory
+                    # Match: pure numeric URLs like "12345/" or "12345"
+                    if re.match(r'^\d+/$', href):
+                        doc_id = href.strip('/')
+                        # Build full URL: /documents/own/35296/
+                        full_url = f"{self.VSRF_DOCUMENTS_URL}{doc_id}/"
+                    elif re.match(r'^\d+$', href):
+                        doc_id = href
+                        # Build full URL: /documents/own/35296
+                        full_url = f"{self.VSRF_DOCUMENTS_URL}{doc_id}/"
+                    # Also match direct /documents/own/12345 pattern
+                    elif re.search(r'/documents/own/\d+', href):
+                        doc_id_match = re.search(r'/documents/own/(\d+)', href)
+                        doc_id = doc_id_match.group(1)
+                        full_url = f"{self.VSRF_BASE_URL}{href}" if href.startswith("/") else href
+                    else:
+                        continue
+
+                    # Extract title from link text
+                    title = link.get_text(strip=True)
+
+                    # Clean up title (remove extra whitespace)
+                    title = re.sub(r'\s+', ' ', title).strip()
+
+                    # Skip if title is too short or generic
+                    if not title or len(title) < 10 or title in ["Документы", "Documents", "", "/"]:
+                        continue
+
+                    resolution_info = {
+                        "doc_id": doc_id,
+                        "title": title[:300],
+                        "url": full_url,
+                        "court_type": "supreme",
+                        "decision_type": "plenary_resolution",
+                        "source": "vsrf",
+                        "category": "resolutions_plenum_supreme_court_russian",
+                        "year": year,
+                    }
+
+                    # Skip duplicates
+                    if not any(r.get("doc_id") == doc_id for r in resolutions):
+                        resolutions.append(resolution_info)
+
+                        resolution_info = {
+                            "doc_id": doc_id,
+                            "title": title[:300] if title else f"Resolution {doc_id}",
+                            "url": full_url,
+                            "court_type": "supreme",
+                            "decision_type": "plenary_resolution",
+                            "source": "vsrf",
+                            "category": "resolutions_plenum_supreme_court_russian",
+                            "year": year,
+                        }
+
+                        # Skip duplicates
+                        if not any(r.get("doc_id") == doc_id for r in resolutions):
+                            resolutions.append(resolution_info)
+
+                except Exception as e:
+                    logger.debug(f"Error parsing document link: {e}")
+                    continue
+
+            logger.info(f"Extracted {len(resolutions)} Supreme Court plenary resolutions with Selenium")
+
+        except Exception as e:
+            logger.error(f"Failed to fetch with Selenium: {e}")
+
         return resolutions
+
+    async def _fetch_supreme_plenary_http(
+        self,
+        year: int,
+        limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch Supreme Court plenary resolutions using HTTP (fallback).
+
+        Note: This may not work because vsrf.ru loads documents via JavaScript.
+
+        Args:
+            year: Year to fetch
+            limit: Maximum number of resolutions
+
+        Returns:
+            List of resolution metadata
+        """
+        resolutions = []
+        session = await self._get_session()
+
+        # Construct URL for Plenary Resolutions by year
+        url = f"{self.VSRF_DOCUMENTS_URL}?category=resolutions_plenum_supreme_court_russian&year={year}"
+        logger.info(f"Fetching from: {url}")
+
+        try:
+            async with session.get(url) as response:
+                response.raise_for_status()
+                html = await response.text()
+
+            logger.info(f"Fetched {len(html)} chars from vsrf.ru (HTTP)")
+
+            # Parse HTML for document links
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Look for document links
+            doc_links = soup.find_all("a", href=re.compile(r"/documents/own/\d+/"))
+
+            logger.info(f"Found {len(doc_links)} document links (HTTP)")
+
+            for link in doc_links[:limit] if limit else doc_links:
+                try:
+                    href = link.get("href", "")
+                    if not href:
+                        continue
+
+                    # Build full URL
+                    full_url = f"{self.VSRF_BASE_URL}{href}" if href.startswith("/") else href
+
+                    # Extract document ID from URL
+                    doc_id_match = re.search(r"/documents/own/(\d+)/", href)
+                    doc_id = doc_id_match.group(1) if doc_id_match else hashlib.md5(href.encode()).hexdigest()[:8]
+
+                    # Extract title from link text
+                    title = link.get_text(strip=True)
+
+                    resolution_info = {
+                        "doc_id": doc_id,
+                        "title": title[:300] if title else f"Resolution {doc_id}",
+                        "url": full_url,
+                        "court_type": "supreme",
+                        "decision_type": "plenary_resolution",
+                        "source": "vsrf",
+                        "category": "resolutions_plenum_supreme_court_russian",
+                        "year": year,
+                    }
+
+                    # Skip duplicates
+                    if not any(r.get("doc_id") == doc_id for r in resolutions):
+                        resolutions.append(resolution_info)
+
+                except Exception as e:
+                    logger.debug(f"Error parsing document link: {e}")
+                    continue
+
+            logger.info(f"Extracted {len(resolutions)} Supreme Court plenary resolutions (HTTP)")
+
+            # Rate limiting
+            await asyncio.sleep(2)
+
+        except Exception as e:
+            logger.error(f"Failed to fetch Supreme Court plenary resolutions (HTTP): {e}")
+
+        return resolutions
+
+    def _extract_russian_date(self, date_text: str) -> Optional[date]:
+        """
+        Extract date from Russian text.
+
+        Examples:
+        - "7 ноября 2025"
+        - "28.07.2025"
+        - "28 июля 2025 г."
+
+        Args:
+            date_text: Text containing date
+
+        Returns:
+            Date object or None
+        """
+        # Russian month names
+        months = {
+            "января": 1, "февраля": 2, "марта": 3, "апреля": 4,
+            "мая": 5, "июня": 6, "июля": 7, "августа": 8,
+            "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12
+        }
+
+        # Try "DD Month YYYY" format
+        for month_name, month_num in months.items():
+            if month_name in date_text.lower():
+                parts = date_text.lower().replace(month_name, " ").split()
+                if len(parts) >= 2:
+                    try:
+                        day = int(parts[0])
+                        year = int(parts[-1])
+                        return date(year, month_num, day)
+                    except (ValueError, IndexError):
+                        pass
+
+        # Try DD.MM.YYYY format
+        dot_match = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", date_text)
+        if dot_match:
+            try:
+                return date(int(dot_match.group(3)), int(dot_match.group(2)), int(dot_match.group(1)))
+            except ValueError:
+                pass
+
+        return None
 
     async def fetch_supreme_practice_reviews(
         self,
