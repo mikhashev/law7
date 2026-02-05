@@ -447,6 +447,93 @@ docker exec law7-postgres pg_dump -U law7 law7 > backup.sql
 docker exec -i law7-postgres psql -U law7 law7 < backup.sql
 ```
 
+---
+
+## Ministry Letters Import (Phase 7C)
+
+The data pipeline includes scrapers for official ministry letters and interpretations from Russian government agencies.
+
+### Supported Agencies
+
+| Agency | Short Name | Source | Status |
+|--------|-----------|--------|--------|
+| Ministry of Finance | Минфин | minfin.gov.ru | ✅ Complete |
+| Federal Tax Service | ФНС | nalog.gov.ru | ✅ Complete |
+| Federal Labor Service | Роструд | rostrud.gov.ru | ✅ Complete |
+
+### Import Ministry Letters
+
+```bash
+# Import from specific agency (last 5 years)
+poetry run python scripts/country_modules/russia/import/import_ministry_letters.py --agency minfin
+
+# Import from Rostrud
+poetry run python scripts/country_modules/russia/import/import_ministry_letters.py --agency rostrud --since 2020-01-01
+
+# Import without date filter
+poetry run python scripts/country_modules/russia/import/import_ministry_letters.py --agency rostrud --all
+
+# Import from all agencies
+poetry run python scripts/country_modules/russia/import/import_ministry_letters.py
+
+# Test with limit
+poetry run python scripts/country_modules/russia/import/import_ministry_letters.py --agency rostrud --limit 10
+```
+
+**Options:**
+- `--agency {minfin,fns,rostrud}` - Specific agency to import
+- `--since YYYY-MM-DD` - Only import letters after this date
+- `--all` - Import all letters without date filter
+- `--limit N` - Limit to N letters (testing)
+- `--source {answers,general_documents}` - Minfin source (answers or general documents)
+
+**Features:**
+- Batch inserts (500 records per batch)
+- Upsert with unique constraint to avoid duplicates
+- Rate limiting (10s pause every 100 documents)
+- Resume capability for failed documents
+
+**Current Status:**
+- ✅ Minfin: ~30,000 general documents + 11 Q&A topics
+- ✅ FNS: Search API integration with Actual-only filter
+- ✅ Rostrud: Documents listing with pagination (PAGEN_1)
+- ✅ Database table: `official_interpretations`
+
+---
+
+## Court Decisions (Phase 7)
+
+### Constitutional Court (pravo.gov.ru)
+
+```bash
+# Sync Constitutional Court decisions
+poetry run python scripts/sync/court_sync.py --start-date 2022-01-01 --end-date 2024-12-31
+```
+
+### General Jurisdiction Courts (SUDRF)
+
+**Status:** Framework implementation, requires full AJAX API integration
+
+The SUDRF scraper provides a structure that can be expanded with the full AJAX API:
+
+```python
+# Reference implementation
+from country_modules.russia.scrapers.sudrf_scraper import SudrfScraper
+
+scraper = SudrfScraper(start_date=date(2022, 1, 1))
+updates = await scraper.fetch_updates(since=date(2022, 1, 1))
+```
+
+**Current Implementation:**
+- URL pattern matching for SUDRF decisions (`/sf-{id}.html`, `/ms/{id}.html`, etc.)
+- Case ID extraction from URLs
+- 60-second timeout support
+- Reference to [tochno-st/sudrfscraper](https://github.com/tochno-st/sudrfscraper) for enhancement
+
+**Database Table:** `court_decisions`
+
+---
+
 ## Performance Tips
 
 1. **Use GPU for embeddings** - 10x faster than CPU
@@ -462,9 +549,14 @@ docker exec -i law7-postgres psql -U law7 law7 < backup.sql
 | `scripts/sync/initial_sync.py` | Fetch document metadata |
 | `scripts/sync/content_sync.py` | Parse content + generate embeddings |
 | `scripts/sync/fetch_amendment_content.py` | Fetch detailed amendment text |
+| `scripts/sync/court_sync.py` | Fetch court decisions from pravo.gov.ru |
 | `scripts/import/import_base_code.py` | Import base legal codes |
+| `scripts/country_modules/russia/import/import_ministry_letters.py` | Import ministry letters (Minfin, FNS, Rostrud) |
 | `scripts/crawler/pravo_api_client.py` | API client for pravo.gov.ru |
+| `scripts/country_modules/russia/scrapers/ministry_scraper.py` | Scraper for ministry letters (Phase 7C) |
+| `scripts/country_modules/russia/scrapers/sudrf_scraper.py` | Scraper for SUDRF general jurisdiction courts |
 | `scripts/parser/html_parser.py` | Parse content from API metadata |
+| `scripts/parser/court_decision_parser.py` | Parse court decisions and extract legal citations |
 | `scripts/indexer/embeddings.py` | Generate embeddings with deepvk/USER2-base |
 | `scripts/indexer/qdrant_indexer.py` | Store embeddings in Qdrant |
 | `docker/backup.sh` | Create database backup (PostgreSQL + Qdrant) |
