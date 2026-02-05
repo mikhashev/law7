@@ -380,16 +380,30 @@ class CourtScraper(BaseScraper):
 
             # Wait for AJAX content to load (vsrf.ru uses Bitrix with AJAX)
             # The "vs-ajax-request-indicator" class shows when loading
-            time.sleep(15)  # Initial wait for page load
+            # Need to wait for the document list to appear
+            logger.info("Waiting for AJAX content to load...")
+            time.sleep(25)  # Longer initial wait
 
-            # Wait for AJAX loading to complete
-            # Check if the loading indicator is still present
-            for _ in range(10):  # Max 10 additional seconds
-                loading_indicators = driver.find_elements("css selector", ".vs-ajax-request-indicator.loading")
-                if not loading_indicators:
-                    break
-                logger.debug("Waiting for AJAX content to load...")
+            # Wait for document list to appear
+            # Look for the vs-items-list-default or vs-wrapper-items class
+            for i in range(30):  # Max 30 seconds additional wait
+                try:
+                    # Check if document list is loaded
+                    doc_lists = driver.find_elements("css selector", ".vs-items-list-default, .vs-wrapper-items, .vs-items")
+                    if doc_lists:
+                        logger.debug(f"Document list loaded after {25 + i} seconds")
+                        break
+                    # Check if loading indicator is gone
+                    loading_indicators = driver.find_elements("css selector", ".vs-ajax-request-indicator.loading")
+                    if not loading_indicators and doc_lists:
+                        logger.debug(f"AJAX complete after {25 + i} seconds")
+                        break
+                except:
+                    pass
+
                 time.sleep(1)
+            else:
+                logger.warning("Document list may not have loaded, proceeding anyway")
 
             # Get page source after JavaScript execution
             html = driver.page_source
@@ -405,7 +419,11 @@ class CourtScraper(BaseScraper):
             logger.info(f"Found {len(all_links)} total links on page")
 
             # Look for document-like links
-            for link in all_links[:limit] if limit else all_links:
+            # IMPORTANT: Process ALL links first, then apply limit at the end
+            # The numeric document links appear later in the HTML, so we can't
+            # slice [:limit] before filtering.
+            numeric_link_count = 0
+            for link in all_links:  # Process ALL links
                 try:
                     href = link.get("href", "")
                     if not href:
@@ -427,18 +445,23 @@ class CourtScraper(BaseScraper):
                     # These are relative to /documents/own/ directory
                     # Match: pure numeric URLs like "12345/" or "12345"
                     if re.match(r'^\d+/$', href):
+                        numeric_link_count += 1
                         doc_id = href.strip('/')
                         # Build full URL: /documents/own/35296/
                         full_url = f"{self.VSRF_DOCUMENTS_URL}{doc_id}/"
+                        logger.debug(f"Found numeric link: {href} -> {doc_id}")
                     elif re.match(r'^\d+$', href):
+                        numeric_link_count += 1
                         doc_id = href
                         # Build full URL: /documents/own/35296
                         full_url = f"{self.VSRF_DOCUMENTS_URL}{doc_id}/"
+                        logger.debug(f"Found numeric link (no slash): {href} -> {doc_id}")
                     # Also match direct /documents/own/12345 pattern
                     elif re.search(r'/documents/own/\d+', href):
                         doc_id_match = re.search(r'/documents/own/(\d+)', href)
                         doc_id = doc_id_match.group(1)
                         full_url = f"{self.VSRF_BASE_URL}{href}" if href.startswith("/") else href
+                        logger.debug(f"Found direct pattern link: {href} -> {doc_id}")
                     else:
                         continue
 
@@ -448,8 +471,11 @@ class CourtScraper(BaseScraper):
                     # Clean up title (remove extra whitespace)
                     title = re.sub(r'\s+', ' ', title).strip()
 
+                    logger.debug(f"Doc {doc_id}: title length={len(title)}, title={title[:80]}")
+
                     # Skip if title is too short or generic
                     if not title or len(title) < 10 or title in ["Документы", "Documents", "", "/"]:
+                        logger.debug(f"Skipped doc {doc_id}: title too short or generic")
                         continue
 
                     resolution_info = {
@@ -466,27 +492,18 @@ class CourtScraper(BaseScraper):
                     # Skip duplicates
                     if not any(r.get("doc_id") == doc_id for r in resolutions):
                         resolutions.append(resolution_info)
+                        logger.info(f"Added resolution {doc_id}: {title[:80]}")
 
-                        resolution_info = {
-                            "doc_id": doc_id,
-                            "title": title[:300] if title else f"Resolution {doc_id}",
-                            "url": full_url,
-                            "court_type": "supreme",
-                            "decision_type": "plenary_resolution",
-                            "source": "vsrf",
-                            "category": "resolutions_plenum_supreme_court_russian",
-                            "year": year,
-                        }
-
-                        # Skip duplicates
-                        if not any(r.get("doc_id") == doc_id for r in resolutions):
-                            resolutions.append(resolution_info)
+                    # Apply limit AFTER finding valid resolutions
+                    if limit and len(resolutions) >= limit:
+                        logger.info(f"Reached limit of {limit} resolutions")
+                        break
 
                 except Exception as e:
                     logger.debug(f"Error parsing document link: {e}")
                     continue
 
-            logger.info(f"Extracted {len(resolutions)} Supreme Court plenary resolutions with Selenium")
+            logger.info(f"Found {numeric_link_count} numeric links, extracted {len(resolutions)} resolutions with Selenium")
 
         except Exception as e:
             logger.error(f"Failed to fetch with Selenium: {e}")
