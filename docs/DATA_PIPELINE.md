@@ -512,16 +512,49 @@ poetry run python scripts/sync/court_sync.py --start-date 2022-01-01 --end-date 
 
 ### General Jurisdiction Courts (SUDRF)
 
-**Status:** Framework implementation, requires full AJAX API integration
+**Status:** Framework implementation with anti-bot protection handling
 
-The SUDRF scraper provides a structure that can be expanded with the full AJAX API:
+The SUDRF scraper (`sudrf_scraper.py`) provides a structured framework that attempts:
+- Multiple search URL endpoints (sf.php, ms.php, ks.php, vs.php)
+- Session management with cookie jar
+- Browser-like headers for compatibility
+- Retry logic with fallback URLs
 
-```python
-# Reference implementation
-from country_modules.russia.scrapers.sudrf_scraper import SudrfScraper
+**Current Limitation:**
+- SUDRF returns HTTP 403 (Forbidden) for all direct HTTP requests
+- Site requires JavaScript execution and has strict anti-bot measures
+- Access requires proper browser fingerprinting
 
-scraper = SudrfScraper(start_date=date(2022, 1, 1))
-updates = await scraper.fetch_updates(since=date(2022, 1, 1))
+**Path Forward (Full Integration):**
+
+Option 1: **Selenium WebDriver** (Recommended)
+- Uses Firefox WebDriver as per [tochno-st/sudrfscraper](https://github.com/tochno-st/sudrfscraper)
+- Handles JavaScript rendering and CAPTCHA
+- Requires Russian IP address for better access
+
+```bash
+# Install Selenium dependencies
+poetry add selenium
+poetry add webdriver-manager
+
+# Then implement using Selenium pattern
+```
+
+Option 2: **Third-party API**
+- [api-parser.ru/sudrf-ru](https://api-parser.ru/sudrf-ru) - Commercial API service
+- Provides structured data without scraping complexity
+
+Option 3: **Use official portal (bsr.sudrf.ru)**
+- Official SUDRF aggregator
+- May have API access for registered users
+
+**Testing the Framework:**
+```bash
+# Test the scraper framework
+poetry run python scripts/tests/test_sudrf_scraper.py
+```
+
+**Database Table:** `court_decisions
 ```
 
 **Current Implementation:**
