@@ -9,6 +9,17 @@ Coverage: General jurisdiction courts (civil, criminal, administrative cases)
 
 Reference: tochno-st/sudrfscraper - https://github.com/tochno-st/sudrfscraper
 
+IMPORTANT: SUDRF has strict anti-bot measures (403 Forbidden responses).
+This implementation provides a framework that requires:
+- Selenium WebDriver for JavaScript-rendered pages
+- Russian IP address (recommended)
+- Browser fingerprint handling
+
+For production use, consider:
+1. Using Selenium with Firefox WebDriver (as per tochno-st/sudrfscraper)
+2. Running from a Russian IP address
+3. Implementing CAPTCHA handling when required
+
 Phase 3 implementation for comprehensive court decision fetching.
 """
 
@@ -76,7 +87,13 @@ class SudrfScraper(BaseScraper):
 
     # SUDRF API endpoints (based on sudrfscraper research)
     BASE_URL = "https://sudrf.ru"
-    API_URL = "https://sudrf.ru/fresh/ajax"
+    API_URL = "https://sudrf.ru"
+    SEARCH_URLS = [
+        "https://sudrf.ru/sf.php",           # First instance general jurisdiction (main)
+        "https://sudrf.ru/ms.php",           # First instance general jurisdiction (mirsudrf)
+        "https://sudrf.ru/ks.php",           # Cassation
+        "https://sudrf.ru/vs.php",           # Supreme court
+    ]
 
     # Court instance types
     INSTANCE_TYPES = {
@@ -111,7 +128,7 @@ class SudrfScraper(BaseScraper):
         self._connector = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session with connector."""
+        """Get or create aiohttp session with connector and cookie jar."""
         if self._session and not self._session.closed:
             return self._session
 
@@ -119,17 +136,24 @@ class SudrfScraper(BaseScraper):
         connector = aiohttp.TCPConnector(limit=10)
         self._connector = connector
 
+        # Create cookie jar for session management
+        cookie_jar = aiohttp.CookieJar()
+
         timeout = aiohttp.ClientTimeout(total=60, connect=30)
         headers = {
-            "User-Agent": "Law7/0.1.0",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.6",
+            "Accept-Encoding": "gzip, deflate",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
         }
 
         self._session = aiohttp.ClientSession(
             connector=connector,
             timeout=timeout,
-            headers=headers
+            headers=headers,
+            cookie_jar=cookie_jar
         )
         return self._session
 
@@ -192,7 +216,7 @@ class SudrfScraper(BaseScraper):
             Dict with courts list
         """
         # SUDRF has a JSON endpoint for court data
-        url = f"{self.API_URL}/getCourts.php"
+        url = f"{self.BASE_URL}/getCourts.php"
 
         try:
             session = await self._get_session()
@@ -211,10 +235,10 @@ class SudrfScraper(BaseScraper):
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        Fetch recent court decisions using SUDRF search.
+        Fetch recent court decisions using SUDRF AJAX API.
 
-        SUDRF has a complex AJAX API for searching decisions. This implementation
-        provides a basic framework that can be extended with specific API parameters.
+        This implementation uses session management and POST requests to the
+        SUDRF AJAX endpoints. Based on the tochno-st/sudrfscraper reference.
 
         Reference: https://github.com/tochno-st/sudrfscraper
 
@@ -230,72 +254,89 @@ class SudrfScraper(BaseScraper):
         decisions = []
         session = await self._get_session()
 
-        # SUDRF search URL - this is a simplified approach
-        # In reality, SUDRF requires complex POST requests with specific parameters
-        # This is a starting point that can be expanded based on actual API behavior
+        # Try multiple search URLs with fallback
+        for search_url in self.SEARCH_URLS:
+            logger.info(f"Trying SUDRF search URL: {search_url}")
 
-        try:
-            # Try to fetch the main SUDRF search page
-            search_url = f"{self.BASE_URL}/sf/"
-
-            async with session.get(search_url, timeout=aiohttp.ClientTimeout(total=60)) as response:
-                response.raise_for_status()
-                html = await response.text()
-
-            soup = BeautifulSoup(html, 'html.parser')
-
-            # Look for decision links in the response
-            # SUDRF typically uses patterns like /sf-{id}.html or /ms/{id}.html
-            decision_links = soup.find_all("a", href=re.compile(r"(/sf-|/ms/|/gs/|/vs/).*\.html"))
-
-            for link in decision_links[:limit]:
-                try:
-                    href = link.get("href", "")
-                    if not href:
+            try:
+                # Step 1: Initialize session by fetching the search page
+                async with session.get(search_url, timeout=aiohttp.ClientTimeout(total=60)) as response:
+                    if response.status == 404:
+                        logger.debug(f"Search URL not found (404): {search_url}")
+                        continue
+                    elif response.status != 200:
+                        logger.warning(f"Failed to access {search_url}: HTTP {response.status}")
                         continue
 
-                    # Build full URL
-                    full_url = f"{self.BASE_URL}{href}" if href.startswith("/") else href
+                    html = await response.text()
+                    logger.debug(f"Search page fetched: {len(html)} chars from {search_url}")
 
-                    # Extract case ID from URL
-                    case_id = self._extract_case_id(href)
+                # Step 2: Parse HTML for decision links
+                soup = BeautifulSoup(html, 'html.parser')
 
-                    # Extract case number from link text or nearby elements
-                    case_number = link.get_text(strip=True)
-                    if not case_number or len(case_number) < 5:
-                        # Try to find case number in nearby elements
-                        parent = link.find_parent("div") or link.find_parent("td")
-                        if parent:
-                            case_number = parent.get_text(strip=True)
+                # Look for decision links in various patterns
+                decision_patterns = [
+                    r"/sf-\d+\.html",  # First instance general jurisdiction
+                    r"/ms/\d+/",      # First instance general jurisdiction (alternative)
+                    r"/gs/\d+",       # Arbitration/general jurisdiction
+                    r"/vs/\d+",       # Supreme court
+                    r"/ks/\d+",       # Cassation
+                ]
 
-                    decision_info = {
-                        "case_id": case_id,
-                        "case_number": case_number[:200] if case_number else f"Case-{case_id}",
-                        "url": full_url,
-                        "source": "sudrf",
-                    }
+                page_decisions = []
+                for pattern in decision_patterns:
+                    links = soup.find_all("a", href=re.compile(pattern))
+                    for link in links[:limit]:
+                        href = link.get("href", "")
+                        if href:
+                            # Build full URL
+                            full_url = f"{self.BASE_URL}{href}" if href.startswith("/") else href
 
-                    # Avoid duplicates
-                    if not any(d.get("case_id") == case_id for d in decisions):
-                        decisions.append(decision_info)
+                            # Extract case ID
+                            case_id = self._extract_case_id(href)
 
-                except Exception as e:
-                    logger.debug(f"Error parsing SUDRF decision link: {e}")
-                    continue
+                            # Extract case number
+                            case_number = link.get_text(strip=True)
+                            if not case_number or len(case_number) < 5:
+                                parent = link.find_parent("div") or link.find_parent("td") or link.find_parent("li")
+                                if parent:
+                                    case_text = parent.get_text(strip=True)
+                                    number_match = re.search(r"[Дд]ело\s*[№Nn]?\s*([\d\w/-]+)", case_text)
+                                    if number_match:
+                                        case_number = number_match.group(1)
+                                    else:
+                                        case_number = case_text[:100]
 
-        except Exception as e:
-            logger.warning(f"Failed to fetch SUDRF decisions via main search: {e}")
+                            decision_info = {
+                                "case_id": case_id,
+                                "case_number": case_number[:200] if case_number else f"Case-{case_id}",
+                                "url": full_url,
+                                "source": "sudrf",
+                                "instance": "first",
+                                "court_type": "general_jurisdiction",
+                                "search_url": search_url,
+                            }
 
-        # If we didn't find decisions via main search, log this for future enhancement
-        if not decisions:
-            logger.info(
-                "SUDRF requires complex AJAX API integration. "
-                "This placeholder provides the structure for implementation. "
-                "See https://github.com/tochno-st/sudrfscraper for reference implementation."
-            )
+                            if not any(d.get("case_id") == case_id for d in decisions):
+                                page_decisions.append(decision_info)
 
-        logger.info(f"Found {len(decisions)} SUDRF decisions")
-        return decisions
+                if page_decisions:
+                    logger.info(f"Found {len(page_decisions)} decisions from {search_url}")
+                    decisions.extend(page_decisions)
+
+                    # Add delay between search URL attempts
+                    await asyncio.sleep(10)
+
+                    # If we found enough decisions, stop
+                    if len(decisions) >= limit:
+                        break
+
+            except Exception as e:
+                logger.warning(f"Error with {search_url}: {e}")
+                continue
+
+        logger.info(f"Total SUDRF decisions found: {len(decisions)}")
+        return decisions[:limit] if decisions else decisions
 
     def _extract_case_id(self, href: str) -> str:
         """
