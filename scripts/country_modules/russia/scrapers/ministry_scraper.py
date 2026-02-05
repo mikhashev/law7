@@ -92,7 +92,9 @@ PHASE7C_AGENCIES: Dict[str, Dict[str, Any]] = {
         "agency_name": "Федеральная служба по труду и занятости",
         "agency_type": "service",
         "base_url": "https://rostrud.gov.ru",
-        "letters_url": "https://rostrud.gov.ru/legal/letters/",
+        "letters_url": "https://rostrud.gov.ru/rostrud/dokumenty/index.php",
+        "documents_url": "https://rostrud.gov.ru/rostrud/dokumenty/index.php",
+        "pagination_param": "PAGEN_1",
         "legal_topics": ["labor", "employment", "social_protection"],
     },
 }
@@ -266,6 +268,10 @@ class MinistryScraper(BaseScraper):
         # FNS: Use search API
         if self.agency_key == "fns":
             return await self._fetch_fns_manifest(since, limit)
+
+        # Rostrud: Use documents listing
+        if self.agency_key == "rostrud":
+            return await self._fetch_rostrud_manifest(since, limit)
 
         # Minfin: Use Answers or General Documents
         if self.agency_key == "minfin":
@@ -964,11 +970,149 @@ class MinistryScraper(BaseScraper):
             logger.debug(f"Error checking FNS document validity for {url}: {e}")
             return None
 
+    async def _fetch_rostrud_manifest(
+        self,
+        since: Optional[date] = None,
+        limit: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Fetch Rostrud document manifest.
+
+        Rostrud documents are at:
+        - Base URL: https://rostrud.gov.ru/rostrud/dokumenty/index.php
+        - Pagination: ?PAGEN_1=2, ?PAGEN_1=3, etc.
+
+        Args:
+            since: Only return documents published after this date
+            limit: Maximum number of documents to fetch (if None, fetch all)
+
+        Returns:
+            Dict with document list and metadata
+        """
+        logger.info(f"Fetching Rostrud manifest since {since}" + (f" (limit: {limit})" if limit else ""))
+
+        documents = []
+        base_url = self.agency_config['letters_url']
+        pagination_param = self.agency_config.get('pagination_param', 'PAGEN_1')
+
+        # Fetch pages until we run out of documents or hit the limit
+        page_num = 1
+        consecutive_empty_pages = 0
+        max_consecutive_empty = 3
+
+        while consecutive_empty_pages < max_consecutive_empty:
+            if limit and len(documents) >= limit:
+                logger.info(f"Reached limit of {limit} documents, stopping pagination")
+                break
+
+            # Construct page URL
+            if page_num == 1:
+                page_url = base_url
+            else:
+                page_url = f"{base_url}?{pagination_param}={page_num}"
+
+            logger.info(f"Fetching Rostrud page {page_num}")
+
+            try:
+                html = await self._fetch_html(page_url)
+                soup = BeautifulSoup(html, 'html.parser')
+
+                # Look for document links
+                # Rostrud documents are typically in links with href containing .php
+                doc_links = soup.find_all("a", href=re.compile(r"/rostrud/dokumenty/.*\.php"))
+
+                if not doc_links:
+                    logger.info(f"No more documents found on page {page_num}, stopping pagination")
+                    consecutive_empty_pages += 1
+                    if consecutive_empty_pages >= max_consecutive_empty:
+                        break
+                    page_num += 1
+                    continue
+
+                page_doc_count = 0
+                for link in doc_links:
+                    if limit and len(documents) >= limit:
+                        break
+
+                    try:
+                        href = link.get("href", "")
+                        text = link.get_text(strip=True)
+
+                        # Skip if not a document detail link
+                        if not href or ".php" not in href:
+                            continue
+
+                        # Build full URL
+                        full_url = f"{self.agency_config['base_url']}{href}" if href.startswith("/") else href
+
+                        # Skip duplicates
+                        if any(d.get("url") == full_url for d in documents):
+                            continue
+
+                        # Extract date from surrounding elements
+                        # Rostrud documents show date before the link
+                        date_elem = link.find_previous("span", class_=re.compile(r"date|time"))
+                        doc_date = None
+                        if date_elem:
+                            doc_date = self._extract_rostrud_date(date_elem.get_text(strip=True))
+
+                        # Filter by date if requested
+                        if since and doc_date and doc_date < since:
+                            continue
+
+                        doc_info = {
+                            "url": full_url,
+                            "title": text[:200],
+                            "document_number": f"ROSTRUD-{hashlib.md5(full_url.encode()).hexdigest()[:8].upper()}",
+                            "document_date": doc_date.isoformat() if doc_date else None,
+                            "source": "rostrud",
+                        }
+                        documents.append(doc_info)
+                        page_doc_count += 1
+
+                    except Exception as e:
+                        logger.debug(f"Error parsing document link: {e}")
+                        continue
+
+                logger.info(f"Page {page_num}: found {page_doc_count} documents (total: {len(documents)})")
+
+                if page_doc_count > 0:
+                    consecutive_empty_pages = 0
+                else:
+                    consecutive_empty_pages += 1
+
+                # Extended timeout between pages (30 seconds as requested)
+                await asyncio.sleep(30)
+
+                page_num += 1
+
+            except Exception as e:
+                logger.error(f"Error fetching page {page_num}: {e}")
+                consecutive_empty_pages += 1
+                if consecutive_empty_pages >= max_consecutive_empty:
+                    break
+                page_num += 1
+
+        logger.info(f"Found {len(documents)} Rostrud documents")
+
+        return {
+            "agency_key": self.agency_key,
+            "agency_name_short": self.agency_config["agency_name_short"],
+            "letters": documents,
+            "last_updated": date.today().isoformat(),
+            "metadata": {
+                "base_url": self.agency_config["base_url"],
+                "letters_url": self.agency_config["letters_url"],
+                "since": since.isoformat() if since else None,
+                "total_found": len(documents),
+            }
+        }
+
     async def fetch_document(self, doc_id: str) -> RawDocument:
         """
         Fetch single ministry letter by ID.
 
-        For Minfin and FNS, doc_id is the URL path to the document detail page.
+        For Minfin, FNS, and Rostrud, doc_id is the URL path to the document detail page.
 
         Args:
             doc_id: Document URL (full URL or path)
@@ -979,6 +1123,10 @@ class MinistryScraper(BaseScraper):
         # For FNS: implement FNS document fetching
         if self.agency_key == "fns":
             return await self._fetch_fns_document(doc_id)
+
+        # For Rostrud: implement Rostrud document fetching
+        if self.agency_key == "rostrud":
+            return await self._fetch_rostrud_document(doc_id)
 
         # For Minfin: existing implementation
         if self.agency_key == "minfin":
@@ -1198,6 +1346,128 @@ class MinistryScraper(BaseScraper):
             content_type="text/html",
             metadata=metadata
         )
+
+    async def _fetch_rostrud_document(self, doc_id: str) -> RawDocument:
+        """
+        Fetch Rostrud document by URL.
+
+        Args:
+            doc_id: Document URL
+
+        Returns:
+            RawDocument with content and metadata
+        """
+        if doc_id.startswith("http"):
+            url = doc_id
+        else:
+            url = f"{self.agency_config['base_url']}{doc_id}"
+
+        logger.info(f"Fetching Rostrud document from {url}")
+
+        try:
+            html = await self._fetch_html(url)
+            soup = BeautifulSoup(html, "html.parser")
+
+            # Extract content from main content area
+            content_div = soup.find("div", class_=re.compile(r"content|detail|document"))
+            full_content = ""
+            if content_div:
+                paragraphs = content_div.find_all("p")
+                full_content = "\n".join([p.get_text(strip=False) for p in paragraphs])
+            else:
+                # Fallback: try to get text from body
+                body = soup.find("body")
+                if body:
+                    full_content = body.get_text(separator="\n", strip=True)
+
+            # Extract title
+            title_elem = soup.find(["h1", "h2"])
+            title = title_elem.get_text(strip=True) if title_elem else ""
+
+            # Extract download links
+            download_urls = {"pdf": [], "doc": [], "docx": [], "other": []}
+            all_links = soup.find_all("a", href=True)
+            for link in all_links:
+                link_href = link.get("href", "")
+                full_link = f"{self.agency_config['base_url']}{link_href}" if link_href.startswith("/") else link_href
+
+                if ".pdf" in link_href.lower():
+                    download_urls["pdf"].append(full_link)
+                elif ".docx" in link_href.lower():
+                    download_urls["docx"].append(full_link)
+                elif ".doc" in link_href.lower():
+                    download_urls["doc"].append(full_link)
+                elif "/upload/" in link_href:
+                    download_urls["other"].append(full_link)
+
+            metadata = {
+                "title": title,
+                "source": "rostrud",
+                "download_urls": download_urls,
+            }
+
+            return RawDocument(
+                doc_id=url,
+                url=url,
+                content=full_content.encode("utf-8"),
+                content_type="text/html",
+                metadata=metadata
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch Rostrud document {url}: {e}")
+            # Return empty document on failure
+            return RawDocument(
+                doc_id=url,
+                url=url,
+                content=b"",
+                content_type="text/html",
+                metadata={"title": "", "source": "rostrud", "error": str(e)}
+            )
+
+    def _extract_rostrud_date(self, date_text: str) -> Optional[date]:
+        """
+        Extract date from Russian text.
+
+        Examples:
+        - "7 ноября 2025"
+        - "28.07.2025"
+        - "28 июля 2025 г."
+
+        Args:
+            date_text: Text containing date
+
+        Returns:
+            Date object or None
+        """
+        # Russian month names
+        months = {
+            "января": 1, "февраля": 2, "марта": 3, "апреля": 4,
+            "мая": 5, "июня": 6, "июля": 7, "августа": 8,
+            "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12
+        }
+
+        # Try "DD Month YYYY" format
+        for month_name, month_num in months.items():
+            if month_name in date_text.lower():
+                parts = date_text.lower().replace(month_name, " ").split()
+                if len(parts) >= 2:
+                    try:
+                        day = int(parts[0])
+                        year = int(parts[-1])
+                        return date(year, month_num, day)
+                    except (ValueError, IndexError):
+                        pass
+
+        # Try DD.MM.YYYY format
+        dot_match = re.search(r"(\d{2})\.(\d{2})\.(\d{4})", date_text)
+        if dot_match:
+            try:
+                return date(int(dot_match.group(3)), int(dot_match.group(2)), int(dot_match.group(1)))
+            except ValueError:
+                pass
+
+        return None
 
     async def _fetch_fns_document(self, doc_id: str) -> RawDocument:
         """

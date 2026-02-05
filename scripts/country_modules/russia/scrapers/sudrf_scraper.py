@@ -211,7 +211,12 @@ class SudrfScraper(BaseScraper):
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        Fetch recent court decisions using search.
+        Fetch recent court decisions using SUDRF search.
+
+        SUDRF has a complex AJAX API for searching decisions. This implementation
+        provides a basic framework that can be extended with specific API parameters.
+
+        Reference: https://github.com/tochno-st/sudrfscraper
 
         Args:
             since: Start date for decisions
@@ -220,12 +225,100 @@ class SudrfScraper(BaseScraper):
         Returns:
             List of decision metadata
         """
-        # This is a placeholder implementation
-        # In reality, SUDRF requires complex AJAX requests
-        # The actual implementation would need to reverse-engineer their AJAX API
+        logger.info(f"Fetching SUDRF decisions since {since} (limit: {limit})")
 
         decisions = []
+        session = await self._get_session()
+
+        # SUDRF search URL - this is a simplified approach
+        # In reality, SUDRF requires complex POST requests with specific parameters
+        # This is a starting point that can be expanded based on actual API behavior
+
+        try:
+            # Try to fetch the main SUDRF search page
+            search_url = f"{self.BASE_URL}/sf/"
+
+            async with session.get(search_url, timeout=aiohttp.ClientTimeout(total=60)) as response:
+                response.raise_for_status()
+                html = await response.text()
+
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Look for decision links in the response
+            # SUDRF typically uses patterns like /sf-{id}.html or /ms/{id}.html
+            decision_links = soup.find_all("a", href=re.compile(r"(/sf-|/ms/|/gs/|/vs/).*\.html"))
+
+            for link in decision_links[:limit]:
+                try:
+                    href = link.get("href", "")
+                    if not href:
+                        continue
+
+                    # Build full URL
+                    full_url = f"{self.BASE_URL}{href}" if href.startswith("/") else href
+
+                    # Extract case ID from URL
+                    case_id = self._extract_case_id(href)
+
+                    # Extract case number from link text or nearby elements
+                    case_number = link.get_text(strip=True)
+                    if not case_number or len(case_number) < 5:
+                        # Try to find case number in nearby elements
+                        parent = link.find_parent("div") or link.find_parent("td")
+                        if parent:
+                            case_number = parent.get_text(strip=True)
+
+                    decision_info = {
+                        "case_id": case_id,
+                        "case_number": case_number[:200] if case_number else f"Case-{case_id}",
+                        "url": full_url,
+                        "source": "sudrf",
+                    }
+
+                    # Avoid duplicates
+                    if not any(d.get("case_id") == case_id for d in decisions):
+                        decisions.append(decision_info)
+
+                except Exception as e:
+                    logger.debug(f"Error parsing SUDRF decision link: {e}")
+                    continue
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch SUDRF decisions via main search: {e}")
+
+        # If we didn't find decisions via main search, log this for future enhancement
+        if not decisions:
+            logger.info(
+                "SUDRF requires complex AJAX API integration. "
+                "This placeholder provides the structure for implementation. "
+                "See https://github.com/tochno-st/sudrfscraper for reference implementation."
+            )
+
+        logger.info(f"Found {len(decisions)} SUDRF decisions")
         return decisions
+
+    def _extract_case_id(self, href: str) -> str:
+        """
+        Extract case ID from SUDRF URL.
+
+        Patterns:
+        - /sf-12345.html -> 12345
+        - /ms/12345/ -> 12345
+        - /gs/12345 -> 12345
+
+        Args:
+            href: URL path
+
+        Returns:
+            Case ID string
+        """
+        # Match common SUDRF URL patterns
+        match = re.search(r"/(sf-|ms/|gs/|vs/)(\d+)", href)
+        if match:
+            return match.group(2)
+
+        # Fallback: use hash of URL
+        return hashlib.md5(href.encode()).hexdigest()[:8]
 
     async def fetch_document(self, doc_id: str) -> RawDocument:
         """
