@@ -338,11 +338,42 @@ class CourtScraper(BaseScraper):
         logger.info(f"Fetching Supreme Court plenary resolutions for {year}")
 
         # Try Selenium first (recommended for vsrf.ru)
+        # vsrf.ru has aggressive rate limiting, so we retry on failure
         if use_selenium and SELENIUM_AVAILABLE:
             logger.info("Using Selenium to fetch vsrf.ru (JavaScript-loaded content)")
-            resolutions = await self._fetch_supreme_plenary_with_selenium(year, limit)
-            if resolutions:
-                return resolutions
+
+            # Retry logic for vsrf.ru rate limiting
+            max_retries = 3
+            for attempt in range(max_retries):
+                resolutions = await self._fetch_supreme_plenary_with_selenium(year, limit)
+
+                # Success conditions:
+                # 1. Got any resolutions (and hit our limit, meaning more are available)
+                # 2. Got a reasonable number (at least 50 when no limit specified)
+                if resolutions:
+                    if limit and len(resolutions) >= limit:
+                        # Hit the limit, meaning page loaded successfully
+                        logger.info(f"Successfully fetched {len(resolutions)} resolutions (hit limit)")
+                        return resolutions
+                    if not limit and len(resolutions) >= 50:
+                        # No limit specified and got a good number of documents
+                        logger.info(f"Successfully fetched {len(resolutions)} resolutions")
+                        return resolutions
+                    if len(resolutions) >= 10:
+                        # Got at least some documents, might be a smaller year
+                        logger.info(f"Fetched {len(resolutions)} resolutions (smaller year or limited data)")
+                        return resolutions
+
+                # Bad result - retry with delay
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 30  # 30s, 60s, 90s delays
+                    logger.warning(f"vsrf.ru rate limiting detected (only {len(resolutions)} resolutions). "
+                                   f"Waiting {wait_time}s and retrying... (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.warning(f"Failed after {max_retries} attempts, got {len(resolutions)} resolutions")
+                    # Return what we got even if it's not ideal
+                    return resolutions
 
         # Fallback to HTTP (may not work for AJAX-loaded content)
         logger.warning("Selenium not available or failed, trying HTTP (may not find documents)")

@@ -16,6 +16,7 @@ Usage:
 
 import asyncio
 import logging
+import time
 from typing import Dict, Any, List, Optional
 from datetime import date
 import sys
@@ -50,7 +51,7 @@ class SupremeCourtImporter:
 
     # Default parameters
     DEFAULT_YEAR = 2025
-    DEFAULT_LIMIT = 100
+    DEFAULT_LIMIT = 1000  # vsrf.ru has ~619 documents from 2014 onwards
     BATCH_SIZE = 20  # Smaller batches for court decisions (more content)
 
     def __init__(self):
@@ -157,10 +158,18 @@ class SupremeCourtImporter:
         skipped = 0
         failed = []
 
-        for resolution in resolutions:
+        for i, resolution in enumerate(resolutions, 1):
             try:
                 self.import_supreme_court_resolution(resolution)
                 imported += 1
+
+                # Rate limiting: sleep 10 seconds after every 100 documents
+                # to be respectful to vsrf.ru server and database
+                if i % 100 == 0 and i < len(resolutions):
+                    logger.info(f"Imported {imported}/{len(resolutions)} documents, sleeping 10s to respect rate limits...")
+                    import time
+                    time.sleep(10)
+
             except Exception as e:
                 logger.warning(f"Failed to import {resolution.get('doc_id')}: {e}")
                 failed.append({"resolution": resolution, "error": str(e)})
