@@ -381,31 +381,16 @@ class CourtScraper(BaseScraper):
             driver.get(url)
 
             # Wait for AJAX content to load (vsrf.ru uses Bitrix with AJAX)
-            # The "vs-ajax-request-indicator" class shows when loading
-            # Need to wait for the document list to appear
+            # Large queries (600+ documents) need longer wait times
             logger.info("Waiting for AJAX content to load...")
-            time.sleep(25)  # Longer initial wait
 
-            # Wait for document list to appear
-            # Look for the vs-items-list-default or vs-wrapper-items class
-            for i in range(30):  # Max 30 seconds additional wait
-                try:
-                    # Check if document list is loaded
-                    doc_lists = driver.find_elements("css selector", ".vs-items-list-default, .vs-wrapper-items, .vs-items")
-                    if doc_lists:
-                        logger.debug(f"Document list loaded after {25 + i} seconds")
-                        break
-                    # Check if loading indicator is gone
-                    loading_indicators = driver.find_elements("css selector", ".vs-ajax-request-indicator.loading")
-                    if not loading_indicators and doc_lists:
-                        logger.debug(f"AJAX complete after {25 + i} seconds")
-                        break
-                except:
-                    pass
-
-                time.sleep(1)
-            else:
-                logger.warning("Document list may not have loaded, proceeding anyway")
+            # Calculate wait time based on expected document count
+            # before=1000 can return 600+ documents, which needs ~60-90 seconds
+            # Use a simple fixed wait instead of waiting for loading indicator
+            # (which never disappears on vsrf.ru)
+            wait_time = 70  # 70 seconds for large result sets
+            logger.info(f"Waiting {wait_time} seconds for content to load...")
+            time.sleep(wait_time)
 
             # Get page source after JavaScript execution
             html = driver.page_source

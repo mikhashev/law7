@@ -93,7 +93,6 @@ class SupremeCourtImporter:
                     summary,
                     full_text,
                     source_url,
-                    source_type,
                     created_at
                 ) VALUES (
                     :country_id,
@@ -107,7 +106,6 @@ class SupremeCourtImporter:
                     :summary,
                     :full_text,
                     :source_url,
-                    :source_type,
                     CURRENT_TIMESTAMP
                 )
                 RETURNING id
@@ -124,7 +122,6 @@ class SupremeCourtImporter:
                     "summary": resolution["title"][:500],  # Use title as summary initially
                     "full_text": "",  # Will be populated with full content
                     "source_url": resolution["url"],
-                    "source_type": "vsrf",
                 }
             )
             conn.commit()
