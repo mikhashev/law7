@@ -372,7 +372,9 @@ class CourtScraper(BaseScraper):
             driver = self._get_driver()
 
             # Construct URL for Plenary Resolutions by year
-            url = f"{self.VSRF_DOCUMENTS_URL}?category=resolutions_plenum_supreme_court_russian&year={year}"
+            # Use date_start parameter to get ALL documents from that year onwards
+            # before=1000 ensures we get maximum documents (up to ~600-700 per query)
+            url = f"{self.VSRF_DOCUMENTS_URL}?category=resolutions_plenum_supreme_court_russian&date_start=01.01.{year}&before=1000"
             logger.info(f"Navigating to: {url}")
 
             # Navigate to page
@@ -531,7 +533,8 @@ class CourtScraper(BaseScraper):
         session = await self._get_session()
 
         # Construct URL for Plenary Resolutions by year
-        url = f"{self.VSRF_DOCUMENTS_URL}?category=resolutions_plenum_supreme_court_russian&year={year}"
+        # Use date_start parameter to get ALL documents from that year onwards
+        url = f"{self.VSRF_DOCUMENTS_URL}?category=resolutions_plenum_supreme_court_russian&date_start=01.01.{year}&before=1000"
         logger.info(f"Fetching from: {url}")
 
         try:
