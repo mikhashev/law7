@@ -32,6 +32,16 @@ from country_modules.russia.scrapers.court_scraper import CourtScraper
 
 logger = logging.getLogger(__name__)
 
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
+# Placeholder date for records where actual decision date hasn't been parsed yet
+# TODO: Extract actual decision date from document content
+PLACEHOLDER_DATE = date(2099, 1, 1)
+
 
 class SupremeCourtImporter:
     """
@@ -116,8 +126,8 @@ class SupremeCourtImporter:
                     "court_type": "supreme",
                     "decision_type": "plenary_resolution",
                     "case_number": resolution["doc_id"],
-                    "decision_date": None,  # Will be parsed from content
-                    "publication_date": None,
+                    "decision_date": PLACEHOLDER_DATE,  # TODO: Parse actual date from content
+                    "publication_date": PLACEHOLDER_DATE,  # TODO: Parse actual date from content
                     "title": resolution["title"][:500],
                     "summary": resolution["title"][:500],  # Use title as summary initially
                     "full_text": "",  # Will be populated with full content
