@@ -16,6 +16,7 @@ Usage:
 
 import asyncio
 import logging
+import re
 import time
 from typing import Dict, Any, List, Optional
 from datetime import date
@@ -42,6 +43,48 @@ logging.basicConfig(
 # Placeholder date for records where actual decision date hasn't been parsed yet
 # TODO: Extract actual decision date from document content
 PLACEHOLDER_DATE = date(2099, 1, 1)
+
+
+def parse_date_from_title(title: str) -> Optional[date]:
+    """
+    Extract decision date from Russian document title.
+
+    Pattern examples:
+    - "от 27 января 2026 года"
+    - "от 23 декабря 2025 го" (shortened form)
+    - "от 24 июня 2025 года"
+
+    Args:
+        title: Document title in Russian
+
+    Returns:
+        Date object or None if date cannot be parsed
+    """
+    # Russian month names (genitive form - used after "от")
+    months_genitive = {
+        'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4,
+        'мая': 5, 'июня': 6, 'июля': 7, 'августа': 8,
+        'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12,
+    }
+
+    # Pattern 1: "от DD month YYYY года" or "от DD month YYYY го"
+    pattern = r'от\s+(\d{1,2})\s+([а-яё]+)\s+(\d{4})\s+(года|го)'
+    match = re.search(pattern, title)
+    if match:
+        day = int(match.group(1))
+        year = int(match.group(3))
+        month_name = match.group(2).lower()
+
+        # Match month name (handle both full and partial forms)
+        for full_name, month_num in months_genitive.items():
+            if month_name == full_name or month_name in full_name:
+                try:
+                    return date(year, month_num, day)
+                except ValueError:
+                    # Invalid date (e.g., February 30)
+                    return None
+
+    return None
 
 
 class SupremeCourtImporter:
@@ -127,7 +170,7 @@ class SupremeCourtImporter:
                     "court_type": "supreme",
                     "decision_type": "plenary_resolution",
                     "case_number": resolution["doc_id"],
-                    "decision_date": PLACEHOLDER_DATE,  # TODO: Parse actual date from content
+                    "decision_date": parse_date_from_title(resolution["title"]) or PLACEHOLDER_DATE,
                     "publication_date": PLACEHOLDER_DATE,  # TODO: Parse actual date from content
                     "title": resolution["title"][:500],
                     "summary": resolution["title"][:500],  # Use title as summary initially
