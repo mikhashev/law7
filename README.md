@@ -162,8 +162,11 @@ Python Pipeline → PostgreSQL + Qdrant → TypeScript MCP Server → AI
 
 **Status**: Operational
 
-- **Documents**: 157,730 Russian legal documents (2022-2026)
-  > Note: This is amendment documents from a partial sync. Full historical sync (2011-present) has ~1.6M documents.
+- **Documents**: 1,134,985 Russian legal documents (2019-2026)
+- **Content Coverage**: 47,871 documents with full text (4.22%)
+- **Code Articles**: 6,232 articles across 22 consolidated legal codes
+- **Embeddings**: 265 semantic vectors (test data - full embeddings pending)
+- **Database Backup**: [Download (218 MB)](https://drive.google.com/file/d/1DPLpFpuwUZbLZEGo2TxnCAcLRdb2V1aD/view?usp=sharing) - `SHA256: 70a1d8fc6b27b67ad7f12f03f017d02b5f68a0c895447159039800965895f8b2`
 - **Sources**:
   - [pravo.gov.ru](http://pravo.gov.ru/) - Official Russian legal publication portal (primary)
   - [kremlin.ru](http://kremlin.ru/) - Presidential decrees, Constitution
@@ -203,14 +206,35 @@ See [docs/DATA_PIPELINE.md](docs/DATA_PIPELINE.md) for complete data pipeline do
 
 > **Note**: Default ports are PostgreSQL **5433**, Redis **6380**, Qdrant **6333** (to avoid conflicts with other projects).
 
-### 1. Start Docker Services
+### Option A: Restore from Backup (Recommended - ~5 minutes)
+
+Skip the data sync and use the pre-built database:
+
+```bash
+# 1. Download backup (218 MB)
+#    https://drive.google.com/file/d/1DPLpFpuwUZbLZEGo2TxnCAcLRdb2V1aD/view?usp=sharing
+
+# 2. Start Docker services
+cd docker
+docker-compose up -d
+
+# 3. Restore backup (place .tar.gz in docker/backups/ directory)
+./restore.sh law7_backup_20260211_014519
+
+# 4. Start MCP server
+npm install && npm run build && npm start
+```
+
+### Option B: Fresh Installation (from official sources)
+
+#### 1. Start Docker Services
 
 ```bash
 cd docker
 docker-compose up -d
 ```
 
-### 2. Run Initial Data Sync (Python)
+#### 2. Run Initial Data Sync (Python)
 
 ```bash
 # Using Poetry

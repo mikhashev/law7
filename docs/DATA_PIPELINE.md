@@ -177,10 +177,22 @@ Imports the foundational Russian legal codes from official sources.
 
 **Current Status:**
 - ✅ All 23 codes (23 code identifiers) registered in database
-- ✅ 22 codes imported with ~6,700 articles total
+- ✅ 22 codes imported with 6,232 articles total
 - ⚠️ KAS_RF (Administrative Procedure Code) not yet imported
 - ✅ Metadata stored in `consolidated_codes` table
 - ✅ Article validation with context-aware correction
+
+**Article counts by code:**
+| Code | Articles | Code | Articles | Code | Articles |
+|------|----------|------|----------|------|----------|
+| GK_RF_2 | 667 | NK_RF_2 | 522 | UK_RF | 524 |
+| GK_RF | 554 | APK_RF | 402 | TK_RF | 505 |
+| GPK_RF | 471 | BK_RF | 110 | ZhK_RF | 227 |
+| GK_RF_4 | 322 | ZK_RF | 181 | KoAP_RF | 224 |
+| GK_RF_3 | 102 | UIK_RF | 222 | VZK_RF | 163 |
+| KONST_RF | 137 | SK_RF | 73 | VDK_RF | 79 |
+| NK_RF | 250 | UPK_RF | 184 | GRK_RF | 100 |
+| LK_RF | 213 | | | | |
 
 ## Step 2: Document Metadata Sync
 
@@ -211,9 +223,18 @@ poetry run python scripts/sync/initial_sync.py --daily
 ```
 
 **Current Status:**
-- ✅ 157,730 documents synced (2022-2026)
+- ✅ 1,134,985 documents synced (2019-2026)
+- ✅ 47,871 documents with full text content (4.22% coverage)
 - ⚠️ Date range filtering has issues - see TODO.md
-- ⚠️ Full sync would take 100+ hours (1.6M documents total)
+- 📊 Document distribution by year:
+  - 2026: 10,998 (partial year)
+  - 2025: 177,080
+  - 2024: 176,091
+  - 2023: 178,453
+  - 2022: 178,685
+  - 2021: 163,509
+  - 2020: 162,315
+  - 2019: 87,854 (partial)
 
 ## Step 3: Content Parsing + Embeddings
 
@@ -226,10 +247,15 @@ Extracts document text from API metadata and generates embeddings for semantic s
 poetry run python scripts/sync/content_sync.py --recreate-collection
 ```
 
-**Estimated time for 156k documents:**
-- Content parsing: 30-60 minutes
-- Embeddings (RTX 3060): 1-2 hours
-- Total: ~2-3 hours
+**Current Status:**
+- ✅ 47,871 documents with full text (4.22% of total)
+- ⚠️ Embeddings: Only 265 vectors in Qdrant (test data)
+- ⚠️ Full content sync needed for semantic search
+
+**Estimated time for full sync (1.1M documents):**
+- Content parsing: 4-6 hours
+- Embeddings (RTX 3060): 12-20 hours
+- Total: ~16-26 hours
 
 ### Advanced Options
 

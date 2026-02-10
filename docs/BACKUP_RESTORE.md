@@ -5,6 +5,7 @@ This guide explains how to create and restore database backups for the law7 proj
 ## Table of Contents
 
 - [Overview](#overview)
+- [Quick Start: Download Latest Backup](#quick-start-download-latest-backup)
 - [Creating Backups](#creating-backups)
 - [Verifying Backups](#verifying-backups)
 - [Restoring from Backup](#restoring-from-backup)
@@ -17,17 +18,67 @@ The law7 project uses three databases:
 
 | Database | Purpose | Backed Up? | Size (approx) |
 |----------|---------|------------|---------------|
-| PostgreSQL | Legal documents metadata and content | Yes | ~700 MB |
-| Qdrant | Vector embeddings for semantic search | Yes | ~300 MB |
+| PostgreSQL | Legal documents metadata and content | Yes | ~217 MB |
+| Qdrant | Vector embeddings for semantic search | Yes | ~2-300 MB |
 | Redis | Query cache (1-hour TTL) | No | - |
 
-**Total backup size**: ~1 GB compressed
+**Total backup size**: ~218 MB compressed (current)
 
 ### What Gets Backed Up
 
-- **PostgreSQL**: All tables including documents (157K+), document_content, code_article_versions (8K+), amendment tracking
-- **Qdrant**: The `law_chunks` collection with ~77K vector embeddings
+- **PostgreSQL**: All tables including documents (1.1M+), document_content (47K+), code_article_versions (6K+), amendment tracking
+- **Qdrant**: The `law_chunks` collection with vector embeddings (265 in current backup, full sync pending)
 - **Configuration**: `.env.example` template (not actual credentials)
+
+### Database Statistics (Current Backup)
+
+| Metric | Count |
+|--------|-------|
+| Total Documents | 1,134,985 |
+| Documents with Content | 47,871 (4.22%) |
+| Code Articles | 6,232 (22 consolidated codes) |
+| Qdrant Vectors | 265 (test data - full embeddings pending) |
+| Years Covered | 2019-2026 |
+
+## Quick Start: Download Latest Backup
+
+### Public Backup Available
+
+The latest backup is available for download:
+
+| Property | Value |
+|----------|-------|
+| **Download** | [law7_backup_20260211_014519.tar.gz](https://drive.google.com/file/d/1DPLpFpuwUZbLZEGo2TxnCAcLRdb2V1aD/view?usp=sharing) |
+| **Size** | 218 MB |
+| **SHA256** | `70a1d8fc6b27b67ad7f12f03f017d02b5f68a0c895447159039800965895f8b2` |
+
+### Quick Restore (5 minutes)
+
+```bash
+# 1. Download backup from link above
+# 2. Clone repository
+git clone https://github.com/mikhashev/law7
+cd law7/docker
+
+# 3. Place downloaded .tar.gz in backups/ directory
+# 4. Start Docker services
+docker-compose up -d
+
+# 5. Restore backup
+./restore.sh law7_backup_20260211_014519
+```
+
+### Legal Disclaimer
+
+**IMPORTANT**: This backup contains legal documents from official Russian government sources (pravo.gov.ru).
+
+- **Official government documents** are in the **public domain** under Russian Civil Code Article 1259
+- **NOT for official use** in court or government bodies
+- **NO guarantee of accuracy, completeness, or timeliness**
+- Always verify against original sources for official purposes
+
+The **software and database structure** are licensed under AGPL-3.0.
+The **legal documents themselves** are public domain under Russian law.
 
 ## Creating Backups
 
