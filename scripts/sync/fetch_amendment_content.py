@@ -14,7 +14,11 @@ import logging
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
+
+# Add scripts directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import text
 

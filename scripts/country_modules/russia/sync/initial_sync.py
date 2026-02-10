@@ -13,14 +13,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-# Add scripts directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add project root to path (4 levels up to reach law7/)
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from country_modules.russia.scrapers.pravo_api_client import PravoApiClient
-from core.config import INITIAL_SYNC_BLOCK, INITIAL_SYNC_START_DATE, SYNC_BATCH_SIZE
-from core.db import check_db_connection
-from indexer.postgres_indexer import PostgresIndexer
-from utils.progress import ProgressTracker
+from scripts.core.config import INITIAL_SYNC_BLOCK, INITIAL_SYNC_START_DATE, SYNC_BATCH_SIZE
+from scripts.core.db import check_db_connection
+from scripts.indexer.postgres_indexer import PostgresIndexer
+from scripts.utils.progress import ProgressTracker
 
 # Setup logging
 logging.basicConfig(
@@ -73,6 +73,7 @@ class InitialSyncService:
         start_date: str = None,
         end_date: str = None,
         block: str = None,
+        start_page: int = 1,
     ) -> dict:
         """
         Run the initial sync process.
@@ -81,6 +82,7 @@ class InitialSyncService:
             start_date: Start date in YYYY-MM-DD format (default: from config)
             end_date: End date in YYYY-MM-DD format (default: today)
             block: Publication block code to filter (default: from config)
+            start_page: Starting page number for resuming sync (default: 1)
 
         Returns:
             Dictionary with sync statistics
@@ -101,6 +103,7 @@ class InitialSyncService:
         logger.info(f"Start date: {start_date}")
         logger.info(f"End date: {end_date}")
         logger.info(f"Block: {block if block != 'all' else 'All blocks'}")
+        logger.info(f"Start page: {start_page}")
         logger.info(f"Batch size: {self.batch_size}")
         logger.info("="*60)
 
@@ -132,6 +135,7 @@ class InitialSyncService:
                 start_date=start_date,
                 end_date=end_date,
                 block=block if block != "all" else None,
+                start_page=start_page,
             )
 
             if total_documents == 0:
@@ -177,6 +181,7 @@ class InitialSyncService:
         start_date: str,
         end_date: str,
         block: Optional[str] = None,
+        start_page: int = 1,
     ) -> tuple[int, int]:
         """
         Stream documents from API and upsert in batches.
@@ -185,12 +190,13 @@ class InitialSyncService:
             start_date: Start date in YYYY-MM-DD format
             end_date: End date in YYYY-MM-DD format
             block: Publication block code to filter
+            start_page: Starting page number for resuming sync (default: 1)
 
         Returns:
             Tuple of (total_documents_fetched, total_upserted)
         """
         all_documents = []
-        page = 1
+        page = start_page
         total_fetched = 0
         total_upserted = 0
         batch_buffer = []
@@ -302,6 +308,7 @@ def main():
     parser.add_argument("--start-date", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end-date", help="End date (YYYY-MM-DD)")
     parser.add_argument("--block", help="Publication block code")
+    parser.add_argument("--start-page", type=int, default=1, help="Start page number (for resuming sync)")
     parser.add_argument("--batch-size", type=int, default=SYNC_BATCH_SIZE, help="Batch size")
     parser.add_argument("--daily", action="store_true", help="Run daily sync (yesterday to today)")
 
@@ -315,6 +322,7 @@ def main():
         start_date=args.start_date,
         end_date=args.end_date,
         block=args.block,
+        start_page=args.start_page,
     )
 
     # Exit with appropriate code

@@ -14,16 +14,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Add scripts directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add project root to path (4 levels up to reach law7/)
+sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from core.config import EMBEDDING_BATCH_SIZE, SYNC_BATCH_SIZE
-from core.db import get_db_connection
-from indexer.embeddings import EmbeddingsGenerator
+from scripts.core.config import EMBEDDING_BATCH_SIZE, SYNC_BATCH_SIZE
+from scripts.core.db import get_db_connection
+from scripts.indexer.embeddings import EmbeddingsGenerator
 from sqlalchemy import text
-from indexer.qdrant_indexer import QdrantIndexer
+from scripts.indexer.qdrant_indexer import QdrantIndexer
 from country_modules.russia.parsers.html_parser import PravoContentParser
-from utils.progress import ProgressTracker
+from scripts.utils.progress import ProgressTracker
 from tqdm import tqdm
 
 # Setup logging
