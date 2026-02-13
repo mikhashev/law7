@@ -15,8 +15,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Re-export everything from the new location
 from country_modules.russia.sync.content_sync import (
     ContentSyncService,
+    main as _main,
 )
 
 __all__ = [
     "ContentSyncService",
+    "main",
 ]
+
+# Entry point for backward compatibility
+if __name__ == "__main__":
+    _main()

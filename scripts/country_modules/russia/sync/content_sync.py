@@ -10,6 +10,7 @@ import gc
 import logging
 import os
 import psutil
+import signal
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +34,28 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger(__name__)
+
+
+# Graceful shutdown handling
+_shutdown_requested = False
+
+
+def request_shutdown(signum=None, frame=None):
+    """Signal handler for graceful shutdown."""
+    global _shutdown_requested
+    _shutdown_requested = True
+    signal_name = signal.Signals(signum).name if signum else "unknown"
+    logger.warning(f"[SHUTDOWN] Signal received ({signal_name}). Finishing current batch and exiting...")
+
+
+def signal_handler(signum, frame):
+    """Register signal handlers for graceful shutdown."""
+    request_shutdown(signum, frame)
+
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
 
 
 # Country identification
@@ -80,12 +103,22 @@ class ContentSyncService:
         embedding_batch_size: int = EMBEDDING_BATCH_SIZE,
         skip_embeddings: bool = False,
         skip_selenium: bool = False,
+        document_type_filter: str = None,
     ):
-        """Initialize the content sync service."""
+        """Initialize the content sync service.
+
+        Args:
+            batch_size: Batch size for Qdrant upserts
+            embedding_batch_size: Batch size for embedding generation
+            skip_embeddings: Skip embedding generation
+            skip_selenium: Skip Selenium content fetching
+            document_type_filter: Filter by document type name (e.g., "Федеральный закон", "Закон", "Указ")
+        """
         self.batch_size = batch_size
         self.embedding_batch_size = embedding_batch_size
         self.skip_embeddings = skip_embeddings
         self.use_selenium = not skip_selenium
+        self.document_type_filter = document_type_filter
 
         self.content_parser = PravoContentParser()
         log_memory("Before loading model")
@@ -99,34 +132,71 @@ class ContentSyncService:
         limit: int = None,
         country_id: int = 1,
     ) -> list:
-        """Fetch documents from PostgreSQL."""
-        limit_clause = f"LIMIT {limit}" if limit else ""
-        query = f"""
-            SELECT
-                d.id,
-                d.eo_number,
-                d.title,
-                d.name,
-                d.complex_name,
-                d.document_number,
-                d.document_date,
-                d.publish_date,
-                d.pages_count,
-                d.signatory_authority_id,
-                d.document_type_id,
-                d.publication_block_id,
-                d.country_id,
-                dc.full_text as existing_full_text,
-                dc.text_hash as existing_text_hash
-            FROM documents d
-            LEFT JOIN document_content dc ON d.id = dc.document_id
-            WHERE d.country_id = {country_id}
-            ORDER BY d.publish_date DESC
-            {limit_clause}
+        """Fetch documents from PostgreSQL.
+
+        Args:
+            limit: Limit number of documents
+            country_id: Country ID filter (default: 1 for Russia)
         """
+        limit_clause = f"LIMIT {limit}" if limit else ""
+
+        # Add document type filter if specified
+        if self.document_type_filter:
+            # Join with document_types table and filter by name
+            query = f"""
+                SELECT
+                    d.id,
+                    d.eo_number,
+                    d.title,
+                    d.name,
+                    d.complex_name,
+                    d.document_number,
+                    d.document_date,
+                    d.publish_date,
+                    d.pages_count,
+                    d.signatory_authority_id,
+                    d.document_type_id,
+                    d.publication_block_id,
+                    d.country_id,
+                    dc.full_text as existing_full_text,
+                    dc.text_hash as existing_text_hash
+                FROM documents d
+                LEFT JOIN document_content dc ON d.id = dc.document_id
+                INNER JOIN document_types dt ON d.document_type_id = dt.id
+                WHERE d.country_id = {country_id}
+                    AND dt.name = :document_type
+                ORDER BY d.publish_date DESC
+                {limit_clause}
+            """
+            params = {"document_type": self.document_type_filter}
+        else:
+            query = f"""
+                SELECT
+                    d.id,
+                    d.eo_number,
+                    d.title,
+                    d.name,
+                    d.complex_name,
+                    d.document_number,
+                    d.document_date,
+                    d.publish_date,
+                    d.pages_count,
+                    d.signatory_authority_id,
+                    d.document_type_id,
+                    d.publication_block_id,
+                    d.country_id,
+                    dc.full_text as existing_full_text,
+                    dc.text_hash as existing_text_hash
+                FROM documents d
+                LEFT JOIN document_content dc ON d.id = dc.document_id
+                WHERE d.country_id = {country_id}
+                ORDER BY d.publish_date DESC
+                {limit_clause}
+            """
+            params = {}
 
         with get_db_connection() as conn:
-            result = conn.execute(text(query))
+            result = conn.execute(text(query), params)
             columns = result.keys()
             results = result.fetchall()
 
@@ -193,6 +263,7 @@ class ContentSyncService:
         logger.info(f"Batch size: {self.batch_size}")
         logger.info(f"Embedding batch size: {self.embedding_batch_size}")
         logger.info(f"Limit: {limit or 'No limit'}")
+        logger.info(f"Document type filter: {self.document_type_filter or 'None (all types)'}")
         logger.info(f"Skip content: {skip_content}")
         logger.info(f"Skip embeddings: {skip_embeddings}")
         logger.info(f"Recreate collection: {recreate_collection}")
@@ -230,6 +301,11 @@ class ContentSyncService:
         total_docs = len(documents)
 
         for i, doc in enumerate(tqdm(documents, desc="Processing documents")):
+            # Check for shutdown request
+            if _shutdown_requested:
+                logger.warning("[SHUTDOWN] Graceful shutdown requested. Finishing processing...")
+                break
+
             doc_id = doc["id"]
             doc_type = doc.get("document_type_id")
             title = doc.get("complex_name", doc.get("title", "Unknown"))[:50]  # Truncate for logging
@@ -266,7 +342,7 @@ class ContentSyncService:
             if not skip_embeddings and doc.get("full_text"):
                 # Skip extremely long documents that cause performance issues
                 text_len = len(doc.get("full_text", ""))
-                if text_len > 100000:  # Skip documents over 100KB
+                if text_len > 1000000:  # Skip documents over 1MB
                     title = doc.get("complex_name", doc.get("title", "Unknown"))[:50]
                     logger.warning(f"[SKIPPED] {title}... ({text_len:,} chars, type: {doc.get('document_type_id')})")
                     embeddings_generated += 0
@@ -315,8 +391,12 @@ class ContentSyncService:
         duration = (datetime.now() - start_time).total_seconds()
 
         logger.info("="*60)
-        logger.info("Sync Complete!")
+        if _shutdown_requested:
+            logger.warning("Sync Interrupted (Graceful Shutdown)")
+        else:
+            logger.info("Sync Complete!")
         logger.info(f"Total documents: {len(documents)}")
+        logger.info(f"Documents processed: {i + 1}")
         logger.info(f"Content parsed: {content_parsed}")
         logger.info(f"Embeddings generated: {embeddings_generated} chunks")
         logger.info(f"Duration: {duration:.1f} seconds")
@@ -340,11 +420,14 @@ def main():
     parser.add_argument("--skip-embeddings", action="store_true", help="Skip embedding generation")
     parser.add_argument("--skip-selenium", action="store_true", help="Skip Selenium content fetching (use API metadata only)")
     parser.add_argument("--recreate-collection", action="store_true", help="Recreate Qdrant collection")
+    parser.add_argument("--document-type", type=str, dest="document_type",
+        help="Filter by document type name (e.g., 'Федеральный закон', 'Закон', 'Указ', 'Постановление', 'Приказ')")
     args = parser.parse_args()
 
     service = ContentSyncService(
         skip_embeddings=args.skip_embeddings,
         skip_selenium=args.skip_selenium,
+        document_type_filter=args.document_type,
     )
     stats = service.run(
         limit=args.limit,

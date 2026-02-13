@@ -1097,7 +1097,8 @@ def validate_and_correct_article_number(
     article_number: str,
     code_id: str,
     prev_article: Optional[str] = None,
-    next_article: Optional[str] = None
+    next_article: Optional[str] = None,
+    source: str = "pravo"
 ) -> tuple[str, List[str]]:
     """
     Validate and potentially correct article numbers from source documents.
@@ -1114,6 +1115,7 @@ def validate_and_correct_article_number(
         code_id: Code identifier (e.g., 'TK_RF')
         prev_article: Previous article number (optional, for context)
         next_article: Next article number (optional, for context)
+        source: Source domain ('kremlin', 'pravo', 'government') - affects multi-dot handling
 
     Returns:
         Tuple of (corrected_article_number, warnings)
@@ -1121,11 +1123,16 @@ def validate_and_correct_article_number(
     warnings: List[str] = []
     original = article_number
 
-    # Step 1: Handle HTML hierarchy encoding (multi-dot like "10.5.1" → "105.1")
-    # Single-dot numbers like "6.1" are legitimate sub-articles - preserve them
+    # Step 1: Handle HTML hierarchy encoding (ONLY for pravo.gov.ru)
+    # Multi-dot numbers from government.ru and kremlin.ru are valid legal notation - preserve them
+    # Examples from government.ru: "15.121", "15.155-1" are CORRECT (Article 15, Part 12, Subpart 1)
     if '.' in article_number:
         dot_count = article_number.count('.')
-        if dot_count >= 2:
+
+        # CRITICAL FIX: Only convert multi-dot for pravo.gov.ru
+        # government.ru uses proper legal notation like "15.121" (Article 15, Part 12, Subpart 1)
+        # kremlin.ru also uses proper legal notation
+        if source == "pravo" and dot_count >= 2:
             # Multi-dot = HTML hierarchy encoding
             # Format: "12.9.1" means article 129, part 1 (NOT chapter 12, section 9, part 1)
             # The first TWO numbers form the article number, the last is the subsection
@@ -1558,7 +1565,7 @@ class BaseCodeImporter:
 
                 # Validate with full context
                 corrected_number, warnings = validate_and_correct_article_number(
-                    raw_number, code_id, prev_article, next_article
+                    raw_number, code_id, prev_article, next_article, "kremlin"
                 )
 
                 # Log final result (verbose mode shows correction or validation)
@@ -1983,7 +1990,7 @@ class BaseCodeImporter:
 
             # Validate with hybrid approach
             corrected_number, warnings = validate_and_correct_article_number(
-                raw_number, code_id, prev_article, next_article
+                raw_number, code_id, prev_article, next_article, "kremlin"
             )
 
             # Log final result (verbose mode shows correction or validation)
@@ -2433,7 +2440,7 @@ class BaseCodeImporter:
 
             # Validate with hybrid approach
             corrected_number, warnings = validate_and_correct_article_number(
-                raw_number, code_id, prev_article, next_article
+                raw_number, code_id, prev_article, next_article, "pravo"
             )
 
             # Log final result (verbose mode shows correction or validation)
@@ -2578,7 +2585,7 @@ class BaseCodeImporter:
 
             # Phase 2: Validate all articles together with full context
             # This ensures articles like "231" at the start of page 2 have prev="23" from page 1
-            validated_articles = self._validate_and_correct_articles(all_raw_articles, code_id)
+            validated_articles = self._validate_and_correct_articles(all_raw_articles, code_id, source="government")
 
             return {
                 "code_id": code_id,
@@ -2696,7 +2703,7 @@ class BaseCodeImporter:
 
         return raw_articles
 
-    def _validate_and_correct_articles(self, raw_articles: List[Dict], code_id: str) -> List[Dict[str, Any]]:
+    def _validate_and_correct_articles(self, raw_articles: List[Dict], code_id: str, source: str = "pravo") -> List[Dict[str, Any]]:
         """
         Validate and correct article numbers with full context.
 
@@ -2707,6 +2714,7 @@ class BaseCodeImporter:
         Args:
             raw_articles: List of raw article dictionaries
             code_id: Code identifier
+            source: Source domain ('kremlin', 'pravo', 'government') - affects multi-dot handling
 
         Returns:
             List of validated/corrected article dictionaries
@@ -2722,11 +2730,11 @@ class BaseCodeImporter:
             next_article = raw_articles[i + 1]["article_number"] if i < len(raw_articles) - 1 else None
 
             # Log what we're parsing (verbose mode shows raw number and context)
-            logger.debug(f"[{code_id}] Parsing article: '{raw_number}' (prev={prev_article}, next={next_article})")
+            logger.debug(f"[{code_id}] Parsing article: '{raw_number}' (prev={prev_article}, next={next_article}, source='{source}')")
 
             # Validate with hybrid approach
             corrected_number, warnings = validate_and_correct_article_number(
-                raw_number, code_id, prev_article, next_article
+                raw_number, code_id, prev_article, next_article, source
             )
 
             # Log final result (verbose mode shows correction or validation)
@@ -2786,7 +2794,7 @@ class BaseCodeImporter:
         raw_articles = self._extract_raw_articles_from_government_page(html, code_id)
 
         # Validate and correct article numbers with context
-        validated_articles = self._validate_and_correct_articles(raw_articles, code_id)
+        validated_articles = self._validate_and_correct_articles(raw_articles, code_id, source="government")
 
         return {
             "code_id": code_id,
