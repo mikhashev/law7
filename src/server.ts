@@ -28,6 +28,9 @@ import { searchCourtDecisionsTool, executeSearchCourtDecisions } from './tools/s
 import { getSupremeCourtResolutionTool, executeGetSupremeCourtResolution } from './tools/get-supreme-court-resolution.js';
 import { searchInterpretationsTool, executeSearchInterpretations } from './tools/search-interpretations.js';
 
+// Import on-demand ingestion tool
+import { fetchAndIngestTool, executeFetchAndIngest } from './tools/fetch-and-ingest.js';
+
 // Import config
 import { config } from './config.js';
 
@@ -65,6 +68,8 @@ export function createServer(): Server {
         searchCourtDecisionsTool,
         getSupremeCourtResolutionTool,
         searchInterpretationsTool,
+        // On-demand ingestion
+        fetchAndIngestTool,
       ],
     };
   });
@@ -137,6 +142,11 @@ export function createServer(): Server {
 
         case 'search-interpretations':
           result = await executeSearchInterpretations(args as any);
+          break;
+
+        // On-demand ingestion
+        case 'fetch-and-ingest':
+          result = await executeFetchAndIngest(args as any);
           break;
 
         default:
