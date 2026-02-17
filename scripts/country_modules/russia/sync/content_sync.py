@@ -104,6 +104,7 @@ class ContentSyncService:
         skip_embeddings: bool = False,
         skip_selenium: bool = False,
         document_type_filter: str = None,
+        skip_existing: bool = False,
     ):
         """Initialize the content sync service.
 
@@ -113,12 +114,14 @@ class ContentSyncService:
             skip_embeddings: Skip embedding generation
             skip_selenium: Skip Selenium content fetching
             document_type_filter: Filter by document type name (e.g., "Федеральный закон", "Закон", "Указ")
+            skip_existing: Skip documents that already have full_text content
         """
         self.batch_size = batch_size
         self.embedding_batch_size = embedding_batch_size
         self.skip_embeddings = skip_embeddings
         self.use_selenium = not skip_selenium
         self.document_type_filter = document_type_filter
+        self.skip_existing = skip_existing
 
         self.content_parser = PravoContentParser()
         log_memory("Before loading model")
@@ -238,6 +241,7 @@ class ContentSyncService:
         skip_content: bool = False,
         skip_embeddings: bool = False,
         recreate_collection: bool = False,
+        skip_existing: bool = False,
     ) -> dict:
         """
         Run the content sync process.
@@ -247,6 +251,7 @@ class ContentSyncService:
             skip_content: Skip content parsing (use existing)
             skip_embeddings: Skip embedding generation
             recreate_collection: Recreate Qdrant collection
+            skip_existing: Skip documents that already have full_text content
 
         Returns:
             Dictionary with sync statistics
@@ -266,6 +271,7 @@ class ContentSyncService:
         logger.info(f"Document type filter: {self.document_type_filter or 'None (all types)'}")
         logger.info(f"Skip content: {skip_content}")
         logger.info(f"Skip embeddings: {skip_embeddings}")
+        logger.info(f"Skip existing content: {skip_existing or self.skip_existing}")
         logger.info(f"Recreate collection: {recreate_collection}")
         logger.info("="*60)
 
@@ -327,14 +333,23 @@ class ContentSyncService:
             }
 
             # Parse content (if not skipped)
+            skip_existing_enabled = skip_existing or self.skip_existing
+
             if not skip_content:
-                content = self.content_parser.parse_document(doc_data, use_selenium=self.use_selenium)
-                if content and content.get("full_text"):
-                    self._upsert_content(doc_id, content)
-                    content_parsed += 1
-                    doc["full_text"] = content["full_text"]
-                elif doc.get("existing_full_text"):
-                    doc["full_text"] = doc["existing_full_text"]
+                # Check if document already has content and skip_existing is enabled
+                existing_text = doc.get("existing_full_text")
+                if skip_existing_enabled and existing_text and len(existing_text) > 0:
+                    # Skip parsing, use existing content
+                    doc["full_text"] = existing_text
+                else:
+                    # Parse content
+                    content = self.content_parser.parse_document(doc_data, use_selenium=self.use_selenium)
+                    if content and content.get("full_text"):
+                        self._upsert_content(doc_id, content)
+                        content_parsed += 1
+                        doc["full_text"] = content["full_text"]
+                    elif existing_text:
+                        doc["full_text"] = existing_text
             else:
                 doc["full_text"] = doc.get("existing_full_text") or ""
 
@@ -419,6 +434,7 @@ def main():
     parser.add_argument("--skip-content", action="store_true", help="Skip content parsing")
     parser.add_argument("--skip-embeddings", action="store_true", help="Skip embedding generation")
     parser.add_argument("--skip-selenium", action="store_true", help="Skip Selenium content fetching (use API metadata only)")
+    parser.add_argument("--skip-existing", action="store_true", help="Skip documents that already have full_text content")
     parser.add_argument("--recreate-collection", action="store_true", help="Recreate Qdrant collection")
     parser.add_argument("--document-type", type=str, dest="document_type",
         help="Filter by document type name (e.g., 'Федеральный закон', 'Закон', 'Указ', 'Постановление', 'Приказ')")
@@ -428,12 +444,14 @@ def main():
         skip_embeddings=args.skip_embeddings,
         skip_selenium=args.skip_selenium,
         document_type_filter=args.document_type,
+        skip_existing=args.skip_existing,
     )
     stats = service.run(
         limit=args.limit,
         skip_content=args.skip_content,
         skip_embeddings=args.skip_embeddings,
         recreate_collection=args.recreate_collection,
+        skip_existing=args.skip_existing,
     )
 
     # Print summary
