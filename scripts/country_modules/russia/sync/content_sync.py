@@ -314,7 +314,7 @@ class ContentSyncService:
 
             doc_id = doc["id"]
             doc_type = doc.get("document_type_id")
-            title = doc.get("complex_name", doc.get("title", "Unknown"))[:50]  # Truncate for logging
+            title = (doc.get("complex_name") or doc.get("title") or "Unknown")[:50]  # Truncate for logging
             full_text_len = len(doc.get("existing_full_text") or "")
 
             # Log document info (first 5 and every 10 after)
@@ -358,7 +358,7 @@ class ContentSyncService:
                 # Skip extremely long documents that cause performance issues
                 text_len = len(doc.get("full_text", ""))
                 if text_len > 1000000:  # Skip documents over 1MB
-                    title = doc.get("complex_name", doc.get("title", "Unknown"))[:50]
+                    title = (doc.get("complex_name") or doc.get("title") or "Unknown")[:50]
                     logger.warning(f"[SKIPPED] {title}... ({text_len:,} chars, type: {doc.get('document_type_id')})")
                     embeddings_generated += 0
                     continue

@@ -80,7 +80,7 @@ def test_content_parsing(limit: int = 5, skip_existing: bool = True):
     for i, doc in enumerate(documents, 1):
         doc_id = doc["id"]
         eo_number = doc["eo_number"]
-        title = doc.get("complex_name", doc.get("title", "Unknown"))[:60]
+        title = (doc.get("complex_name") or doc.get("title") or "Unknown")[:60]
 
         logger.info(f"[{i}/{len(documents)}] Testing: {title}...")
         logger.info(f"  eoNumber: {eo_number}")
