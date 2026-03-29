@@ -72,3 +72,6 @@ data/
 
 # npm (create .npmignore for npm package)
 .npmignore
+
+# Private audit documents
+audit/
