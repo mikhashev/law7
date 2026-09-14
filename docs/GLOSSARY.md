@@ -1,5 +1,7 @@
 # Glossary
 
+v3 — 2026-09-14. Rows by Ark (v1–v2), rules and checker alignment by CC; reviewed in the Law7 group chat.
+
 One row per word this project uses in a specific sense. The file **points, it does not define**:
 the **Meaning** column paraphrases the document that owns the word, the **Defined by** column names
 that document, and **the owner wins whenever the two disagree**. A row that cannot name its owner
@@ -16,14 +18,18 @@ does not belong in §1–§3 — it belongs in §4, unresolved and visible.
 A project whose premise is *the authority is outside* may not paraphrase "entry into force" in its
 own words — that is the failure it exists to prevent. So a legal row names the **act**.
 
-## Two rules this file obeys
+## Three rules this file obeys
 
-1. **It does not carry numbers.** Counts of documents, codes, articles and vectors live in
-   [SCOPE.md](SCOPE.md) and nowhere else. A glossary that repeats a number becomes one more place
-   for it to drift — and the sentence forbidding that would itself become a number that drifts.
+1. **It carries no number that describes our own coverage.** Counts of documents, codes, articles,
+   tools, vectors, tests or rows live in [SCOPE.md](SCOPE.md) and nowhere else, so that they drift in
+   one place. The criterion is the frame of reference, not the size of the number: "22 codes" is a
+   count of ours and is forbidden here; a date, an act number, an article number, a version of a
+   standard or the year of a paper is part of someone else's object and is allowed.
 2. **A link that resolves to nothing is a bug**, not a style issue. Links are checked mechanically
    (§5). Anchors are deliberately not used: an anchor nobody has opened is the same bug as a URL
    nobody has opened.
+3. **Every row is self-contained.** "Same as above" is not a citation: a row must be readable and
+   checkable on its own, in any order.
 
 ---
 
@@ -108,14 +114,27 @@ that owns it.
 
 ## 5. How this file is checked
 
-- Every **Defined by** cell must match the citation form of its kind:
-  - **state** — *type + date + number + title*, or the literal `citation unresolved`;
-  - **outside document** — *name + version + URL*, or the literal `citation unresolved`;
+`scripts/tools/check_glossary.py` runs on this file (`uv run python scripts/tools/check_glossary.py docs/GLOSSARY.md`, also in the test suite). It checks **shape**, never truth or liveness:
+
+- Every **Defined by** cell must match the citation form of its owner:
+  - **the state** — *type + date + number + title*: the type written out (Federal Law, Federal
+    Constitutional Law, Presidential Decree, Government Decree), the date as `DD.MM.YYYY` or
+    `YYYY-MM-DD`, the number as `No. …`, the title in quotation marks; for the Constitution and the
+    codes an article reference (`art. N`) is required and the title is optional; or the literal
+    `citation unresolved`;
+  - **an outside document** — *name + version + URL*: the name must be one the checker knows and
+    the URL's host must be one of the known homes of that document (the two lists are data at the
+    top of the checker; a new standard is added there, not by loosening the rule); or the literal
+    `citation unresolved`;
   - **this repository** — a relative link that resolves in the repository, without an anchor.
-- A row that cannot produce its form moves to §4. That is the rule working, not the rule failing.
-- **Liveness of an official URL is not checkable here and is not promised**: which official links
-  survive five years is exactly what anchor reconnaissance measures. Until that answer exists, the
-  checker validates the **shape** of a citation, never that the link still opens. The four URLs in
-  §3 were fetched on 2026-09-14 and answered 200; that is a measurement, not a guarantee.
+- A row in §1 may not cite a repository document in place of an act. A row that cannot produce its
+  form moves to §4. That is the rule working, not the rule failing.
+- The **Meaning** column may not contain a count of our own coverage (rule 1): an integer followed
+  by a counted noun, an "N of M", a percentage, or a bare large number outside a citation is a
+  violation; digits inside dates, act and article numbers, versions and years of cited documents
+  are not.
+- **Liveness of a URL is not checked and is not promised.** Which official links survive is what
+  the anchor reconnaissance measures; the checker validates the form of a citation, never that the
+  link opens. The URLs in §3 answered on 2026-09-14; that is a measurement, not a guarantee.
 - **Numbers are checked where numbers live** — [SCOPE.md](SCOPE.md), re-derived by running the
   commands in it, never by reading this file.
