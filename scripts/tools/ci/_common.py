@@ -31,17 +31,57 @@ def run_cmd(cmd: Sequence[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(list(cmd), shell=(sys.platform == "win32"), **kwargs)
 
 
+# A note line attaches to the entry (node id / file path) on the line
+# directly above it, so an allowlist entry can carry the "linked issue/stage
+# note" the headers demand without inventing a second file:
+#
+#     scripts/test/x.py::test_y
+#     # ^ broken since migration 003, see audit/PLAN stage 3
+#
+# A plain "# ..." line is still just a comment and attaches to nothing.
+NOTE_PREFIX = "# ^"
+
+# Only [tsc-files] uses bare lines as data (the allowlisted file paths).
+# Under every other section a bare line is a typo -- most dangerously a node
+# id written below its [pytest] header instead of above it, where it would be
+# silently ignored rather than allowlisting anything -- so it is rejected.
+FREE_LINE_SECTIONS = frozenset({"tsc-files"})
+
+
+class AllowlistError(Exception):
+    """A known_failures.txt file could not be parsed.
+
+    Raised instead of guessing, because every ambiguity here fails open: a
+    misplaced node id allowlists nothing, an inline "# note" makes an id
+    match nothing, so the gate would go green for the wrong reason. Callers
+    print the message and exit 1.
+    """
+
+
 @dataclass
 class Section:
     name: str
     kv: dict = field(default_factory=dict)
     lines: list = field(default_factory=list)
+    notes: dict = field(default_factory=dict)  # line -> ["# ^ ..."] note lines
 
 
 @dataclass
 class Allowlist:
     entries: list  # preamble plain entries, in file order, before any [section]
     sections: dict  # section name -> Section
+    notes: dict = field(default_factory=dict)  # entry -> ["# ^ ..."] note lines
+
+
+def _reject_inline_comment(line: str, where: str) -> None:
+    if "#" in line:
+        bare = line.split("#")[0].strip()
+        raise AllowlistError(
+            f"{where}: entry {line!r} contains an inline '#'. Inline comments are "
+            f"not part of the format -- the whole line is the id/path, '#' and all, "
+            f"so it would match nothing. Put the note on the next line instead: "
+            f"{bare!r} on one line, then '# ^ your note here' on the next."
+        )
 
 
 def parse_allowlist(path: Path) -> Allowlist:
@@ -50,6 +90,7 @@ def parse_allowlist(path: Path) -> Allowlist:
     Format:
         # comment (ignored)
         <plain entry>            # e.g. a pytest node id or vitest test name
+        # ^ note about the entry directly above
         ...
         [section-name]
         key=value
@@ -58,29 +99,99 @@ def parse_allowlist(path: Path) -> Allowlist:
     Entries before the first ``[section]`` header are returned in
     ``entries``; the file is UTF-8 and tolerant of CRLF or LF line endings
     (``str.splitlines`` handles both).
+
+    Position is meaning: an entry belongs to the preamble only if it is
+    written *before* the first ``[section]`` header. Under a section only
+    ``key=value`` lines are read, except ``[tsc-files]`` where the bare
+    lines are the data.
+
+    A line starting with ``# ^`` is a note attached to the entry on the line
+    directly above it: it is kept out of ``entries``/``lines`` and returned
+    in ``notes`` so ``--generate`` can carry it forward with its entry.
+
+    Raises ``AllowlistError`` on a note with nothing above it to attach to,
+    an entry with an inline ``#``, or a bare line under a section that only
+    takes ``key=value``.
     """
     entries: list = []
+    notes: dict = {}
     sections: dict = {}
     current: Section | None = None
+    # The note list of the entry on the previous line, or None if the
+    # previous line was anything else (blank, comment, header, key=value).
+    open_notes: list | None = None
     if not path.exists():
-        return Allowlist(entries=entries, sections=sections)
+        return Allowlist(entries=entries, sections=sections, notes=notes)
     text = path.read_text(encoding="utf-8")
-    for raw_line in text.splitlines():
+    for lineno, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
+        where = f"{path}:{lineno}"
+        if line.startswith(NOTE_PREFIX):
+            if open_notes is None:
+                raise AllowlistError(
+                    f"{where}: note {line!r} has no entry to attach to. A "
+                    f"'# ^ ...' note must sit on the line directly below the "
+                    f"entry it annotates; use a plain '# ...' comment otherwise."
+                )
+            open_notes.append(line)
+            continue
         if not line or line.startswith("#"):
+            open_notes = None
             continue
         if line.startswith("[") and line.endswith("]"):
             name = line[1:-1].strip()
             current = sections.setdefault(name, Section(name=name))
+            open_notes = None
             continue
         if current is None:
+            _reject_inline_comment(line, where)
             entries.append(line)
-        elif "=" in line:
+            open_notes = notes.setdefault(line, [])
+            continue
+        if "=" in line:
             key, _, value = line.partition("=")
             current.kv[key.strip()] = value.strip()
-        else:
-            current.lines.append(line)
-    return Allowlist(entries=entries, sections=sections)
+            open_notes = None
+            continue
+        if current.name not in FREE_LINE_SECTIONS:
+            raise AllowlistError(
+                f"{where}: {line!r} under [{current.name}] is not a 'key=value' "
+                f"line. Only [tsc-files] takes bare lines; entries such as "
+                f"pytest/vitest ids belong above the first [section] header, not "
+                f"under one (under one they allowlist nothing)."
+            )
+        _reject_inline_comment(line, where)
+        current.lines.append(line)
+        open_notes = current.notes.setdefault(line, [])
+    return Allowlist(entries=entries, sections=sections, notes=notes)
+
+
+def rel_to_repo(path: Path) -> str:
+    """Repo-relative path for messages, falling back to the absolute path.
+
+    ``Path.relative_to`` raises for anything outside the repo (a temporary
+    allowlist in a test, a checkout symlinked elsewhere); a gate script must
+    not die while composing its own error message.
+    """
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def render_entries(entries, notes: dict) -> list[str]:
+    """Render entries in order, each followed by its ``# ^`` note lines.
+
+    ``--generate`` rewrites the whole file from a fresh measurement, so
+    without this every note would be erased on the next regeneration. Notes
+    for entries that are no longer in ``entries`` are simply not rendered:
+    the note dies with the id it annotated.
+    """
+    out: list[str] = []
+    for entry in entries:
+        out.append(entry)
+        out.extend(notes.get(entry, []))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -166,7 +277,7 @@ def render_other_sections(sections: dict, skip: set[str]) -> list[str]:
         out.append(f"[{name}]")
         for key, value in section.kv.items():
             out.append(f"{key}={value}")
-        out.extend(section.lines)
+        out.extend(render_entries(section.lines, section.notes))
     return out
 
 

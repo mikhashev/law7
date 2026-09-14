@@ -1,6 +1,7 @@
 version: 2
 
-# Policy: semver-major bumps are adopted deliberately, not automatically.
+# Policy set 2026-09-14: semver-major bumps are adopted deliberately, not
+# automatically.
 # A major version can change a dependency's behavior (breaking API changes)
 # or, for our dev-tooling deps (ruff, black, typescript), make the tool
 # itself stricter -- more lint rules enabled, new compiler diagnostics --
@@ -11,6 +12,27 @@ version: 2
 # known_failures.txt baseline (with its recorded tool `version=`) in that
 # same commit. Minor/patch updates continue to flow through Dependabot as
 # before.
+#
+# What this policy does NOT do: it is not a way to stay on an old major.
+# Per GitHub's docs the `ignore` option is marked as affecting security
+# updates as well as version updates -- "All options marked with a
+# [shield-check] icon also change how Dependabot creates pull requests for
+# security updates, except where `target-branch` is used"
+# (docs.github.com/en/code-security/dependabot/working-with-dependabot/
+# dependabot-options-reference), and "you can configure Dependabot to ignore
+# those dependencies when it opens pull requests for version updates and
+# security updates"
+# (docs.github.com/en/code-security/dependabot/dependabot-version-updates/
+# controlling-dependencies-updated). Note the contrast with `update-types`
+# under `allow`, which the same reference explicitly limits to version
+# updates ("update-types only affects version updates, not security
+# updates"); no such carve-out is documented for `update-types` under
+# `ignore`.
+#
+# So a semver-major *security* fix will NOT arrive as an automated PR here
+# either: this rule silences it too. Watch Dependabot alerts (the alert is
+# still raised; only the PR is suppressed) and bump the major by hand,
+# promptly, when one lands on a dependency we ship.
 
 updates:
   - package-ecosystem: "npm"

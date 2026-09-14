@@ -1,9 +1,15 @@
 # Stage 1 debt: get-statistics number-formatting assertions (Phase 7A).
 #
-# One vitest test id per line, formatted as:
+# One vitest test id per line, ABOVE the [vitest] header (an id written
+# under a section allowlists nothing), formatted as:
 #   relative/path/to/file.test.ts > describe block > ... > it name
-# '#' starts a comment. Remove an entry when the test is fixed; never add an
-# entry without a linked issue/stage note. See scripts/tools/ci/README.md.
+# A whole line starting with '#' is a comment; an inline '#' is rejected.
+# Attach the required issue/stage note on the line directly below the id:
+#   src/test/x.test.ts > suite > it name
+#   # ^ broken since migration 003, see audit/PLAN stage 3
+# Notes are carried forward by --generate and dropped with their id.
+# Remove an entry when the test is fixed; never add an entry without a
+# linked issue/stage note. See scripts/tools/ci/README.md.
 
 [vitest]
 version=2.1.9

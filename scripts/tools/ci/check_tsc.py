@@ -34,9 +34,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import (  # noqa: E402
     REPO_ROOT,
+    Allowlist,
+    AllowlistError,
     check_tool_version,
     get_tsc_version,
     parse_allowlist,
+    rel_to_repo,
+    render_entries,
     render_other_sections,
     run_cmd,
 )
@@ -70,19 +74,26 @@ def parse_errors(log_path: Path) -> list[str]:
     return files
 
 
-def write_allowlist(error_files: list[str], baseline: int, version: str) -> None:
+def write_allowlist(
+    error_files: list[str], baseline: int, version: str, existing: Allowlist
+) -> None:
     """Rewrite the ``[tsc-files]`` section in place, preserving the vitest
-    preamble entries that check_vitest.py --generate already wrote (comment
-    headers are not preserved by the parser, so run check_vitest.py's
-    --generate first if a fresh header is wanted).
+    preamble entries that check_vitest.py --generate already wrote, with
+    their ``# ^`` notes (plain comment headers are not preserved by the
+    parser, so run check_vitest.py's --generate first if a fresh header is
+    wanted).
+
+    ``[tsc-files]`` is the one section whose bare lines are data, so its
+    file paths can carry ``# ^`` notes too; a note for a file that no longer
+    errors is dropped along with the path.
     """
-    existing = parse_allowlist(ALLOWLIST_PATH)
-    lines = list(existing.entries)
+    lines = render_entries(existing.entries, existing.notes)
+    section = existing.sections.get("tsc-files")
+    file_notes = section.notes if section else {}
     lines.append("")
     lines.append("[tsc-files]")
     lines.append(f"version={version}")
-    for f in sorted(set(error_files)):
-        lines.append(f)
+    lines.extend(render_entries(sorted(set(error_files)), file_notes))
     lines.append(f"baseline={baseline}")
     lines.extend(render_other_sections(existing.sections, skip={"tsc-files"}))
     ALLOWLIST_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
@@ -111,6 +122,13 @@ def main() -> int:
     )
     args = ap.parse_args()
 
+    rel = rel_to_repo(ALLOWLIST_PATH)
+    try:
+        allow = parse_allowlist(ALLOWLIST_PATH)
+    except AllowlistError as exc:
+        print(f"tsc: malformed allowlist: {exc}")
+        return 1
+
     if args.tsc_log is not None:
         log_path = args.tsc_log
     else:
@@ -123,17 +141,14 @@ def main() -> int:
     running_version = args.override_version or get_tsc_version()
 
     if args.generate:
-        write_allowlist(error_files, total, running_version)
-        rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
+        write_allowlist(error_files, total, running_version, allow)
         print(
             f"Wrote version={running_version}, {len(set(error_files))} file(s), "
             f"baseline={total}, to {rel}"
         )
         return 0
 
-    allow = parse_allowlist(ALLOWLIST_PATH)
     section = allow.sections.get("tsc-files")
-    rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
 
     version_error = check_tool_version(section, running_version, "tsc", str(rel))
     if version_error:

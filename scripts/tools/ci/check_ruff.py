@@ -6,8 +6,14 @@ total number of findings grows past the ``baseline`` recorded under the
 ``[ruff]`` section of ``scripts/test/known_failures.txt``. This is a
 simple count gate (not a per-finding allowlist like pytest/vitest): ruff's
 ~200 pre-existing findings are lint debt, not correctness bugs, so any
-*new* finding pushing the count above the baseline fails the job, while
-fixing some findings (dropping the count) is always fine.
+*new* finding pushing the count above the baseline fails the job.
+
+The gate is two-sided: a count *below* the baseline fails as well. A
+baseline left above the real number is silent headroom -- it pre-approves
+that many future findings -- so paying debt down means lowering the
+baseline in the same commit that pays it. Being a count and not a
+fingerprint, this gate measures volume, not composition (see
+scripts/tools/ci/README.md).
 
 The recorded baseline is only meaningful for the ruff version it was
 measured with -- a ruff upgrade can add rules and inflate the finding
@@ -32,9 +38,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import (  # noqa: E402
     REPO_ROOT,
+    Allowlist,
+    AllowlistError,
     check_tool_version,
     get_ruff_version,
     parse_allowlist,
+    rel_to_repo,
+    render_entries,
     render_other_sections,
     run_cmd,
 )
@@ -59,9 +69,10 @@ def count_findings(json_report: Path) -> int:
     return len(data)
 
 
-def write_baseline(count: int, version: str) -> None:
-    existing = parse_allowlist(ALLOWLIST_PATH)
-    lines = list(existing.entries)
+def write_baseline(count: int, version: str, existing: Allowlist) -> None:
+    # The pytest node ids (and their "# ^" notes) live in the same file, above
+    # the first section header; carry them through untouched.
+    lines = render_entries(existing.entries, existing.notes)
     lines.append("")
     lines.append("[ruff]")
     lines.append(f"version={version}")
@@ -93,6 +104,13 @@ def main() -> int:
     )
     args = ap.parse_args()
 
+    rel = rel_to_repo(ALLOWLIST_PATH)
+    try:
+        allow = parse_allowlist(ALLOWLIST_PATH)
+    except AllowlistError as exc:
+        print(f"ruff: malformed allowlist: {exc}")
+        return 1
+
     if args.json_report is not None:
         json_report = args.json_report
     else:
@@ -104,14 +122,11 @@ def main() -> int:
     running_version = args.override_version or get_ruff_version()
 
     if args.generate:
-        write_baseline(count, running_version)
-        rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
+        write_baseline(count, running_version, allow)
         print(f"Wrote version={running_version} baseline={count} to {rel}")
         return 0
 
-    allow = parse_allowlist(ALLOWLIST_PATH)
     section = allow.sections.get("ruff")
-    rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
 
     version_error = check_tool_version(section, running_version, "ruff", str(rel))
     if version_error:
@@ -129,9 +144,11 @@ def main() -> int:
 
     if count < baseline:
         print(
-            f"ruff: warning - only {count} finding(s), below recorded "
-            f"baseline={baseline}; consider lowering the baseline."
+            f"ruff findings fell to {count}, baseline is {baseline} - lower the "
+            f"baseline in the same commit "
+            f"(uv run python scripts/tools/ci/check_ruff.py --generate)"
         )
+        return 1
 
     print(f"ruff: {count} finding(s) (baseline {baseline}, version {running_version}).")
     return 0

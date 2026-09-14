@@ -1,8 +1,14 @@
 # Stage 1 debt: mocks target Phase 7A shim modules
 #
-# One pytest node id (file::Class::test or file::test) per line.
-# '#' starts a comment. Remove an entry when the test is fixed; never add an
-# entry without a linked issue/stage note. See scripts/tools/ci/README.md.
+# One pytest node id (file::Class::test or file::test) per line, ABOVE the
+# [pytest] header -- an id written under a section allowlists nothing.
+# A whole line starting with '#' is a comment; an inline '#' is rejected.
+# Attach the required issue/stage note on the line directly below the id:
+#   scripts/test/x.py::test_y
+#   # ^ broken since migration 003, see audit/PLAN stage 3
+# Notes are carried forward by --generate and dropped with their id.
+# Remove an entry when the test is fixed; never add an entry without a
+# linked issue/stage note. See scripts/tools/ci/README.md.
 
 [pytest]
 version=8.4.2
