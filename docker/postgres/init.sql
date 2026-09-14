@@ -193,6 +193,37 @@ WHERE d.publish_date >= CURRENT_DATE - INTERVAL '30 days'
 ORDER BY d.publish_date DESC;
 
 -- =============================================================================
+-- Consolidated codes metadata (tracks base codes)
+-- Created here (before "Initial data") because the INSERT below populates it.
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS consolidated_codes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code VARCHAR(50) UNIQUE NOT NULL,  -- 'GK_RF', 'TK_RF', etc.
+  name VARCHAR(500) NOT NULL,  -- Full name
+  short_name VARCHAR(100),  -- Short name (ГК РФ, ТК РФ)
+  description TEXT,
+
+  -- Original publication info
+  original_eo_number VARCHAR(100),  -- Original law number
+  original_date DATE,  -- Original publication date
+  official_url TEXT,  -- Link to official publication
+
+  -- Consolidation status
+  last_amended_date DATE,  -- Date of most recent amendment
+  total_amendments INTEGER DEFAULT 0,  -- Total amendments applied
+  is_consolidated BOOLEAN DEFAULT FALSE,  -- Whether consolidation is complete
+  last_consolidated_at TIMESTAMP,  -- When last consolidation ran
+  source VARCHAR(50),  -- Where the base text came from (e.g. 'pravo.gov.ru', 'government.ru')
+
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_consolidated_codes_code ON consolidated_codes(code);
+CREATE INDEX IF NOT EXISTS idx_consolidated_codes_consolidated ON consolidated_codes(is_consolidated);
+CREATE INDEX IF NOT EXISTS idx_consolidated_codes_source ON consolidated_codes(source);
+
+-- =============================================================================
 -- Initial data
 -- =============================================================================
 
@@ -330,28 +361,8 @@ CREATE TABLE IF NOT EXISTS amendment_applications (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Consolidated codes metadata (tracks base codes)
-CREATE TABLE IF NOT EXISTS consolidated_codes (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  code VARCHAR(50) UNIQUE NOT NULL,  -- 'GK_RF', 'TK_RF', etc.
-  name VARCHAR(500) NOT NULL,  -- Full name
-  short_name VARCHAR(100),  -- Short name (ГК РФ, ТК РФ)
-  description TEXT,
-
-  -- Original publication info
-  original_eo_number VARCHAR(100),  -- Original law number
-  original_date DATE,  -- Original publication date
-  official_url TEXT,  -- Link to official publication
-
-  -- Consolidation status
-  last_amended_date DATE,  -- Date of most recent amendment
-  total_amendments INTEGER DEFAULT 0,  -- Total amendments applied
-  is_consolidated BOOLEAN DEFAULT FALSE,  -- Whether consolidation is complete
-  last_consolidated_at TIMESTAMP,  -- When last consolidation ran
-
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
+-- Note: consolidated_codes is created earlier, above "Initial data",
+-- since that section INSERTs into it.
 
 -- Indexes for consolidation tables
 CREATE INDEX IF NOT EXISTS idx_code_article_versions_code_article ON code_article_versions(code_id, article_number);
@@ -363,9 +374,6 @@ CREATE INDEX IF NOT EXISTS idx_amendment_applications_eo_number ON amendment_app
 CREATE INDEX IF NOT EXISTS idx_amendment_applications_code_id ON amendment_applications(code_id);
 CREATE INDEX IF NOT EXISTS idx_amendment_applications_status ON amendment_applications(status);
 CREATE INDEX IF NOT EXISTS idx_amendment_applications_date ON amendment_applications(amendment_date);
-
-CREATE INDEX IF NOT EXISTS idx_consolidated_codes_code ON consolidated_codes(code);
-CREATE INDEX IF NOT EXISTS idx_consolidated_codes_consolidated ON consolidated_codes(is_consolidated);
 
 -- Trigger for consolidated_codes updated_at
 CREATE TRIGGER update_consolidated_codes_updated_at BEFORE UPDATE ON consolidated_codes

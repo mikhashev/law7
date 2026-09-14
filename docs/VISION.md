@@ -136,9 +136,10 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for commit conventions and development
 ## Current Status
 
 ### Phase 1: Operational (Russia)
-- 157,730 documents indexed
-- All 16 major Russian legal codes imported
-- MCP server with 7 tools functional
+As of the 2026-02-11 snapshot (measured 2026-09-14):
+- 1,136,605 documents indexed
+- 22 of 23 consolidated Russian legal codes imported (KAS_RF pending)
+- MCP server with 13 tools functional
 - Sources: pravo.gov.ru, kremlin.ru, government.ru
 
 ### Phase 2: Planned (Global)

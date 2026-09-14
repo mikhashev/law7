@@ -114,7 +114,9 @@ verify_checksum() {
     if command -v sha256sum >/dev/null 2>&1; then
         log_info "Checking checksum..."
 
-        if sha256sum -c "$checksum_file" 2>/dev/null; then
+        # sha256sum records a bare filename (see backup.sh), so -c must be
+        # run with cwd set to the directory holding the checksum file.
+        if (cd "$(dirname "$checksum_file")" && sha256sum -c "$(basename "$checksum_file")") 2>/dev/null; then
             log_success "Checksum verification: PASSED"
         else
             log_error "Checksum verification: FAILED"

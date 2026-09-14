@@ -226,14 +226,25 @@ restore_postgresql() {
     docker exec ${POSTGRES_CONTAINER} psql -U ${POSTGRES_USER} -d postgres -c "DROP DATABASE IF EXISTS ${POSTGRES_DB};"
     docker exec ${POSTGRES_CONTAINER} psql -U ${POSTGRES_USER} -d postgres -c "CREATE DATABASE ${POSTGRES_DB};"
 
-    # Restore the database
+    # Restore the database.
+    # Note: pg_restore's parallel mode (-j) cannot read from standard input
+    # ("parallel restore from standard input is not supported"), so the dump
+    # must be a real file inside the container rather than piped via `-i`.
+    log_info "Copying dump into container..."
+    # MSYS_NO_PATHCONV avoids Git Bash on Windows mangling the container-side
+    # path (e.g. /tmp/law7.dump) into a Windows path before it reaches docker.
+    MSYS_NO_PATHCONV=1 docker cp "$dump_file" "${POSTGRES_CONTAINER}:/tmp/law7.dump"
+
     log_info "Restoring from dump (parallel, 4 jobs)..."
-    docker exec -i ${POSTGRES_CONTAINER} pg_restore \
+    docker exec ${POSTGRES_CONTAINER} pg_restore \
         -U ${POSTGRES_USER} \
         -d ${POSTGRES_DB} \
         -j 4 \
         --no-owner \
-        --no-acl < "$dump_file"
+        --no-acl /tmp/law7.dump
+
+    log_info "Cleaning up dump copy inside container..."
+    MSYS_NO_PATHCONV=1 docker exec ${POSTGRES_CONTAINER} rm -f /tmp/law7.dump
 
     log_success "PostgreSQL restore completed."
 }

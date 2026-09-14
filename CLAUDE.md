@@ -118,23 +118,29 @@ npm run build
 
 ### TypeScript MCP Server (`/src`)
 
-The MCP server exposes 7 tools for AI assistants:
+The MCP server exposes 13 tools for AI assistants (as of the 2026-02-11 snapshot, measured 2026-09-14):
 
 | Tool | Purpose |
 |------|---------|
-| `query-laws` | Semantic/keyword search for legal documents |
+| `query-laws` | Search individual legal documents (laws, decrees, resolutions, court decisions) via full-text/semantic search |
 | `get-law` | Retrieve specific document by eo_number |
 | `list-countries` | List supported countries (currently Russia) |
 | `get-statistics` | Get database statistics |
 | `get-code-structure` | Get structure of consolidated legal codes |
-| `get-article-version` | Get article version at specific date |
-| `trace-amendment-history` | Track amendment history of articles |
+| `get-article-version` | Get article version at specific date from a consolidated code |
+| `trace-amendment-history` | Track amendment history of a consolidated code or specific article |
+| `search-regional-law` | Search regional Russian legislation (laws, decrees, resolutions, regional codes) |
+| `get-regional-koap-article` | Get a specific article from a regional Administrative Code (KoAP) |
+| `search-court-decisions` | Search Supreme Court and Constitutional Court decisions |
+| `get-supreme-court-resolution` | Get a specific Supreme Court plenary resolution |
+| `search-interpretations` | Search official ministry interpretations (letters, guidance) |
+| `fetch-and-ingest` | Fetch legal documents from external sources (kremlin.ru) and ingest into the database |
 
 Key files:
 - `src/index.ts` - MCP server entry point
 - `src/server.ts` - MCP server setup with tool registration
 - `src/config.ts` - Configuration (reads from .env)
-- `src/db/` - Database clients (PostgreSQL, Qdrant, Redis)
+- `src/db/` - Database clients (PostgreSQL, Qdrant)
 - `src/tools/` - Individual MCP tool implementations
 - `src/models/` - TypeScript interfaces for data models
 
@@ -159,20 +165,30 @@ The consolidation system (`scripts/consolidation/`) tracks historical versions o
 - Maintains audit trail in `amendment_applications` table
 - Supports querying article versions at specific dates
 
+**Status** (as of the 2026-02-11 snapshot, measured 2026-09-14): `amendment_applications` is currently
+empty (0 rows) — the consolidation engine has not yet been run on real data, so article version
+history has not been generated. `code_article_versions` (6,232 rows) was populated by the base code
+import, not by the consolidation engine.
+
 ### Database Schema
 
 **PostgreSQL** (`docker/postgres/init.sql`):
 - `countries` - Multi-country support (currently Russia)
 - `documents` - Main legal documents metadata
 - `document_content` - Extracted text content
-- `document_chunks` - Text chunks for embeddings
 - `code_article_versions` - Historical article snapshots
-- `amendment_applications` - Consolidation audit log
+- `amendment_applications` - Consolidation audit log (currently empty, see above)
+- `consolidated_codes` - Metadata for the 23 consolidated legal codes
+- `official_interpretations` - Ministry/agency letters and guidance
+- `court_decisions`, `courts`, `court_decision_article_references` - Supreme/Constitutional Court decisions
+- `regional_codes`, `regional_code_articles`, `regional_documents` - Regional legislation (currently empty)
 - `document_types`, `signatory_authorities`, `publication_blocks`, `categories` - Reference tables
+
+Note: there is no `document_chunks` table — text chunks for embeddings live only in Qdrant.
 
 **Qdrant**: Stores 768-dimensional embeddings using deepvk/USER2-base model
 
-**Redis**: Caching layer for API responses and search results
+**Redis**: Provisioned in docker-compose but not used by the MCP server yet
 
 ## Key Dependencies
 
@@ -253,7 +269,7 @@ uv add package-name
 ## Two-Phase Development
 
 **Phase 1 (Current)**: Russia-only implementation with centralized architecture.
-- 157,730 documents from official Russian sources
+- 1,136,605 documents from official Russian sources (as of the 2026-02-11 snapshot, measured 2026-09-14)
 - MCP server for chat-based AI assistants (Claude, ChatGPT, Grok)
 
 **Phase 2 (Planned)**: Global multi-country support with decentralized architecture.
@@ -292,7 +308,7 @@ The system currently supports **23 consolidated Russian legal codes**:
 | KAS_RF | Кодекс административного судопроизводства | Administrative Procedure Code | kremlin.ru |
 
 **Total**: 23 code identifiers (19 unique codes, some split into parts like Civil Code and Tax Code)
-**Status**: 22 codes imported (~6,700 articles), KAS_RF pending import
+**Status**: 22 codes imported (6,232 articles, as of the 2026-02-11 snapshot measured 2026-09-14), KAS_RF pending import
 
 ## When to Update CLAUDE.md
 

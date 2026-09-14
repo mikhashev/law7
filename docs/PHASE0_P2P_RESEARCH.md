@@ -31,7 +31,7 @@
 - Every Law7 user must:
   1. Install Docker
   2. Start 3 containers (PostgreSQL, Qdrant, Redis)
-  3. Parse 157,730 Russian documents (takes hours)
+  3. Parse 1,136,605 Russian documents (as of the 2026-02-11 snapshot, measured 2026-09-14) (takes hours)
   4. Run daily sync to fetch + parse new documents
 - **Every user does this independently** - massive duplication of effort
 
@@ -88,7 +88,7 @@ class DocumentSync(ABC):
 ### 2. Actual Data Requirements
 
 From Phase 7's Russia scraper:
-- Document count: 157,730 documents
+- Document count: 1,136,605 documents (as of the 2026-02-11 snapshot, measured 2026-09-14)
 - Daily updates: X new documents per day (measured in Phase 7)
 - Update size: Y MB per day (measured in Phase 7)
 - Full dataset: Z GB (measured in Phase 7)
@@ -257,7 +257,7 @@ For each implementation, evaluate against actual requirements from Phase 7:
 
 | Criterion | Weight | How to Measure |
 |-----------|--------|---------------|
-| **Manifest publish time** | HIGH | Benchmark: time to publish 157K document list |
+| **Manifest publish time** | HIGH | Benchmark: time to publish 1.1M+ document list |
 | **Document publish time** | HIGH | Benchmark: time to publish 1MB document |
 | **Get time** | HIGH | Benchmark: time to retrieve manifest and documents |
 | **Bandwidth efficiency** | HIGH | Measure bytes transferred for daily sync |

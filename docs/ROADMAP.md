@@ -2,19 +2,21 @@
 
 ## Strategic Vision
 
-This document outlines the development roadmap for Law7. For the complete strategic plan for the consolidation engine, see `.claude/plans/snuggly-nibbling-lecun.md`.
+This document outlines the development roadmap for Law7.
 
 ### Phase 1: Current Implementation (Russia) ✅
 
 **Status**: Operational
 
-- **Documents**: 157,730 Russian legal documents (2022-2026)
+As of the 2026-02-11 snapshot (measured 2026-09-14):
+
+- **Documents**: 1,136,605 Russian legal documents (2019-2026)
 - **Sources**:
   - [pravo.gov.ru](http://pravo.gov.ru/) - Official Russian legal publication portal (primary)
   - [kremlin.ru](http://kremlin.ru/) - Presidential decrees, Constitution
   - [government.ru](http://government.ru/) - Government resolutions, procedure codes
-- **Codes**: All 16 major Russian legal codes imported
-- **MCP Tools**: 7 tools for legal document queries
+- **Codes**: 22 of 23 consolidated Russian legal codes imported (KAS_RF pending)
+- **MCP Tools**: 13 tools for legal document queries
 
 See [docs/DATA_PIPELINE.md](DATA_PIPELINE.md) for complete data pipeline documentation.
 
@@ -55,8 +57,6 @@ PostgreSQL + Qdrant (embeddings per article)
 - Amendment tracking: See which law changed which article
 - Official source: Uses free pravo.gov.ru data (2011-present)
 
-**See**: [`.claude/plans/snuggly-nibbling-lecun.md`](.claude/plans/snuggly-nibbling-lecun.md) for complete technical specifications.
-
 ### Phase 3: Future Vision (Global)
 
 **Status**: Planned - See [VISION.md](VISION.md)
@@ -73,19 +73,19 @@ PostgreSQL + Qdrant (embeddings per article)
 
 ### [MVP] Complete Testing Flow
 - [x] Fix content sync to run without embeddings
-- [x] Build MCP server (7 tools implemented: query-laws, get-law, list-countries, get-statistics, get-code-structure, get-article-version, trace-amendment-history)
+- [x] Build MCP server (13 tools implemented, see CLAUDE.md for the full list)
 - [x] Test content parsing from API metadata (test script: scripts/test_content_parsing.py)
-- [x] Database has 156,000 documents (2022-2026) - sufficient for MVP testing
-- [x] All 16 legal codes imported (Constitution + 15 codes)
+- [x] Database has 1,136,605 documents (2019-2026, as of the 2026-02-11 snapshot) - sufficient for MVP testing
+- [x] 22 of 23 legal codes imported (KAS_RF pending)
 - [ ] **Run content sync + embeddings** - See [docs/DATA_PIPELINE.md](docs/DATA_PIPELINE.md)
   ```bash
   # Quick test with 100 docs
   uv run python scripts/sync/content_sync.py --limit 100 --recreate-collection
 
-  # Full run with 156k docs
+  # Full run with 1.1M+ docs
   uv run python scripts/sync/content_sync.py --recreate-collection
   ```
-- [ ] Test all 7 MCP tools with real data
+- [ ] Test all 13 MCP tools with real data
 
 ### Data Coverage Check
 - [x] **COMPLETED**: Add consolidation engine infrastructure
@@ -203,7 +203,7 @@ Question: Can we use https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B or from o
   - **Proposed solution**: Reverse pagination - start from last page (oldest docs) and move forward
   - **Filtering needed**: Consider document type, block, or other filters to reduce scope
   - **Notes**:
-    - 156k documents already synced (2022-2026) - sufficient for current testing
+    - 1,136,605 documents already synced (2019-2026, as of the 2026-02-11 snapshot) - sufficient for current testing
     - API response: `itemsTotalCount: 1594246`, `pagesTotalCount: 53142`
     - See `data/raw/Documents.json` for API structure
 - [ ] Add incremental sync (only new documents)

@@ -50,7 +50,7 @@ All documents are:
 # 1. Start Docker services (PostgreSQL, Qdrant, Redis)
 cd docker && docker-compose up -d
 
-# 2. Import base legal codes (~6 hours, ~6,700 articles across 23 codes)
+# 2. Import base legal codes (~6 hours, 6,232 articles across 22 of 23 codes; KAS_RF pending)
 uv run python scripts/import/import_base_code.py --all
 
 # 3. Build and start the MCP server
@@ -59,12 +59,12 @@ npm start
 ```
 
 **What you get after these 3 steps:**
-- ✅ 23 consolidated Russian legal codes (Civil, Labor, Criminal, etc.)
+- ✅ 22 of 23 consolidated Russian legal codes (Civil, Labor, Criminal, etc.; KAS_RF pending)
 - ✅ `get-code-structure` - Browse code structure and articles
 - ✅ `get-article-version` - Get specific article text
 - ✅ `get-statistics` - Database statistics
 
-**Optional: For full semantic search** across 157k+ amendment documents:
+**Optional: For full semantic search** across 1.1M+ amendment documents:
 ```bash
 # Step 4: Fetch amendment documents from API (~6 hours for 2022-2026)
 uv run python scripts/sync/initial_sync.py --start-date 2022-01-01
@@ -84,15 +84,17 @@ The data pipeline consists of three main stages:
 
 **Quick Start Order** (recommended for first-time users):
 ```
-Step 1: Import Base Codes (import_base_code.py)  → Import 23 legal codes (~6 hours, ~6,700 articles)
+Step 1: Import Base Codes (import_base_code.py)  → Import 22 of 23 legal codes (~6 hours, 6,232 articles)
 Step 2: Document Sync (initial_sync.py)         → Fetch amendment documents from API (partial: ~6h, full: 100+h)
 Step 3: Content + Embeddings (content_sync.py)   → Extract text and generate vectors (~2-3 hours)
 ```
 
 **Note**: Step 1 (Import Base Codes) is independent and can be run alone to get
-the foundational legal codes (~6,700 articles across 23 codes like Civil, Labor, Criminal).
-Steps 2-3 add amendment document coverage (partial 2022-2026: ~157k documents in ~6h,
-full 2011-present: ~1.6M documents in 100+ hours).
+the foundational legal codes (6,232 articles across 22 of 23 codes like Civil, Labor, Criminal;
+KAS_RF pending). Steps 2-3 add amendment document coverage (a partial sync over a few years
+can take ~6h; the current production database has 1,136,605 documents covering 2019-2026,
+as of the 2026-02-11 snapshot, measured 2026-09-14; a full 2011-present sync covers
+~1.6M documents and takes 100+ hours).
 
 ## Prerequisites
 
@@ -107,8 +109,8 @@ docker-compose ps
 
 ## Step 1: Import Base Legal Codes (Quick Start - Do This First!)
 
-> **Quick Start**: Run this first to get the 19 core legal codes that most users
-> need (Civil Code, Labor Code, Criminal Code, etc.). This is completely independent
+> **Quick Start**: Run this first to get the 22 (of 23) core legal codes that most users
+> need (Civil Code, Labor Code, Criminal Code, etc.; KAS_RF pending). This is completely independent
 > from the document sync steps below.
 
 ```bash
@@ -222,9 +224,9 @@ uv run python scripts/sync/initial_sync.py --block government
 uv run python scripts/sync/initial_sync.py --daily
 ```
 
-**Current Status:**
-- ✅ 1,134,985 documents synced (2019-2026)
-- ✅ 47,871 documents with full text content (4.22% coverage)
+**Current Status** (as of the 2026-02-11 snapshot, measured 2026-09-14):
+- ✅ 1,136,605 documents synced (2019-2026)
+- ✅ 47,871 documents with full text content (4.2% coverage)
 - ⚠️ Date range filtering has issues - see TODO.md
 - 📊 Document distribution by year:
   - 2026: 10,998 (partial year)
@@ -307,8 +309,8 @@ The script includes automatic memory cleanup:
 uv run python scripts/sync/content_sync.py --recreate-collection
 
 # You'll see output like:
-# [DOC 1/156000] Постановление Правительства... (0 chars, type: xxx)
-# [DOC 2/156000] Указ Президента... (0 chars, type: xxx)
+# [DOC 1/1136605] Постановление Правительства... (0 chars, type: xxx)
+# [DOC 2/1136605] Указ Президента... (0 chars, type: xxx)
 # ...
 # [MEMORY] After 0 documents: 1234.5 MB
 # Batch complete. Total chunks: 1234

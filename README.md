@@ -127,7 +127,7 @@ What was the Russian Labor Code article 80 text on January 1, 2024?
 
 ## Available Tools
 
-Law7 MCP provides the following tools that AI assistants can use:
+Law7 MCP provides the following 13 tools that AI assistants can use (as of the 2026-02-11 snapshot, measured 2026-09-14):
 
 | Tool | Description |
 |------|-------------|
@@ -138,6 +138,12 @@ Law7 MCP provides the following tools that AI assistants can use:
 | `get-code-structure` | Get structure of consolidated legal codes |
 | `get-article-version` | Get article version at specific date |
 | `trace-amendment-history` | Track amendment history of articles |
+| `search-regional-law` | Search regional Russian legislation (laws, decrees, resolutions, regional codes) |
+| `get-regional-koap-article` | Get a specific article from a regional Administrative Code (KoAP) |
+| `search-court-decisions` | Search Supreme Court and Constitutional Court decisions |
+| `get-supreme-court-resolution` | Get a specific Supreme Court plenary resolution |
+| `search-interpretations` | Search official ministry interpretations (letters, guidance) |
+| `fetch-and-ingest` | Fetch legal documents from external sources (kremlin.ru) and ingest into the database |
 
 ## Architecture
 
@@ -162,16 +168,18 @@ Python Pipeline → PostgreSQL + Qdrant → TypeScript MCP Server → AI
 
 **Status**: Operational
 
-- **Documents**: 1,134,985 Russian legal documents (2019-2026)
-- **Content Coverage**: 47,871 documents with full text (4.22%)
-- **Code Articles**: 6,232 articles across 22 consolidated legal codes
+As of the 2026-02-11 snapshot (measured 2026-09-14):
+
+- **Documents**: 1,136,605 Russian legal documents (2019-2026)
+- **Content Coverage**: 47,871 documents with full text (4.2%)
+- **Code Articles**: 6,232 articles across 22 of 23 consolidated legal codes
 - **Embeddings**: 265 semantic vectors (test data - full embeddings pending)
 - **Database Backup**: [Download (218 MB)](https://drive.google.com/file/d/1DPLpFpuwUZbLZEGo2TxnCAcLRdb2V1aD/view?usp=sharing) - `SHA256: 70a1d8fc6b27b67ad7f12f03f017d02b5f68a0c895447159039800965895f8b2`
 - **Sources**:
   - [pravo.gov.ru](http://pravo.gov.ru/) - Official Russian legal publication portal (primary)
   - [kremlin.ru](http://kremlin.ru/) - Presidential decrees, Constitution
   - [government.ru](http://government.ru/) - Government resolutions, procedure codes
-- **Codes**: All 19 consolidated Russian legal codes imported:
+- **Codes**: 22 of 23 consolidated Russian legal codes imported:
   - Constitution (KONST_RF)
   - Civil Code (4 parts: GK_RF, GK_RF_2/3/4)
   - Criminal Code (UK_RF)
@@ -179,12 +187,13 @@ Python Pipeline → PostgreSQL + Qdrant → TypeScript MCP Server → AI
   - Tax Code (2 parts: NK_RF, NK_RF_2)
   - Family, Housing, Land codes (SK_RF, ZhK_RF, ZK_RF)
   - Administrative Code (KoAP_RF)
-  - Procedure Codes (GPK_RF, APK_RF, UPK_RF, KAS_RF)
+  - Procedure Codes (GPK_RF, APK_RF, UPK_RF)
   - Budget, Urban Planning, Criminal Executive codes (BK_RF, GRK_RF, UIK_RF)
   - Environmental codes (VZK_RF - Air, VDK_RF - Water, LK_RF - Forest)
+  - Pending: Administrative Procedure Code (KAS_RF) - not yet imported
 
 **Quick Start Pipeline:**
-1. **Import Base Codes** (~6 hours) - 19 core legal codes (~5,000 articles) - Civil, Labor, Criminal, etc.
+1. **Import Base Codes** (~6 hours) - 22 of 23 core legal codes (6,232 articles) - Civil, Labor, Criminal, etc.
 2. **Document Sync** (partial: ~6h, full: 100+h) - Amendment documents from official sources (optional)
 3. **Content + Embeddings** (~2-3 hours) - Extract text and generate vectors (optional)
 
@@ -285,7 +294,7 @@ npx @modelcontextprotocol/inspector node dist/index.js
 
 ## License
 
-AGPL-3.0 - see [LICENSE](LICENSE) for details.
+AGPL-3.0 with an additional permission under section 7 - see [LICENSE](LICENSE) for the full license text and [LICENSE-EXCEPTION.md](LICENSE-EXCEPTION.md) for the additional permission (linking exception).
 
 This means:
 - Source code is freely available

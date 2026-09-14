@@ -20,7 +20,7 @@ The law7 project uses three databases:
 |----------|---------|------------|---------------|
 | PostgreSQL | Legal documents metadata and content | Yes | ~217 MB |
 | Qdrant | Vector embeddings for semantic search | Yes | ~2-300 MB |
-| Redis | Query cache (1-hour TTL) | No | - |
+| Redis | Provisioned in docker-compose but not used by the MCP server yet | No | - |
 
 **Total backup size**: ~218 MB compressed (current)
 
@@ -32,11 +32,14 @@ The law7 project uses three databases:
 
 ### Database Statistics (Current Backup)
 
+As of the 2026-02-11 snapshot (measured 2026-09-14):
+
 | Metric | Count |
 |--------|-------|
-| Total Documents | 1,134,985 |
-| Documents with Content | 47,871 (4.22%) |
-| Code Articles | 6,232 (22 consolidated codes) |
+| Total Documents | 1,136,605 |
+| Documents with Content | 47,871 (4.2%) |
+| Code Articles | 6,232 (22 of 23 consolidated codes; KAS_RF pending) |
+| Amendment Applications | 0 (consolidation engine not yet run on real data) |
 | Qdrant Vectors | 265 (test data - full embeddings pending) |
 | Years Covered | 2019-2026 |
 
@@ -167,9 +170,9 @@ cd docker
 
 | Metric        | Count    |
 |---------------|----------|
-| Documents     | 157730   |
-| Code Articles | 8118     |
-| Qdrant Vectors| 77819    |
+| Documents     | 1136605  |
+| Code Articles | 6232     |
+| Qdrant Vectors| 265      |
 ```
 
 ## Restoring from Backup
@@ -214,10 +217,11 @@ cd ..
 #### 3. Configure Environment
 
 ```bash
-# Copy from backup or from repository
+# docker-compose.yml reads its Postgres credentials from docker/.env
+# (see docker/.env.example, the canonical template for that file).
+cp .env.example .env
+# OR restore the credentials shipped inside the backup itself:
 cp backups/law7_backup_*/.env.example .env
-# OR
-cp ../.env.example .env
 
 # Edit if needed (nano, vim, or any text editor)
 nano .env
@@ -258,15 +262,15 @@ The script will:
 ```bash
 # Check PostgreSQL document count
 docker exec law7-postgres psql -U law7 -d law7 -c "SELECT COUNT(*) FROM documents;"
-# Expected: ~157730
+# Expected: ~1136605 (as of the 2026-02-11 snapshot, measured 2026-09-14)
 
 # Check Qdrant collection info
 curl http://localhost:6333/collections/law_chunks
-# Expected: "points": 77819, "vectors": 75401
+# Expected: "points": 265, "vectors": 265 (test data - full embeddings pending)
 
 # Check code article versions
 docker exec law7-postgres psql -U law7 -d law7 -c "SELECT COUNT(*) FROM code_article_versions;"
-# Expected: ~8118
+# Expected: ~6232
 ```
 
 ### Confirm Prompt
@@ -460,7 +464,12 @@ If you only need to restore PostgreSQL:
 ```bash
 docker exec law7-postgres psql -U law7 -d postgres -c "DROP DATABASE IF EXISTS law7;"
 docker exec law7-postgres psql -U law7 -d postgres -c "CREATE DATABASE law7;"
-docker exec -i law7-postgres pg_restore -U law7 -d law7 -j 4 --no-owner --no-acl < postgresql/law7.dump
+
+# pg_restore -j (parallel) cannot read from standard input, so copy the dump
+# into the container first (see docker/restore.sh):
+docker cp postgresql/law7.dump law7-postgres:/tmp/law7.dump
+docker exec law7-postgres pg_restore -U law7 -d law7 -j 4 --no-owner --no-acl /tmp/law7.dump
+docker exec law7-postgres rm -f /tmp/law7.dump
 ```
 
 ### Export to SQL (Plain Text)
