@@ -48,7 +48,7 @@
     "@types/dotenv": "^6.1.1",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.16.0",
-    "typescript": "^5.7.2",
+    "typescript": "^7.0.2",
     "vitest": "^2.1.8"
   }
 }
