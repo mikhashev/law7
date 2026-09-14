@@ -203,8 +203,10 @@ CREATE TABLE IF NOT EXISTS consolidated_codes (
   -- 'NK_RF' + 'NK_RF_2' are two). Each part carries its own founding act below.
   -- The ELI-style work/expression split is PENDING; nothing is renamed yet.
   code VARCHAR(50) UNIQUE NOT NULL,  -- 'GK_RF', 'TK_RF', etc.
-  name VARCHAR(500) NOT NULL,  -- Full name
-  short_name VARCHAR(100),  -- Short name (ГК РФ, ТК РФ)
+  name VARCHAR(500) NOT NULL,  -- Official name of the code (or of its part), spelled as in the
+                               -- founding act title: «Гражданский кодекс Российской Федерации (часть вторая)»
+  short_name VARCHAR(100),  -- DISPLAY LABEL ONLY - NOT A KEY AND NOT UNIQUE: «ВК РФ» is the label of
+                            -- both VZK_RF (Воздушный) and VDK_RF (Водный). Look up by `code`.
   description TEXT,
 
   -- Founding official act (see migrations/003_consolidated_codes_official_acts.sql)
@@ -213,15 +215,35 @@ CREATE TABLE IF NOT EXISTS consolidated_codes (
                                     -- (146-ФЗ is both NK_RF 31.07.1998 and GK_RF_3 26.11.2001).
   original_date DATE,  -- Date the act is cited by: signing/promulgation date in "от DD.MM.YYYY № N".
                        -- NOT the Duma adoption date, NOT the publication date, NOT the in-force date.
-  official_url TEXT,  -- Canonical official URL: publication.pravo.gov.ru when the act has an eoNumber
-                      -- (2011+), otherwise the ИПС «Законодательство России» record at pravo.gov.ru/proxy/ips/
-  founding_act_title TEXT,  -- Full official designation of the founding act, in Russian
-  founding_act_eo_number VARCHAR(100),  -- Real portal eoNumber (works with /file/pdf?eoNumber= and
-                                        -- /file/sig?eoNumber=); NULL for pre-2011 acts the portal does not cover
+  official_url TEXT,  -- Canonical official URL. WHAT IT POINTS AT VARIES BY ROW - always read
+                      -- official_url_kind first (see migrations/004_consolidated_codes_referents.sql).
+  official_url_kind VARCHAR(20)
+    CHECK (official_url_kind IN ('act_publication', 'code_record')),
+    -- Which OBJECT official_url identifies:
+    --   'act_publication' = publication.pravo.gov.ru publication of the adopting ACT (only KAS_RF);
+    --   'code_record'     = ИПС record of the CODE, i.e. the current consolidated TEXT, not the act.
+  ips_document_type VARCHAR(50),  -- Document-type classification of the object at official_url, as its
+                                  -- source states it: 'Кодекс' / 'Конституция' / 'Федеральный закон'.
+                                  -- A CLASSIFICATION, not the type of the adopting act.
+  founding_act_title TEXT,  -- Official designation of the ADOPTING ACT, one convention for every row:
+                            -- "<тип акта> от DD.MM.YYYY № <номер> «<официальное наименование кодекса>»",
+                            -- тип акта = Федеральный закон (Федеральный конституционный закон where
+                            -- applicable); date/number identical to original_date/original_eo_number.
+                            -- NOT the ИПС document type. KONST_RF is the sole exception (adopted by
+                            -- referendum, no type/date/number): «Конституция Российской Федерации».
+  founding_act_eo_number VARCHAR(100),  -- Real portal eoNumber OF THE FOUNDING ACT (works with
+                                        -- /file/pdf?eoNumber= and /file/sig?eoNumber=). NULL for every
+                                        -- pre-2011 act. An eoNumber of a consolidated TEXT goes to
+                                        -- official_text_eo_number, never here.
+  official_text_eo_number VARCHAR(100),  -- Portal eoNumber of an officially published CONSOLIDATED TEXT,
+                                         -- if any - A DIFFERENT OBJECT FROM THE FOUNDING ACT. Only
+                                         -- KONST_RF: 0001202007040001, the official text with the 2020
+                                         -- amendments, published 04.07.2020.
   founding_act_status VARCHAR(20) DEFAULT 'unknown'
     CHECK (founding_act_status IN ('known', 'none', 'unknown')),
-    -- known = verified against an official source; none = the act legitimately has no number
-    -- (Constitution, adopted by referendum); unknown = not established yet
+    -- known = adopting act verified against an official source; none = there is no adopting act with a
+    -- number (Constitution, adopted by referendum); unknown = not established yet. Says nothing about
+    -- official_text_eo_number, which describes a different object.
   founding_act_published_at DATE,  -- Earliest official publication date verifiable with an exact day
                                    -- (Российская газета / Парламентская газета / pravo.gov.ru).
                                    -- ИПС dates СЗ РФ only by year+issue, so СЗ РФ may precede this.
@@ -244,9 +266,44 @@ CREATE INDEX IF NOT EXISTS idx_consolidated_codes_source ON consolidated_codes(s
 -- A founding act is identified by (number, date), never by the number alone.
 -- Permits the expected 146-ФЗ collision (NK_RF 1998 vs GK_RF_3 2001), blocks a
 -- genuine duplicate of the same act on two rows.
+-- NO JURISDICTION COLUMN IS INCLUDED because consolidated_codes has none - the
+-- table is implicitly Russia-only. Stage 6 debt: a second country adapter MUST
+-- add a jurisdiction column and extend this index, otherwise two countries' acts
+-- sharing a number and a date will collide here.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_consolidated_codes_founding_act
   ON consolidated_codes (original_eo_number, original_date)
   WHERE original_eo_number IS NOT NULL;
+
+-- Same comments a migrated database carries, so a clean install is not poorer in
+-- metadata than an upgraded one. Full rationale: migrations 003 and 004.
+COMMENT ON COLUMN consolidated_codes.code IS
+  'Identifier that currently mixes a whole code (UK_RF) with a PART of a code (GK_RF/GK_RF_2/3/4 = one code, four founding acts; NK_RF/NK_RF_2 = one code, two). ELI-style work/expression split is pending.';
+COMMENT ON COLUMN consolidated_codes.name IS
+  'Official name of the code (or of its part) in Russian, spelled as in the founding act title, e.g. «Гражданский кодекс Российской Федерации (часть вторая)».';
+COMMENT ON COLUMN consolidated_codes.original_eo_number IS
+  'Number of the founding act (e.g. 51-ФЗ), not a portal eoNumber. Federal law numbers restart every year, so always key lookups on (original_eo_number, original_date): 146-ФЗ is both NK_RF (31.07.1998) and GK_RF_3 (26.11.2001).';
+COMMENT ON COLUMN consolidated_codes.original_date IS
+  'Date the founding act is cited by: the signing/promulgation date in "от DD.MM.YYYY № N" - NOT the Duma adoption date, NOT the publication date (see founding_act_published_at), NOT the in-force date. For KONST_RF: the 12.12.1993 referendum date.';
+COMMENT ON COLUMN consolidated_codes.founding_act_status IS
+  'known = adopting act verified against an official source; none = there is no adopting act with a number (KONST_RF: the Constitution was adopted by the all-Russian referendum of 12.12.1993); unknown = not established yet. Says nothing about official_text_eo_number, which describes a different object.';
+COMMENT ON COLUMN consolidated_codes.founding_act_published_at IS
+  'Earliest official publication date verifiable with an exact day (Российская газета / Парламентская газета / pravo.gov.ru). ИПС dates СЗ РФ only by year+issue, so an СЗ РФ publication may precede this by a few days.';
+COMMENT ON COLUMN consolidated_codes.short_name IS
+  'DISPLAY LABEL ONLY - NOT A KEY AND NOT UNIQUE. «ВК РФ» is the label of both VZK_RF (Воздушный кодекс) and VDK_RF (Водный кодекс). Look codes up by `code`, never by short_name.';
+COMMENT ON COLUMN consolidated_codes.official_url IS
+  'Canonical official URL for this row. WHAT IT POINTS AT VARIES BY ROW - read official_url_kind before using it: act_publication = the official publication of the adopting act itself; code_record = the ИПС record of the CODE, which shows the current consolidated text, not the act as enacted. Every URL verified HTTP 200 on 2026-09-14.';
+COMMENT ON COLUMN consolidated_codes.official_url_kind IS
+  'Which object official_url identifies. act_publication = publication.pravo.gov.ru publication of the adopting act (only KAS_RF: the portal covers 2011+ and no earlier founding act has an eoNumber). code_record = pravo.gov.ru/proxy/ips/ record of the code, i.e. the current consolidated text. Never assume: a row without this value has an unclassified URL.';
+COMMENT ON COLUMN consolidated_codes.ips_document_type IS
+  'Document-type classification of the object at official_url, as its source states it: Кодекс (ИПС record of a code), Конституция (ИПС record of the Constitution), Федеральный закон (portal publication of an adopting act). This is a CLASSIFICATION, not the type of the adopting act - the act that enacted the Civil Code part one is a федеральный закон even though the ИПС record is typed Кодекс.';
+COMMENT ON COLUMN consolidated_codes.founding_act_title IS
+  'Official designation of the ADOPTING ACT, one convention for every row: "<act type> от DD.MM.YYYY № <number> «<official name of the code>»", act type = Федеральный закон (Федеральный конституционный закон where applicable), date and number identical to original_date/original_eo_number, name as the act itself designates the code - e.g. «Федеральный закон от 30.11.1994 № 51-ФЗ «Гражданский кодекс Российской Федерации (часть первая)»». NOT the ИПС document type (see ips_document_type). KONST_RF is the sole exception: adopted by referendum, no act type, date or number in the title - «Конституция Российской Федерации».';
+COMMENT ON COLUMN consolidated_codes.founding_act_eo_number IS
+  'Real publication.pravo.gov.ru eoNumber OF THE FOUNDING ACT (usable with /file/pdf?eoNumber= and /file/sig?eoNumber=). NULL for every pre-2011 act: official publication on the portal is normatively in force from 2011 (per the portal description; the enabling act was not re-verified here) and the earliest records found by search on 2026-09-14 were from 2012 - either way the portal holds no artifact for them. An eoNumber of a consolidated TEXT belongs in official_text_eo_number, not here.';
+COMMENT ON COLUMN consolidated_codes.official_text_eo_number IS
+  'Portal eoNumber of an officially published CONSOLIDATED TEXT of the code, if any - a DIFFERENT OBJECT from the founding act. Only KONST_RF has one: 0001202007040001, the official text with the amendments approved in the all-Russian vote of 01.07.2020, published 04.07.2020. Never put this value in founding_act_eo_number: the Constitution has no founding act with a number.';
+COMMENT ON INDEX uq_consolidated_codes_founding_act IS
+  'A founding act is identified by (number, date), never by the number alone: 146-ФЗ is both NK_RF (31.07.1998) and GK_RF_3 (26.11.2001). NO JURISDICTION COLUMN IS INCLUDED because consolidated_codes has none - the table is implicitly Russia-only. Stage 6 debt: a second country adapter MUST add a jurisdiction column and extend this index, otherwise two countries'' acts sharing a number and date will collide.';
 
 -- =============================================================================
 -- Initial data
@@ -260,40 +317,59 @@ ON CONFLICT (code) DO NOTHING;
 -- Insert consolidated codes metadata.
 --
 -- Founding acts verified 2026-09-14 against ИПС «Законодательство России»
--- (pravo.gov.ru/proxy/ips/) and the publication portal API; see
+-- (pravo.gov.ru/proxy/ips/) and the publication portal; see
 -- migrations/003_consolidated_codes_official_acts.sql for the method and for the
--- history of the errors this table used to carry (parts 2-4 of the Civil Code and
--- part 2 of the Tax Code copied part one's act, UK_RF held the Duma adoption date,
--- NK_RF held a wrong year, official_url was empty everywhere).
+-- history of the errors this table used to carry, and
+-- migrations/004_consolidated_codes_referents.sql for the referent fixes below.
 --
--- Only KAS_RF has a portal eoNumber for its founding act; the portal starts in
--- 2011, so every pre-2011 act is anchored to its ИПС record instead. KONST_RF
--- carries 0001202007040001 - the 04.07.2020 portal publication of the official
--- text as amended, the only portal artifact holding the current Constitution.
-INSERT INTO consolidated_codes (code, name, short_name, description, original_eo_number, original_date, official_url, founding_act_title, founding_act_eo_number, founding_act_status, founding_act_published_at) VALUES
-  ('KONST_RF', 'Конституция Российской Федерации', 'К РФ', 'Основной закон Российской Федерации', NULL, '1993-12-12', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102027595', 'Конституция Российской Федерации (принята всенародным голосованием 12.12.1993; официальный текст с изменениями, одобренными в ходе общероссийского голосования 01.07.2020, опубликован 04.07.2020)', '0001202007040001', 'none', '1993-12-25'),
-  ('GK_RF', 'Гражданский кодекс Российской Федерации', 'ГК РФ', 'Основной нормативный акт, регулирующий гражданские правоотношения', '51-ФЗ', '1994-11-30', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102033239', 'Кодекс Российской Федерации от 30.11.1994 № 51-ФЗ «Гражданский кодекс Российской Федерации. Часть первая»', NULL, 'known', '1994-12-08'),
-  ('GK_RF_2', 'Гражданский кодекс Российской Федерации часть 2', 'ГК РФ ч.2', 'Часть 2 Гражданского кодекса', '14-ФЗ', '1996-01-26', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102039276', 'Кодекс Российской Федерации от 26.01.1996 № 14-ФЗ «Гражданский кодекс Российской Федерации. Часть вторая»', NULL, 'known', '1996-02-10'),
-  ('GK_RF_3', 'Гражданский кодекс Российской Федерации часть 3', 'ГК РФ ч.3', 'Часть 3 Гражданского кодекса', '146-ФЗ', '2001-11-26', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102073578', 'Кодекс Российской Федерации от 26.11.2001 № 146-ФЗ «Гражданский кодекс Российской Федерации. Часть третья»', NULL, 'known', '2001-11-28'),
-  ('GK_RF_4', 'Гражданский кодекс Российской Федерации часть 4', 'ГК РФ ч.4', 'Часть 4 Гражданского кодекса', '230-ФЗ', '2006-12-18', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102110716', 'Кодекс Российской Федерации от 18.12.2006 № 230-ФЗ «Гражданский кодекс Российской Федерации. Часть четвертая»', NULL, 'known', '2006-12-21'),
-  ('UK_RF', 'Уголовный кодекс Российской Федерации', 'УК РФ', 'Основной нормативный акт, определяющий преступность и наказуемость деяний', '63-ФЗ', '1996-06-13', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102041891', 'Кодекс Российской Федерации от 13.06.1996 № 63-ФЗ «Уголовный кодекс Российской Федерации»', NULL, 'known', '1996-06-19'),
-  ('TK_RF', 'Трудовой кодекс Российской Федерации', 'ТК РФ', 'Кодекс законов, регулирующих трудовые отношения', '197-ФЗ', '2001-12-30', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102074279', 'Кодекс Российской Федерации от 30.12.2001 № 197-ФЗ «Трудовой кодекс Российской Федерации»', NULL, 'known', '2001-12-31'),
-  ('NK_RF', 'Налоговый кодекс Российской Федерации часть 1', 'НК РФ', 'Часть 1 Налогового кодекса', '146-ФЗ', '1998-07-31', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102054722', 'Кодекс Российской Федерации от 31.07.1998 № 146-ФЗ «Налоговый кодекс Российской Федерации. Часть первая»', NULL, 'known', '1998-08-06'),
-  ('NK_RF_2', 'Налоговый кодекс Российской Федерации часть 2', 'НК РФ ч.2', 'Часть 2 Налогового кодекса', '117-ФЗ', '2000-08-05', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102067058', 'Кодекс Российской Федерации от 05.08.2000 № 117-ФЗ «Налоговый кодекс Российской Федерации. Часть вторая»', NULL, 'known', '2000-08-10'),
-  ('KoAP_RF', 'Кодекс Российской Федерации об административных правонарушениях', 'КоАП РФ', 'Основной нормативный акт, регулирующий административную ответственность', '195-ФЗ', '2001-12-30', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102074277', 'Кодекс Российской Федерации от 30.12.2001 № 195-ФЗ «Кодекс Российской Федерации об административных правонарушениях»', NULL, 'known', '2001-12-31'),
-  ('SK_RF', 'Семейный кодекс Российской Федерации', 'СК РФ', 'Кодекс, регулирующий семейные отношения', '223-ФЗ', '1995-12-29', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102038925', 'Кодекс Российской Федерации от 29.12.1995 № 223-ФЗ «Семейный кодекс Российской Федерации»', NULL, 'known', '1996-01-27'),
-  ('ZhK_RF', 'Жилищный кодекс Российской Федерации', 'ЖК РФ', 'Кодекс, регулирующий жилищные отношения', '188-ФЗ', '2004-12-29', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102090645', 'Кодекс Российской Федерации от 29.12.2004 № 188-ФЗ «Жилищный кодекс Российской Федерации»', NULL, 'known', '2005-01-12'),
-  ('ZK_RF', 'Земельный кодекс Российской Федерации', 'ЗК РФ', 'Основной нормативный акт, регулирующий земельные отношения', '136-ФЗ', '2001-10-25', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102073184', 'Кодекс Российской Федерации от 25.10.2001 № 136-ФЗ «Земельный кодекс Российской Федерации»', NULL, 'known', '2001-10-30'),
-  ('APK_RF', 'Арбитражный процессуальный кодекс Российской Федерации', 'АПК РФ', 'Кодекс, регулирующий судопроизводство в арбитражных судах', '95-ФЗ', '2002-07-24', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102079219', 'Кодекс Российской Федерации от 24.07.2002 № 95-ФЗ «Арбитражный процессуальный кодекс Российской Федерации»', NULL, 'known', '2002-07-27'),
-  ('GPK_RF', 'Гражданский процессуальный кодекс Российской Федерации', 'ГПК РФ', 'Кодекс, регулирующий судопроизводство в судах общей юрисдикции', '138-ФЗ', '2002-11-14', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102078828', 'Кодекс Российской Федерации от 14.11.2002 № 138-ФЗ «Гражданский процессуальный кодекс Российской Федерации»', NULL, 'known', '2002-11-20'),
-  ('UPK_RF', 'Уголовно-процессуальный кодекс Российской Федерации', 'УПК РФ', 'Кодекс, регулирующий уголовное судопроизводство', '174-ФЗ', '2001-12-18', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102073942', 'Кодекс Российской Федерации от 18.12.2001 № 174-ФЗ «Уголовно-процессуальный кодекс Российской Федерации»', NULL, 'known', '2001-12-22'),
-  ('BK_RF', 'Бюджетный кодекс Российской Федерации', 'БК РФ', 'Кодекс, регулирующий бюджетные отношения', '145-ФЗ', '1998-07-31', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102054721', 'Кодекс Российской Федерации от 31.07.1998 № 145-ФЗ «Бюджетный кодекс Российской Федерации»', NULL, 'known', '1998-08-12'),
-  ('GRK_RF', 'Градостроительный кодекс Российской Федерации', 'ГрК РФ', 'Кодекс, регулирующий градостроительную деятельность', '190-ФЗ', '2004-12-29', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102090643', 'Кодекс Российской Федерации от 29.12.2004 № 190-ФЗ «Градостроительный кодекс Российской Федерации»', NULL, 'known', '2004-12-30'),
-  ('UIK_RF', 'Уголовно-исполнительный кодекс Российской Федерации', 'УИК РФ', 'Кодекс, регулирующий исполнение уголовных наказаний', '1-ФЗ', '1997-01-08', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102045146', 'Кодекс Российской Федерации от 08.01.1997 № 1-ФЗ «Уголовно-исполнительный кодекс Российской Федерации»', NULL, 'known', '1997-01-16'),
-  ('VZK_RF', 'Воздушный кодекс Российской Федерации', 'ВК РФ', 'Кодекс, регулирующий использование воздушного пространства', '60-ФЗ', '1997-03-19', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102046246', 'Кодекс Российской Федерации от 19.03.1997 № 60-ФЗ «Воздушный кодекс Российской Федерации»', NULL, 'known', '1997-03-26'),
-  ('VDK_RF', 'Водный кодекс Российской Федерации', 'ВК РФ', 'Кодекс, регулирующий водные отношения', '74-ФЗ', '2006-06-03', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102107048', 'Кодекс Российской Федерации от 03.06.2006 № 74-ФЗ «Водный кодекс Российской Федерации»', NULL, 'known', '2006-06-08'),
-  ('LK_RF', 'Лесной кодекс Российской Федерации', 'ЛК РФ', 'Кодекс, регулирующий лесные отношения', '200-ФЗ', '2006-12-04', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102110364', 'Кодекс Российской Федерации от 04.12.2006 № 200-ФЗ «Лесной кодекс Российской Федерации»', NULL, 'known', '2006-12-08'),
-  ('KAS_RF', 'Кодекс административного судопроизводства Российской Федерации', 'КАС РФ', 'Кодекс, регулирующий административное судопроизводство', '21-ФЗ', '2015-03-08', 'http://publication.pravo.gov.ru/document/0001201503090041', 'Федеральный закон от 08.03.2015 № 21-ФЗ «Кодекс административного судопроизводства Российской Федерации»', '0001201503090041', 'known', '2015-03-09')
+-- THREE DIFFERENT OBJECTS live in these columns - never conflate them:
+--   * the ADOPTING ACT: founding_act_title, original_eo_number, original_date,
+--     founding_act_eo_number, founding_act_published_at;
+--   * what official_url points at, stated by official_url_kind: either that act's
+--     official publication ('act_publication' - only KAS_RF) or the ИПС record of
+--     the CODE, i.e. its current consolidated text ('code_record' - 22 rows);
+--   * an officially published CONSOLIDATED TEXT: official_text_eo_number. Only
+--     KONST_RF has one (0001202007040001, the text with the amendments approved
+--     on 01.07.2020, published 04.07.2020). It is NOT a founding act - KONST_RF
+--     has none, the Constitution was adopted by referendum on 12.12.1993.
+--
+-- ONE title convention for all 23 rows: "<тип акта> от DD.MM.YYYY № <номер>
+-- «<официальное наименование кодекса>»", тип акта = Федеральный закон
+-- (Федеральный конституционный закон where applicable). «Кодекс» is the ИПС
+-- classification and lives in ips_document_type, not in the title. KONST_RF is
+-- the sole exception: «Конституция Российской Федерации», no type/date/number.
+--
+-- Only KAS_RF has a portal eoNumber for its founding act. Official publication on
+-- publication.pravo.gov.ru is normatively in force from 2011 (per the portal's own
+-- description; the enabling act was not re-verified here), and the earliest records
+-- found by search on 2026-09-14 were from 2012 - either way no pre-2011 act has a
+-- portal artifact, so those 22 rows are anchored to their ИПС record instead.
+INSERT INTO consolidated_codes (
+  code, name, short_name, description, original_eo_number, original_date, official_url, official_url_kind, ips_document_type, founding_act_title, founding_act_eo_number, official_text_eo_number, founding_act_status, founding_act_published_at
+) VALUES
+  ('KONST_RF', 'Конституция Российской Федерации', 'Конституция', 'Основной закон Российской Федерации', NULL, '1993-12-12', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102027595', 'code_record', 'Конституция', 'Конституция Российской Федерации', NULL, '0001202007040001', 'none', '1993-12-25'),
+  ('GK_RF', 'Гражданский кодекс Российской Федерации (часть первая)', 'ГК РФ', 'Основной нормативный акт, регулирующий гражданские правоотношения', '51-ФЗ', '1994-11-30', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102033239', 'code_record', 'Кодекс', 'Федеральный закон от 30.11.1994 № 51-ФЗ «Гражданский кодекс Российской Федерации (часть первая)»', NULL, NULL, 'known', '1994-12-08'),
+  ('GK_RF_2', 'Гражданский кодекс Российской Федерации (часть вторая)', 'ГК РФ ч.2', 'Часть 2 Гражданского кодекса', '14-ФЗ', '1996-01-26', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102039276', 'code_record', 'Кодекс', 'Федеральный закон от 26.01.1996 № 14-ФЗ «Гражданский кодекс Российской Федерации (часть вторая)»', NULL, NULL, 'known', '1996-02-10'),
+  ('GK_RF_3', 'Гражданский кодекс Российской Федерации (часть третья)', 'ГК РФ ч.3', 'Часть 3 Гражданского кодекса', '146-ФЗ', '2001-11-26', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102073578', 'code_record', 'Кодекс', 'Федеральный закон от 26.11.2001 № 146-ФЗ «Гражданский кодекс Российской Федерации (часть третья)»', NULL, NULL, 'known', '2001-11-28'),
+  ('GK_RF_4', 'Гражданский кодекс Российской Федерации (часть четвертая)', 'ГК РФ ч.4', 'Часть 4 Гражданского кодекса', '230-ФЗ', '2006-12-18', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102110716', 'code_record', 'Кодекс', 'Федеральный закон от 18.12.2006 № 230-ФЗ «Гражданский кодекс Российской Федерации (часть четвертая)»', NULL, NULL, 'known', '2006-12-21'),
+  ('UK_RF', 'Уголовный кодекс Российской Федерации', 'УК РФ', 'Основной нормативный акт, определяющий преступность и наказуемость деяний', '63-ФЗ', '1996-06-13', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102041891', 'code_record', 'Кодекс', 'Федеральный закон от 13.06.1996 № 63-ФЗ «Уголовный кодекс Российской Федерации»', NULL, NULL, 'known', '1996-06-19'),
+  ('TK_RF', 'Трудовой кодекс Российской Федерации', 'ТК РФ', 'Кодекс законов, регулирующих трудовые отношения', '197-ФЗ', '2001-12-30', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102074279', 'code_record', 'Кодекс', 'Федеральный закон от 30.12.2001 № 197-ФЗ «Трудовой кодекс Российской Федерации»', NULL, NULL, 'known', '2001-12-31'),
+  ('NK_RF', 'Налоговый кодекс Российской Федерации (часть первая)', 'НК РФ', 'Часть 1 Налогового кодекса', '146-ФЗ', '1998-07-31', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102054722', 'code_record', 'Кодекс', 'Федеральный закон от 31.07.1998 № 146-ФЗ «Налоговый кодекс Российской Федерации (часть первая)»', NULL, NULL, 'known', '1998-08-06'),
+  ('NK_RF_2', 'Налоговый кодекс Российской Федерации (часть вторая)', 'НК РФ ч.2', 'Часть 2 Налогового кодекса', '117-ФЗ', '2000-08-05', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102067058', 'code_record', 'Кодекс', 'Федеральный закон от 05.08.2000 № 117-ФЗ «Налоговый кодекс Российской Федерации (часть вторая)»', NULL, NULL, 'known', '2000-08-10'),
+  ('KoAP_RF', 'Кодекс Российской Федерации об административных правонарушениях', 'КоАП РФ', 'Основной нормативный акт, регулирующий административную ответственность', '195-ФЗ', '2001-12-30', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102074277', 'code_record', 'Кодекс', 'Федеральный закон от 30.12.2001 № 195-ФЗ «Кодекс Российской Федерации об административных правонарушениях»', NULL, NULL, 'known', '2001-12-31'),
+  ('SK_RF', 'Семейный кодекс Российской Федерации', 'СК РФ', 'Кодекс, регулирующий семейные отношения', '223-ФЗ', '1995-12-29', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102038925', 'code_record', 'Кодекс', 'Федеральный закон от 29.12.1995 № 223-ФЗ «Семейный кодекс Российской Федерации»', NULL, NULL, 'known', '1996-01-27'),
+  ('ZhK_RF', 'Жилищный кодекс Российской Федерации', 'ЖК РФ', 'Кодекс, регулирующий жилищные отношения', '188-ФЗ', '2004-12-29', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102090645', 'code_record', 'Кодекс', 'Федеральный закон от 29.12.2004 № 188-ФЗ «Жилищный кодекс Российской Федерации»', NULL, NULL, 'known', '2005-01-12'),
+  ('ZK_RF', 'Земельный кодекс Российской Федерации', 'ЗК РФ', 'Основной нормативный акт, регулирующий земельные отношения', '136-ФЗ', '2001-10-25', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102073184', 'code_record', 'Кодекс', 'Федеральный закон от 25.10.2001 № 136-ФЗ «Земельный кодекс Российской Федерации»', NULL, NULL, 'known', '2001-10-30'),
+  ('APK_RF', 'Арбитражный процессуальный кодекс Российской Федерации', 'АПК РФ', 'Кодекс, регулирующий судопроизводство в арбитражных судах', '95-ФЗ', '2002-07-24', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102079219', 'code_record', 'Кодекс', 'Федеральный закон от 24.07.2002 № 95-ФЗ «Арбитражный процессуальный кодекс Российской Федерации»', NULL, NULL, 'known', '2002-07-27'),
+  ('GPK_RF', 'Гражданский процессуальный кодекс Российской Федерации', 'ГПК РФ', 'Кодекс, регулирующий судопроизводство в судах общей юрисдикции', '138-ФЗ', '2002-11-14', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102078828', 'code_record', 'Кодекс', 'Федеральный закон от 14.11.2002 № 138-ФЗ «Гражданский процессуальный кодекс Российской Федерации»', NULL, NULL, 'known', '2002-11-20'),
+  ('UPK_RF', 'Уголовно-процессуальный кодекс Российской Федерации', 'УПК РФ', 'Кодекс, регулирующий уголовное судопроизводство', '174-ФЗ', '2001-12-18', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102073942', 'code_record', 'Кодекс', 'Федеральный закон от 18.12.2001 № 174-ФЗ «Уголовно-процессуальный кодекс Российской Федерации»', NULL, NULL, 'known', '2001-12-22'),
+  ('BK_RF', 'Бюджетный кодекс Российской Федерации', 'БК РФ', 'Кодекс, регулирующий бюджетные отношения', '145-ФЗ', '1998-07-31', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102054721', 'code_record', 'Кодекс', 'Федеральный закон от 31.07.1998 № 145-ФЗ «Бюджетный кодекс Российской Федерации»', NULL, NULL, 'known', '1998-08-12'),
+  ('GRK_RF', 'Градостроительный кодекс Российской Федерации', 'ГрК РФ', 'Кодекс, регулирующий градостроительную деятельность', '190-ФЗ', '2004-12-29', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102090643', 'code_record', 'Кодекс', 'Федеральный закон от 29.12.2004 № 190-ФЗ «Градостроительный кодекс Российской Федерации»', NULL, NULL, 'known', '2004-12-30'),
+  ('UIK_RF', 'Уголовно-исполнительный кодекс Российской Федерации', 'УИК РФ', 'Кодекс, регулирующий исполнение уголовных наказаний', '1-ФЗ', '1997-01-08', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102045146', 'code_record', 'Кодекс', 'Федеральный закон от 08.01.1997 № 1-ФЗ «Уголовно-исполнительный кодекс Российской Федерации»', NULL, NULL, 'known', '1997-01-16'),
+  ('VZK_RF', 'Воздушный кодекс Российской Федерации', 'ВК РФ', 'Кодекс, регулирующий использование воздушного пространства', '60-ФЗ', '1997-03-19', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102046246', 'code_record', 'Кодекс', 'Федеральный закон от 19.03.1997 № 60-ФЗ «Воздушный кодекс Российской Федерации»', NULL, NULL, 'known', '1997-03-26'),
+  ('VDK_RF', 'Водный кодекс Российской Федерации', 'ВК РФ', 'Кодекс, регулирующий водные отношения', '74-ФЗ', '2006-06-03', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102107048', 'code_record', 'Кодекс', 'Федеральный закон от 03.06.2006 № 74-ФЗ «Водный кодекс Российской Федерации»', NULL, NULL, 'known', '2006-06-08'),
+  ('LK_RF', 'Лесной кодекс Российской Федерации', 'ЛК РФ', 'Кодекс, регулирующий лесные отношения', '200-ФЗ', '2006-12-04', 'http://pravo.gov.ru/proxy/ips/?docbody=&nd=102110364', 'code_record', 'Кодекс', 'Федеральный закон от 04.12.2006 № 200-ФЗ «Лесной кодекс Российской Федерации»', NULL, NULL, 'known', '2006-12-08'),
+  ('KAS_RF', 'Кодекс административного судопроизводства Российской Федерации', 'КАС РФ', 'Кодекс, регулирующий административное судопроизводство', '21-ФЗ', '2015-03-08', 'http://publication.pravo.gov.ru/document/0001201503090041', 'act_publication', 'Федеральный закон', 'Федеральный закон от 08.03.2015 № 21-ФЗ «Кодекс административного судопроизводства Российской Федерации»', '0001201503090041', NULL, 'known', '2015-03-09')
 ON CONFLICT (code) DO NOTHING;
 
 -- Insert publication blocks (from API sample data)
