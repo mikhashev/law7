@@ -19,7 +19,7 @@
 
 | Term | Meaning | Defined by |
 |---|---|---|
-| **ELI** | An identifier standard. | the ELI standard; https://data.europa.eu/eli/eli-spec |
+| **ELI** | An identifier standard. | ELI ontology -- https://data.europa.eu/eli/eli-spec |
 
 ## 4. Words that have no owner yet
 

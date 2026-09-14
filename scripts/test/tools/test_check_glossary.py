@@ -115,6 +115,40 @@ def test_act_citation_missing_title_is_flagged():
     assert any("No. 5-FZ" in m and "missing its quoted title" in m for m in messages), messages
 
 
+def test_second_citation_segment_invalid_is_flagged():
+    # A cell may hold several ';'-separated citations; the first segment
+    # here is a well-formed act citation, but the second is not (no
+    # number) -- it must be caught on its own, not waved through because
+    # the first segment already carries the row.
+    path = FIXTURES_DIR / "bad_segment_second_invalid" / "GLOSSARY.md"
+    messages = _violation_messages(path)
+    assert any(
+        "no recognized citation form" in m and "Presidential Decree 23.05.1996" in m
+        for m in messages
+    ), messages
+
+
+def test_decree_of_the_president_written_out_is_accepted():
+    # "Decree of the President of the Russian Federation" (and the shorter
+    # "Decree of the President") is the actual written-out wording the
+    # glossary uses for a presidential decree citation and must be
+    # accepted like "Presidential Decree".
+    path = FIXTURES_DIR / "good_decree_of_president" / "GLOSSARY.md"
+    violations, _ = check_glossary(path, path.parent)
+    assert violations == [], "\n".join(f"{v.line}: {v.message}" for v in violations)
+
+
+def test_abbreviated_act_type_fz_of_is_rejected():
+    # "FZ of ..." is an abbreviated act type, not the written-out "Federal
+    # Law of ..." -- it must be rejected explicitly, not silently accepted
+    # via the Code + art. path.
+    path = FIXTURES_DIR / "bad_abbreviated_act_type" / "GLOSSARY.md"
+    messages = _violation_messages(path)
+    assert any(
+        "abbreviated act type" in m and "'FZ of'" in m and "write it out" in m for m in messages
+    ), messages
+
+
 def test_standard_cited_with_foreign_host_is_flagged():
     path = FIXTURES_DIR / "bad_standard_foreign_host" / "GLOSSARY.md"
     messages = _violation_messages(path)
@@ -134,6 +168,8 @@ def test_standard_cited_with_foreign_host_is_flagged():
         "bad_small_count_number",
         "bad_missing_act_title",
         "bad_standard_foreign_host",
+        "bad_segment_second_invalid",
+        "bad_abbreviated_act_type",
     ],
 )
 def test_bad_fixtures_cli_exits_one(fixture_name):

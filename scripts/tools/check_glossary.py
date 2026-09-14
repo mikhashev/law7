@@ -268,12 +268,42 @@ STANDARD_URL_HOSTS: dict[str, list[str]] = {
     "CLML": ["legislation.gov.uk", "github.com/legislation"],
 }
 
+# Written-out act types accepted in form (b). Data, not code: a new accepted
+# spelling is added here, not by loosening the regex. The "Decree of the
+# President/Government" phrasings are the actual wording the glossary uses
+# (it does not append "of the Russian Federation" before the date); both the
+# qualified and unqualified spellings are listed explicitly so either reads
+# as accepted on its own, without relying on one being a substring of the
+# other.
 ACT_TYPES_FULL = [
     "Federal Constitutional Law",
     "Federal Law",
     "Presidential Decree",
     "Government Decree",
+    "Decree of the President of the Russian Federation",
+    "Decree of the President",
+    "Decree of the Government of the Russian Federation",
+    "Decree of the Government",
 ]
+
+# Abbreviated act-type markers that are explicitly rejected in place of the
+# written-out name above (form (b) requires the type spelled out). Maps the
+# abbreviation to the full type it stands for, for the violation message.
+# Data, not code: add an abbreviation here to start rejecting it.
+ACT_TYPE_ABBREVIATIONS: dict[str, str] = {
+    "FZ of": "Federal Law",
+}
+_ABBREV_TYPE_RES = {
+    abbrev: re.compile(r"\b" + re.escape(abbrev) + r"\b") for abbrev in ACT_TYPE_ABBREVIATIONS
+}
+
+
+def find_abbreviated_types(segment: str) -> list[str]:
+    """Return the abbreviated act-type markers (e.g. ``FZ of``) found in
+    ``segment``. Their presence is itself a violation -- an abbreviation is
+    never accepted in place of the written-out type name."""
+    return [abbrev for abbrev, rx in _ABBREV_TYPE_RES.items() if rx.search(segment)]
+
 
 # The accepted date forms in a citation: DD.MM.YYYY, and ISO YYYY-MM-DD as an
 # accepted alternative.
@@ -322,6 +352,83 @@ def segment_has_empty_title(segment: str) -> bool:
     return False
 
 
+_QUOTE_PAIRS = {'"': '"', "\xab": "\xbb", "“": "”"}
+
+
+def split_defined_by_segments(cell: str) -> list[str]:
+    """Split a ``Defined by`` cell into citation segments on ``;``, ignoring
+    any ``;`` that falls inside a quoted title («…», "…", "…"), a markdown
+    link's ``(url)``, or a bare ``<url>`` autolink -- so a semicolon inside
+    an act's title or a URL never fractures one citation into two.
+
+    A cell may legitimately hold several citations (e.g. one act for
+    publication, a second for entry into force); each segment returned here
+    is checked independently by ``evaluate_defined_by``.
+    """
+    segments: list[str] = []
+    current: list[str] = []
+    quote_close: str | None = None
+    paren_depth = 0
+    angle_depth = 0
+    for ch in cell:
+        if quote_close is not None:
+            current.append(ch)
+            if ch == quote_close:
+                quote_close = None
+            continue
+        if ch in _QUOTE_PAIRS:
+            quote_close = _QUOTE_PAIRS[ch]
+            current.append(ch)
+            continue
+        if ch == "(":
+            paren_depth += 1
+            current.append(ch)
+            continue
+        if ch == ")" and paren_depth > 0:
+            paren_depth -= 1
+            current.append(ch)
+            continue
+        if ch == "<":
+            angle_depth += 1
+            current.append(ch)
+            continue
+        if ch == ">" and angle_depth > 0:
+            angle_depth -= 1
+            current.append(ch)
+            continue
+        if ch == ";" and paren_depth == 0 and angle_depth == 0:
+            segments.append("".join(current))
+            current = []
+            continue
+        current.append(ch)
+    segments.append("".join(current))
+    return [s.strip() for s in segments if s.strip()]
+
+
+def segment_looks_like_citation(segment: str) -> bool:
+    """True if ``segment`` carries any marker that makes it *look like* a
+    citation -- a date, a ``No.``, an ``art.``, an act-type word (written
+    out or abbreviated), a URL, or a markdown link. Plain connective text
+    inside a cell (e.g. ``see §3 `ELI` ``) carries none of these and is
+    ignored rather than required to independently cite anything.
+    """
+    if _DATE_ANY_RE.search(segment):
+        return True
+    if _NUMBER_RE.search(segment):
+        return True
+    if _ART_RE.search(segment):
+        return True
+    if any(t in segment for t in ACT_TYPES_FULL):
+        return True
+    if find_abbreviated_types(segment):
+        return True
+    if _URL_RE.search(segment):
+        return True
+    if LINK_RE.search(segment):
+        return True
+    return False
+
+
 def find_missing_act_titles(cell: str) -> list[str]:
     """Form (b), title requirement: a state-authority act citation (Federal
     Law / Federal Constitutional Law / Presidential Decree / Government
@@ -333,7 +440,7 @@ def find_missing_act_titles(cell: str) -> list[str]:
     Returns the act-number strings (e.g. ``No. 5-FZ``) that have no title
     anywhere in the cell.
     """
-    segments = [s.strip() for s in cell.split(";") if s.strip()] or [cell.strip()]
+    segments = split_defined_by_segments(cell) or [cell.strip()]
     has_title_by_number: dict[str, bool] = {}
     order: list[str] = []
     for seg in segments:
@@ -420,17 +527,84 @@ class RowCheck:
     empty_title: bool = False
     missing_titles: list = field(default_factory=list)
     standard_host_problems: list = field(default_factory=list)
+    segment_violations: list = field(default_factory=list)
+    segment_details: list = field(default_factory=list)
 
 
-def evaluate_defined_by(cell: str, base_dir: Path, self_path: Path) -> RowCheck:
+def evaluate_segment(segment: str, base_dir: Path, self_path: Path) -> set:
+    """The subset of {a, b, c, d} that ``segment`` alone satisfies."""
+    forms: set = set()
+    if segment_matches_act_citation(segment):
+        forms.add("b")
+    if has_citation_unresolved(segment):
+        forms.add("c")
+    if cell_matches_standard_citation(segment):
+        forms.add("d")
+    for _line, _text, url in find_links([segment]):
+        ok, _reason = resolve_link(url, base_dir, self_path)
+        if ok:
+            forms.add("a")
+    return forms
+
+
+def evaluate_defined_by(cell: str, section_num: int, base_dir: Path, self_path: Path) -> RowCheck:
+    """Evaluate a ``Defined by`` cell.
+
+    A cell is split into citation segments on ``;`` (``split_defined_by_
+    segments``). Every segment that looks like a citation
+    (``segment_looks_like_citation``) must independently satisfy one
+    accepted form for the row's owner section -- one valid citation
+    elsewhere in the same cell does not cover a broken one next to it.
+    Plain connective text (no date/No./art./act-type/URL/link) is not held
+    to that standard and is simply ignored.
+    """
     result = RowCheck()
 
-    segments = [s.strip() for s in cell.split(";") if s.strip()] or [cell.strip()]
+    segments = split_defined_by_segments(cell) or [cell.strip()]
     for seg in segments:
-        if segment_matches_act_citation(seg):
-            result.forms.add("b")
-            if segment_has_empty_title(seg):
-                result.empty_title = True
+        seg_forms = evaluate_segment(seg, base_dir, self_path)
+        result.forms |= seg_forms
+
+        if segment_matches_act_citation(seg) and segment_has_empty_title(seg):
+            result.empty_title = True
+
+        if not segment_looks_like_citation(seg):
+            result.segment_details.append(
+                {"segment": seg, "forms": sorted(seg_forms), "status": "ignored"}
+            )
+            continue
+
+        abbreviations = find_abbreviated_types(seg)
+        if abbreviations:
+            for abbrev in abbreviations:
+                result.segment_violations.append(
+                    f"citation segment uses an abbreviated act type ('{abbrev}') "
+                    f"-- write it out: '{seg}'"
+                )
+            result.segment_details.append(
+                {"segment": seg, "forms": sorted(seg_forms), "status": "abbreviated"}
+            )
+            continue
+
+        if not seg_forms:
+            result.segment_violations.append(
+                "citation segment has no recognized citation form (need an "
+                "act citation, a standard citation, a resolving link, or "
+                f"'citation unresolved'): '{seg}'"
+            )
+            result.segment_details.append({"segment": seg, "forms": [], "status": "unmatched"})
+            continue
+
+        if section_num == 1 and not (seg_forms & {"b", "c"}):
+            result.segment_violations.append(
+                f"citation segment cites the repository instead of an act: '{seg}'"
+            )
+            result.segment_details.append(
+                {"segment": seg, "forms": sorted(seg_forms), "status": "repo-only"}
+            )
+            continue
+
+        result.segment_details.append({"segment": seg, "forms": sorted(seg_forms), "status": "ok"})
 
     result.missing_titles = find_missing_act_titles(cell)
 
@@ -640,13 +814,14 @@ def check_glossary(path: Path, base_dir: Path) -> tuple[list[Violation], list[di
                 continue
             term, meaning, defined_by = cells[0], cells[1], cells[2]
 
-            check = evaluate_defined_by(defined_by, base_dir, path)
+            check = evaluate_defined_by(defined_by, sec_num, base_dir, path)
             verbose_rows.append(
                 {
                     "line": line_no,
                     "section": sec_num,
                     "term": term,
                     "forms": sorted(check.forms),
+                    "segments": check.segment_details,
                 }
             )
 
@@ -689,6 +864,9 @@ def check_glossary(path: Path, base_dir: Path) -> tuple[list[Violation], list[di
             for problem in check.standard_host_problems:
                 violations.append(Violation(line_no, f"'{term}': {problem}"))
 
+            for problem in check.segment_violations:
+                violations.append(Violation(line_no, f"'{term}': {problem}"))
+
             for problem in find_number_violations(meaning):
                 violations.append(Violation(line_no, f"'{term}': {problem}"))
 
@@ -702,6 +880,15 @@ def check_glossary(path: Path, base_dir: Path) -> tuple[list[Violation], list[di
     return violations, verbose_rows
 
 
+_SEGMENT_STATUS_LABELS = {
+    "ok": "OK",
+    "unmatched": "VIOLATION",
+    "abbreviated": "VIOLATION",
+    "repo-only": "VIOLATION",
+    "ignored": "skip (not a citation)",
+}
+
+
 def print_verbose(verbose_rows: list[dict]) -> None:
     print("Defined-by form matches (a=link, b=act citation, c=unresolved, d=standard):")
     width = max((len(r["term"]) for r in verbose_rows), default=4)
@@ -711,6 +898,10 @@ def print_verbose(verbose_rows: list[dict]) -> None:
             f"  line {row['line']:>5}  section {row['section']}  "
             f"{row['term']:<{width}}  forms: {forms}"
         )
+        for seg in row["segments"]:
+            seg_forms = ",".join(seg["forms"]) or "(none)"
+            label = _SEGMENT_STATUS_LABELS.get(seg["status"], seg["status"])
+            print(f"      [{label:<22}] forms: {seg_forms:<6} segment: '{seg['segment']}'")
     print()
 
 

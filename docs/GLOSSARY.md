@@ -43,7 +43,7 @@ inventing one.
 |---|---|---|
 | **official publication** (официальное опубликование) | The first publication of an act in an outlet designated as official. It is the moment the text becomes public and the reference point every other date is measured from. Distribution by third parties — including this project — is derivative of it, never a substitute for it. | Federal Law of 14.06.1994 No. 5-FZ "On the procedure for the publication and entry into force of federal constitutional laws, federal laws, and acts of the chambers of the Federal Assembly", art. 4 |
 | **entry into force** (вступление в силу) | The date from which an act binds. **The default differs by type of act**, so it is not one rule: acts of the chambers, federal laws and federal constitutional laws are covered by 5-FZ; acts of the President, of the Government and of federal executive bodies by a separate decree. The act's own date is therefore a field of the act, not something this project may infer. | Federal Law of 14.06.1994 No. 5-FZ "On the procedure for the publication and entry into force of federal constitutional laws, federal laws, and acts of the chambers of the Federal Assembly", art. 6; Decree of the President of 23.05.1996 No. 763 "On the procedure for the publication and entry into force of acts of the President, the Government and normative legal acts of federal executive bodies" |
-| **retroactive effect** (обратная сила) | An act reaching relations that arose before it came into force. The prohibition and the exception are two different provisions of one article: part 1 forbids retroactivity for a law that establishes or aggravates liability; part 2 applies the more lenient law where liability has been removed or mitigated. In criminal law the same rule is restated in the code. Because this is law and not policy, the pipeline stores the interval an article was in force and never assumes "current". | Constitution of the Russian Federation, art. 54(1) and 54(2); Criminal Code of the Russian Federation, FZ of 13.06.1996 No. 63-FZ, art. 10 |
+| **retroactive effect** (обратная сила) | An act reaching relations that arose before it came into force. The prohibition and the exception are two different provisions of one article: part 1 forbids retroactivity for a law that establishes or aggravates liability; part 2 applies the more lenient law where liability has been removed or mitigated. In criminal law the same rule is restated in the code. Because this is law and not policy, the pipeline stores the interval an article was in force and never assumes "current". | Constitution of the Russian Federation, art. 54(1) and 54(2); Federal Law of 13.06.1996 No. 63-FZ "Criminal Code of the Russian Federation", art. 10 |
 | **official interpretation** (письменное разъяснение) | A written explanation of the application of tax law, given by the finance authority on a request from a taxpayer or a tax agent. For this project it is a second kind of change: the text is unchanged, the reading is not. What such an explanation *does* to liability is a separate question and has no owner here yet (see §4). | Tax Code of the Russian Federation, art. 34.2 |
 
 ### 1.1. The one legal fact that decides the product's shape
@@ -102,7 +102,7 @@ that owns it.
 
 | Word | Why it has no owner |
 |---|---|
-| **signed control copy** (контрольный экземпляр) | Described by the portal as an electronic image accompanying the publication, signed with a qualified signature — and **not observed** in the artefacts this project actually holds, so both the term and the fact are unresolved. Two things are missing: the act that defines the format, and a measurement of which object, if any, carries a signature. |
+| **signed control copy** (контрольный экземпляр) | Described by the portal as an electronic image accompanying the publication, signed with a qualified signature. Measured on 2026-09-14: the signature exists as a *detached* artefact (`/file/sig?eoNumber=…`, CAdES-BES over the PDF bytes) for the sampled regional documents and was not served for the sampled federal ones — see [SCOPE.md](SCOPE.md), Provenance. What remains without an owner: no act defining the format of the "control copy" is cited here, it is not established that the observed object *is* that copy, and whether federal publications have any retrievable signed artefact is unknown. |
 | **amendatory act** (акт о внесении изменений) | The category is real and used; no act defining the term is cited in this repository. Its text is typically an instruction in prose ("in part 2, replace the word X with Y"), not a diff. |
 | **transitional provisions** (переходные положения) | There is no general act defining them; they live inside the act that introduces them, which is why the project **stores** them and does not **resolve** them. The word cannot be attributed to a single act, so it stays here until the rule for attributing it is written. |
 | **редакция / revision / consolidated text** | One decision, three names. The domain's word is *редакция*; the schema says `version`; the research literature says *consolidated text*; and the official machine-readable channel that would settle it is windowed (§1.1). Which of them owns the meaning is decided with the identifier scheme (`ELI`), not row by row. |
@@ -116,19 +116,33 @@ that owns it.
 
 `scripts/tools/check_glossary.py` runs on this file (`uv run python scripts/tools/check_glossary.py docs/GLOSSARY.md`, also in the test suite). It checks **shape**, never truth or liveness:
 
-- Every **Defined by** cell must match the citation form of its owner:
-  - **the state** — *type + date + number + title*: the type written out (Federal Law, Federal
-    Constitutional Law, Presidential Decree, Government Decree), the date as `DD.MM.YYYY` or
-    `YYYY-MM-DD`, the number as `No. …`, the title in quotation marks; for the Constitution and the
-    codes an article reference (`art. N`) is required and the title is optional; or the literal
-    `citation unresolved`;
+- A **Defined by** cell may hold **several citations, separated by `;`** (for example: one act for
+  publication, a second for entry into force). Each `;`-separated segment is checked **on its
+  own**: a segment that carries a date, a `No.`, an `art.`, an act-type word, a URL or a markdown
+  link must independently match one of the forms below — one valid citation elsewhere in the same
+  cell does not cover a broken one next to it. A segment with none of those markers (plain
+  connective text, e.g. `see §3 `ELI``) is not a citation and is not held to this standard.
+- Every citation segment must match the citation form of its owner:
+  - **the state** — *type + date + number + title*: the type **written out**, not abbreviated —
+    `Federal Law`, `Federal Constitutional Law`, `Presidential Decree` (or `Decree of the President
+    of the Russian Federation` / `Decree of the President`), `Government Decree` (or `Decree of the
+    Government of the Russian Federation` / `Decree of the Government`) — the date as `DD.MM.YYYY`
+    or `YYYY-MM-DD`, the number as `No. …`, the title in quotation marks; for the Constitution and
+    the codes an article reference (`art. N`) is required and the title is optional; or the literal
+    `citation unresolved`. An abbreviation of the type (`FZ`, `ФЗ`, …) is rejected even when the
+    date, number and title are all otherwise present — the type must be spelled out, not stand in
+    for the word;
   - **an outside document** — *name + version + URL*: the name must be one the checker knows and
     the URL's host must be one of the known homes of that document (the two lists are data at the
     top of the checker; a new standard is added there, not by loosening the rule); or the literal
     `citation unresolved`;
   - **this repository** — a relative link that resolves in the repository, without an anchor.
-- A row in §1 may not cite a repository document in place of an act. A row that cannot produce its
-  form moves to §4. That is the rule working, not the rule failing.
+- A row in §1 may not cite a repository document in place of an act, segment by segment: a §1
+  citation segment must be an act citation or say `citation unresolved`, not a repository link. A
+  row that cannot produce its form moves to §4. That is the rule working, not the rule failing.
+- Run the checker with `--verbose` to see, row by row, which form each citation segment matched
+  (`a` = link, `b` = act citation, `c` = unresolved, `d` = standard) — the tool a human uses to see
+  which citation actually carried the row.
 - The **Meaning** column may not contain a count of our own coverage (rule 1): an integer followed
   by a counted noun, an "N of M", a percentage, or a bare large number outside a citation is a
   violation; digits inside dates, act and article numbers, versions and years of cited documents
