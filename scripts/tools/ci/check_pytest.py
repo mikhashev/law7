@@ -7,6 +7,12 @@ fails only if a test fails/errors that is NOT already listed in
 new turns the job red. Allowlist entries that now pass are reported as a
 warning (stale allowlist) but do not fail the job.
 
+A pytest upgrade can change collection/reporting behavior with no test
+change at all, so the ``[pytest]`` section of the allowlist also records
+``version=``, and this script fails outright (without comparing the known
+failure ids) if the running pytest version doesn't match it. See
+check_tool_version in _common.py.
+
 Usage:
     uv run --no-sync python scripts/tools/ci/check_pytest.py
     uv run --no-sync python scripts/tools/ci/check_pytest.py --junit-xml path/to/report.xml
@@ -21,7 +27,14 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _common import REPO_ROOT, parse_allowlist, run_cmd  # noqa: E402
+from _common import (  # noqa: E402
+    REPO_ROOT,
+    check_tool_version,
+    get_pytest_version,
+    parse_allowlist,
+    render_other_sections,
+    run_cmd,
+)
 
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "test" / "known_failures.txt"
 
@@ -73,16 +86,16 @@ def parse_failures(junit_xml: Path) -> list[str]:
     return sorted(ids)
 
 
-def write_allowlist(failures: list[str]) -> None:
-    lines = [HEADER.rstrip("\n"), ""]
-    lines.extend(failures)
-    existing = parse_allowlist(ALLOWLIST_PATH)
-    ruff_section = existing.sections.get("ruff")
-    if ruff_section is not None:
+def write_allowlist(failures: list[str], version: str) -> None:
+    lines = [HEADER.rstrip("\n")]
+    if failures:
         lines.append("")
-        lines.append("[ruff]")
-        for key, value in ruff_section.kv.items():
-            lines.append(f"{key}={value}")
+        lines.extend(failures)
+    lines.append("")
+    lines.append("[pytest]")
+    lines.append(f"version={version}")
+    existing = parse_allowlist(ALLOWLIST_PATH)
+    lines.extend(render_other_sections(existing.sections, skip={"pytest"}))
     ALLOWLIST_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
@@ -97,7 +110,15 @@ def main() -> int:
     ap.add_argument(
         "--generate",
         action="store_true",
-        help="Overwrite the allowlist with the currently failing/erroring tests.",
+        help="Overwrite the allowlist with the current tool version and failing/erroring tests.",
+    )
+    ap.add_argument(
+        "--override-version",
+        default=None,
+        help=(
+            "Use this string as the 'running' pytest version instead of actually "
+            "invoking `pytest --version`. For testing the version-mismatch gate only."
+        ),
     )
     args = ap.parse_args()
 
@@ -109,13 +130,24 @@ def main() -> int:
         run_pytest(junit_xml)
 
     failures = parse_failures(junit_xml)
+    running_version = args.override_version or get_pytest_version()
 
     if args.generate:
-        write_allowlist(failures)
-        print(f"Wrote {len(failures)} entries to {ALLOWLIST_PATH.relative_to(REPO_ROOT)}")
+        write_allowlist(failures, running_version)
+        rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
+        print(f"Wrote version={running_version} and {len(failures)} entries to {rel}")
         return 0
 
     allow = parse_allowlist(ALLOWLIST_PATH)
+    rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
+
+    version_error = check_tool_version(
+        allow.sections.get("pytest"), running_version, "pytest", str(rel)
+    )
+    if version_error:
+        print(version_error)
+        return 1
+
     allowed = set(allow.entries)
     failing = set(failures)
 
@@ -123,7 +155,6 @@ def main() -> int:
     stale = sorted(allowed - failing)
 
     if new_failures:
-        rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
         print(f"pytest: {len(new_failures)} failure(s) not in {rel}:")
         for item in new_failures:
             print(f"  {item}")
@@ -136,7 +167,7 @@ def main() -> int:
         for item in stale:
             print(f"  {item}")
 
-    print(f"pytest: {len(failing)} known failure(s), all allowlisted.")
+    print(f"pytest: {len(failing)} known failure(s), all allowlisted (version {running_version}).")
     return 0
 
 

@@ -1,11 +1,26 @@
 version: 2
 
+# Policy: semver-major bumps are adopted deliberately, not automatically.
+# A major version can change a dependency's behavior (breaking API changes)
+# or, for our dev-tooling deps (ruff, black, typescript), make the tool
+# itself stricter -- more lint rules enabled, new compiler diagnostics --
+# which inflates the CI gate baselines in scripts/tools/ci/ with no code
+# change at all (see scripts/tools/ci/README.md). So Dependabot is told to
+# skip semver-major updates here; a maintainer bumps a major manually, one
+# dependency per commit, re-measuring and updating the relevant
+# known_failures.txt baseline (with its recorded tool `version=`) in that
+# same commit. Minor/patch updates continue to flow through Dependabot as
+# before.
+
 updates:
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   # uv projects are covered by the "uv" ecosystem (pyproject.toml + uv.lock).
   - package-ecosystem: "uv"
@@ -13,8 +28,14 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

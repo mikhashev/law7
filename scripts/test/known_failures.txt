@@ -3,9 +3,10 @@
 # One pytest node id (file::Class::test or file::test) per line.
 # '#' starts a comment. Remove an entry when the test is fixed; never add an
 # entry without a linked issue/stage note. See scripts/tools/ci/README.md.
-#
-# Currently empty: regenerate via
-#   uv run --no-sync python scripts/tools/ci/check_pytest.py --generate
+
+[pytest]
+version=8.4.2
 
 [ruff]
-ruff_baseline=200
+version=0.8.6
+baseline=200

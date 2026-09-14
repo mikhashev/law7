@@ -7,6 +7,12 @@ only if a test fails that is NOT already listed in
 turns the job red. Allowlist entries that now pass are reported as a
 warning (stale allowlist) but do not fail the job.
 
+A vitest upgrade can change collection/reporting behavior with no test
+change at all, so the ``[vitest]`` section of the allowlist also records
+``version=``, and this script fails outright (without comparing the known
+failure ids) if the running vitest version doesn't match it. See
+check_tool_version in _common.py.
+
 Usage:
     npx vitest run --reporter=json --outputFile=... is invoked internally;
     or pass an existing report:
@@ -22,7 +28,14 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _common import REPO_ROOT, parse_allowlist, run_cmd  # noqa: E402
+from _common import (  # noqa: E402
+    REPO_ROOT,
+    check_tool_version,
+    get_vitest_version,
+    parse_allowlist,
+    render_other_sections,
+    run_cmd,
+)
 
 ALLOWLIST_PATH = REPO_ROOT / "src" / "test" / "known_failures.txt"
 
@@ -69,18 +82,16 @@ def parse_failures(json_report: Path) -> list[str]:
     return sorted(ids)
 
 
-def write_allowlist(failures: list[str]) -> None:
-    lines = [HEADER.rstrip("\n"), ""]
-    lines.extend(failures)
-    existing = parse_allowlist(ALLOWLIST_PATH)
-    tsc_section = existing.sections.get("tsc-files")
-    if tsc_section is not None:
+def write_allowlist(failures: list[str], version: str) -> None:
+    lines = [HEADER.rstrip("\n")]
+    if failures:
         lines.append("")
-        lines.append("[tsc-files]")
-        for file_line in tsc_section.lines:
-            lines.append(file_line)
-        for key, value in tsc_section.kv.items():
-            lines.append(f"{key}={value}")
+        lines.extend(failures)
+    lines.append("")
+    lines.append("[vitest]")
+    lines.append(f"version={version}")
+    existing = parse_allowlist(ALLOWLIST_PATH)
+    lines.extend(render_other_sections(existing.sections, skip={"vitest"}))
     ALLOWLIST_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
@@ -95,7 +106,15 @@ def main() -> int:
     ap.add_argument(
         "--generate",
         action="store_true",
-        help="Overwrite the allowlist with the currently failing tests.",
+        help="Overwrite the allowlist with the current tool version and currently failing tests.",
+    )
+    ap.add_argument(
+        "--override-version",
+        default=None,
+        help=(
+            "Use this string as the 'running' vitest version instead of actually "
+            "invoking `vitest --version`. For testing the version-mismatch gate only."
+        ),
     )
     args = ap.parse_args()
 
@@ -107,13 +126,24 @@ def main() -> int:
         run_vitest(json_report)
 
     failures = parse_failures(json_report)
+    running_version = args.override_version or get_vitest_version()
 
     if args.generate:
-        write_allowlist(failures)
-        print(f"Wrote {len(failures)} entries to {ALLOWLIST_PATH.relative_to(REPO_ROOT)}")
+        write_allowlist(failures, running_version)
+        rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
+        print(f"Wrote version={running_version} and {len(failures)} entries to {rel}")
         return 0
 
     allow = parse_allowlist(ALLOWLIST_PATH)
+    rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
+
+    version_error = check_tool_version(
+        allow.sections.get("vitest"), running_version, "vitest", str(rel)
+    )
+    if version_error:
+        print(version_error)
+        return 1
+
     allowed = set(allow.entries)
     failing = set(failures)
 
@@ -121,7 +151,6 @@ def main() -> int:
     stale = sorted(allowed - failing)
 
     if new_failures:
-        rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
         print(f"vitest: {len(new_failures)} failure(s) not in {rel}:")
         for item in new_failures:
             print(f"  {item}")
@@ -134,7 +163,7 @@ def main() -> int:
         for item in stale:
             print(f"  {item}")
 
-    print(f"vitest: {len(failing)} known failure(s), all allowlisted.")
+    print(f"vitest: {len(failing)} known failure(s), all allowlisted (version {running_version}).")
     return 0
 
 

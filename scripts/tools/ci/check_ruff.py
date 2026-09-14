@@ -2,12 +2,19 @@
 """CI gate for ruff.
 
 Runs ``ruff check scripts/ --output-format=json`` and fails only if the
-total number of findings grows past the ``ruff_baseline`` recorded under
-the ``[ruff]`` section of ``scripts/test/known_failures.txt``. This is a
+total number of findings grows past the ``baseline`` recorded under the
+``[ruff]`` section of ``scripts/test/known_failures.txt``. This is a
 simple count gate (not a per-finding allowlist like pytest/vitest): ruff's
 ~200 pre-existing findings are lint debt, not correctness bugs, so any
 *new* finding pushing the count above the baseline fails the job, while
 fixing some findings (dropping the count) is always fine.
+
+The recorded baseline is only meaningful for the ruff version it was
+measured with -- a ruff upgrade can add rules and inflate the finding
+count with no code change at all. So the ``[ruff]`` section also records
+``version=``, and this script fails outright (without comparing counts) if
+the running ruff version doesn't match it. See check_tool_version in
+_common.py.
 
 Usage:
     uv run --no-sync python scripts/tools/ci/check_ruff.py
@@ -23,7 +30,14 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _common import REPO_ROOT, parse_allowlist, run_cmd  # noqa: E402
+from _common import (  # noqa: E402
+    REPO_ROOT,
+    check_tool_version,
+    get_ruff_version,
+    parse_allowlist,
+    render_other_sections,
+    run_cmd,
+)
 
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "test" / "known_failures.txt"
 
@@ -45,12 +59,14 @@ def count_findings(json_report: Path) -> int:
     return len(data)
 
 
-def write_baseline(count: int) -> None:
+def write_baseline(count: int, version: str) -> None:
     existing = parse_allowlist(ALLOWLIST_PATH)
     lines = list(existing.entries)
     lines.append("")
     lines.append("[ruff]")
-    lines.append(f"ruff_baseline={count}")
+    lines.append(f"version={version}")
+    lines.append(f"baseline={count}")
+    lines.extend(render_other_sections(existing.sections, skip={"ruff"}))
     ALLOWLIST_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
@@ -65,7 +81,15 @@ def main() -> int:
     ap.add_argument(
         "--generate",
         action="store_true",
-        help="Overwrite the [ruff] baseline with the current finding count.",
+        help="Overwrite the [ruff] version + baseline with the current tool version and finding count.",
+    )
+    ap.add_argument(
+        "--override-version",
+        default=None,
+        help=(
+            "Use this string as the 'running' ruff version instead of actually "
+            "invoking `ruff --version`. For testing the version-mismatch gate only."
+        ),
     )
     args = ap.parse_args()
 
@@ -77,31 +101,39 @@ def main() -> int:
         run_ruff(json_report)
 
     count = count_findings(json_report)
+    running_version = args.override_version or get_ruff_version()
 
     if args.generate:
-        write_baseline(count)
+        write_baseline(count, running_version)
         rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
-        print(f"Wrote ruff_baseline={count} to {rel}")
+        print(f"Wrote version={running_version} baseline={count} to {rel}")
         return 0
 
     allow = parse_allowlist(ALLOWLIST_PATH)
     section = allow.sections.get("ruff")
+    rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
+
+    version_error = check_tool_version(section, running_version, "ruff", str(rel))
+    if version_error:
+        print(version_error)
+        return 1
+
     try:
-        baseline = int(section.kv.get("ruff_baseline", "0")) if section else 0
+        baseline = int(section.kv.get("baseline", "0")) if section else 0
     except ValueError:
         baseline = 0
 
     if count > baseline:
-        print(f"ruff: {count} finding(s) exceeds recorded ruff_baseline={baseline}.")
+        print(f"ruff: {count} finding(s) exceeds recorded baseline={baseline}.")
         return 1
 
     if count < baseline:
         print(
             f"ruff: warning - only {count} finding(s), below recorded "
-            f"ruff_baseline={baseline}; consider lowering the baseline."
+            f"baseline={baseline}; consider lowering the baseline."
         )
 
-    print(f"ruff: {count} finding(s) (baseline {baseline}).")
+    print(f"ruff: {count} finding(s) (baseline {baseline}, version {running_version}).")
     return 0
 
 

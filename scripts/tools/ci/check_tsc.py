@@ -5,10 +5,17 @@
 non-zero, so the CI build step runs the compiler itself and this script
 separately decides whether the result is acceptable: errors are only
 tolerated in the files listed under the ``[tsc-files]`` section of
-``src/test/known_failures.txt``, and only up to the recorded
-``tsc_baseline`` count. Any error in another file, or a total count above
-the baseline, fails the job; a total at or below the baseline (even if some
-listed files have since been fixed) does not.
+``src/test/known_failures.txt``, and only up to the recorded ``baseline``
+count. Any error in another file, or a total count above the baseline,
+fails the job; a total at or below the baseline (even if some listed files
+have since been fixed) does not.
+
+The recorded baseline is only meaningful for the tsc version it was
+measured with -- a compiler upgrade can start flagging previously-legal
+code with no source change at all. So ``[tsc-files]`` also records
+``version=``, and this script fails outright (without comparing counts) if
+the running tsc version doesn't match it. See check_tool_version in
+_common.py.
 
 Usage:
     npx tsc --noEmit -p . --pretty false is invoked internally; or pass an
@@ -25,7 +32,14 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _common import REPO_ROOT, parse_allowlist, run_cmd  # noqa: E402
+from _common import (  # noqa: E402
+    REPO_ROOT,
+    check_tool_version,
+    get_tsc_version,
+    parse_allowlist,
+    render_other_sections,
+    run_cmd,
+)
 
 ALLOWLIST_PATH = REPO_ROOT / "src" / "test" / "known_failures.txt"
 
@@ -56,7 +70,7 @@ def parse_errors(log_path: Path) -> list[str]:
     return files
 
 
-def write_allowlist(error_files: list[str], baseline: int) -> None:
+def write_allowlist(error_files: list[str], baseline: int, version: str) -> None:
     """Rewrite the ``[tsc-files]`` section in place, preserving the vitest
     preamble entries that check_vitest.py --generate already wrote (comment
     headers are not preserved by the parser, so run check_vitest.py's
@@ -66,9 +80,11 @@ def write_allowlist(error_files: list[str], baseline: int) -> None:
     lines = list(existing.entries)
     lines.append("")
     lines.append("[tsc-files]")
+    lines.append(f"version={version}")
     for f in sorted(set(error_files)):
         lines.append(f)
-    lines.append(f"tsc_baseline={baseline}")
+    lines.append(f"baseline={baseline}")
+    lines.extend(render_other_sections(existing.sections, skip={"tsc-files"}))
     ALLOWLIST_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
@@ -83,7 +99,15 @@ def main() -> int:
     ap.add_argument(
         "--generate",
         action="store_true",
-        help="Overwrite the [tsc-files] section with the currently erroring files/count.",
+        help="Overwrite the [tsc-files] section with the current tool version and erroring files/count.",
+    )
+    ap.add_argument(
+        "--override-version",
+        default=None,
+        help=(
+            "Use this string as the 'running' tsc version instead of actually "
+            "invoking `tsc --version`. For testing the version-mismatch gate only."
+        ),
     )
     args = ap.parse_args()
 
@@ -96,41 +120,56 @@ def main() -> int:
 
     error_files = parse_errors(log_path)
     total = len(error_files)
+    running_version = args.override_version or get_tsc_version()
 
     if args.generate:
-        write_allowlist(error_files, total)
+        write_allowlist(error_files, total, running_version)
         rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
-        print(f"Wrote {len(set(error_files))} file(s), tsc_baseline={total}, to {rel}")
+        print(
+            f"Wrote version={running_version}, {len(set(error_files))} file(s), "
+            f"baseline={total}, to {rel}"
+        )
         return 0
 
     allow = parse_allowlist(ALLOWLIST_PATH)
     section = allow.sections.get("tsc-files")
+    rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
+
+    version_error = check_tool_version(section, running_version, "tsc", str(rel))
+    if version_error:
+        print(version_error)
+        return 1
+
+    # `lines` holds every non-key=value entry under [tsc-files], i.e. the
+    # allowlisted file paths (version= and baseline= are parsed into `kv`).
     allowed_files = set(section.lines) if section else set()
     try:
-        baseline = int(section.kv.get("tsc_baseline", "0")) if section else 0
+        baseline = int(section.kv.get("baseline", "0")) if section else 0
     except ValueError:
         baseline = 0
 
     outside_allowlist = sorted({f for f in error_files if f not in allowed_files})
 
     if outside_allowlist:
-        rel = ALLOWLIST_PATH.relative_to(REPO_ROOT)
         print(f"tsc: error(s) in file(s) not listed under [tsc-files] in {rel}:")
         for f in outside_allowlist:
             print(f"  {f}")
         return 1
 
     if total > baseline:
-        print(f"tsc: {total} error(s) exceeds recorded tsc_baseline={baseline}.")
+        print(f"tsc: {total} error(s) exceeds recorded baseline={baseline}.")
         return 1
 
     if total < baseline:
         print(
             f"tsc: warning - only {total} error(s) found, below recorded "
-            f"tsc_baseline={baseline}; consider lowering the baseline."
+            f"baseline={baseline}; consider lowering the baseline."
         )
 
-    print(f"tsc: {total} known error(s) (baseline {baseline}), all in allowlisted files.")
+    print(
+        f"tsc: {total} known error(s) (baseline {baseline}, version {running_version}), "
+        "all in allowlisted files."
+    )
     return 0
 
 

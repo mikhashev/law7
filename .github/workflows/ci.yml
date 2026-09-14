@@ -45,7 +45,9 @@ jobs:
 
       # Fails only on a tsc error outside the known files listed under
       # [tsc-files] in src/test/known_failures.txt, or on a count above the
-      # recorded tsc_baseline. See scripts/tools/ci/README.md.
+      # recorded baseline -- and outright if the running tsc version
+      # doesn't match that section's recorded version=. See
+      # scripts/tools/ci/README.md.
       - name: Check build (tsc)
         run: python scripts/tools/ci/check_tsc.py
 
@@ -55,7 +57,9 @@ jobs:
         run: npm test
         continue-on-error: true
 
-      # Fails only on a vitest failure not listed in src/test/known_failures.txt.
+      # Fails only on a vitest failure not listed in src/test/known_failures.txt,
+      # and outright if the running vitest version doesn't match [vitest]'s
+      # recorded version=. See scripts/tools/ci/README.md.
       - name: Check test (vitest)
         run: python scripts/tools/ci/check_vitest.py
 
@@ -89,8 +93,10 @@ jobs:
         run: uv run --no-sync ruff check scripts/
         continue-on-error: true
 
-      # Fails only if the total finding count exceeds the recorded
-      # ruff_baseline under [ruff] in scripts/test/known_failures.txt.
+      # Fails only if the total finding count exceeds the recorded baseline
+      # under [ruff] in scripts/test/known_failures.txt, and outright if
+      # the running ruff version doesn't match that section's recorded
+      # version=. See scripts/tools/ci/README.md.
       - name: Check lint (ruff)
         run: uv run --no-sync python scripts/tools/ci/check_ruff.py
 
@@ -101,6 +107,7 @@ jobs:
         continue-on-error: true
 
       # Fails only on a failing/erroring test not listed in
-      # scripts/test/known_failures.txt.
+      # scripts/test/known_failures.txt, and outright if the running
+      # pytest version doesn't match [pytest]'s recorded version=.
       - name: Check tests (pytest)
         run: uv run --no-sync python scripts/tools/ci/check_pytest.py
