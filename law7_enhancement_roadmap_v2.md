@@ -1,3 +1,5 @@
+> **Historical / vision document.** Written before 2026-09-14; any counts, coverage claims or tool lists here are superseded by [SCOPE.md](docs/SCOPE.md), which is updated only by re-measuring the database. Kept for context, not as a statement of the current state.
+
 # LAW7 PROJECT ENHANCEMENT ROADMAP (Revised)
 ## Russian Federation Legal Database - MCP Server Architecture
 

@@ -1,3 +1,5 @@
+> **Historical / vision document.** Written before 2026-09-14; any counts, coverage claims or tool lists here are superseded by [SCOPE.md](SCOPE.md), which is updated only by re-measuring the database. Kept for context, not as a statement of the current state.
+
 # Phase 7: Project Structure Refactoring
 
 **Duration:** 8 weeks (Weeks 1-8)
