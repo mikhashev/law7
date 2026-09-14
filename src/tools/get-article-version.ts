@@ -11,7 +11,9 @@ import {
   getArticleVersionOnDate,
   getAmendmentChain,
   getAmendmentApplicationCount,
+  getCodeArticleCount,
   getCodeStructure,
+  getCorpusSnapshotDate,
 } from '../db/consolidation_queries.js';
 
 // Input schema for get-article-version tool
@@ -188,6 +190,7 @@ function formatNoHistoricalVersion(params: {
   newestVersionDate: Date | string | null;
   amendmentsApplied: number;
   dateCovered: boolean;
+  corpusSnapshotDate: string | null;
 }): string {
   const {
     codeId,
@@ -198,6 +201,7 @@ function formatNoHistoricalVersion(params: {
     newestVersionDate,
     amendmentsApplied,
     dateCovered,
+    corpusSnapshotDate,
   } = params;
 
   const parts: string[] = [];
@@ -224,10 +228,28 @@ function formatNoHistoricalVersion(params: {
     );
   }
   parts.push(`- **amendments_applied**: ${amendmentsApplied}`);
+  if (corpusSnapshotDate) {
+    parts.push(`- **corpus_snapshot_date**: ${corpusSnapshotDate}`);
+  }
   parts.push('');
+
+  // A date later than the newest document law7 ever crawled cannot be answered even
+  // in principle: the corpus itself stops there.
+  const requestedIso = formatIsoDate(asOfDate);
+  const afterSnapshot =
+    corpusSnapshotDate !== null && requestedIso !== 'N/A' && requestedIso > corpusSnapshotDate;
 
   parts.push('### Why');
   parts.push('');
+  if (afterSnapshot) {
+    parts.push(
+      `- The requested date ${asOfDate} is LATER than law7's corpus snapshot ` +
+        `(${corpusSnapshotDate}, the newest \`documents.publish_date\` in the database). The corpus ` +
+        'is frozen at that date: any act adopted after it - including any amendment to this ' +
+        'article - is unknown to law7, so no answer about that date could be complete even if ' +
+        'the amendment history had been built.'
+    );
+  }
   if (!dateCovered) {
     parts.push(
       `- The requested date ${asOfDate} is EARLIER than the oldest version law7 holds ` +
@@ -264,6 +286,135 @@ function formatNoHistoricalVersion(params: {
 }
 
 /**
+ * Build the refusal returned when the requested CODE holds no articles at all.
+ *
+ * "Article not found" would be a statement about the article; when law7 imported
+ * zero articles for the code (KAS_RF today), the truth is that law7 holds nothing
+ * for the code, and the article number never entered into it.
+ */
+function formatCodeNotImported(params: {
+  codeId: string;
+  codeName: string | null;
+  articleNumber: string;
+  asOfDate?: string;
+}): string {
+  const { codeId, codeName, articleNumber, asOfDate } = params;
+  const parts: string[] = [];
+
+  parts.push('## Code not imported');
+  parts.push('');
+  parts.push(
+    `**REFUSED**: law7 holds 0 articles for ${codeId}` +
+      (codeName ? ` (${codeName})` : ' (no row in `consolidated_codes` for this code)') +
+      `, so it cannot say anything about Article ${articleNumber}. This is NOT a statement that ` +
+      `Article ${articleNumber} does not exist - the code has never been imported into law7, so ` +
+      'no article of it could be found.'
+  );
+  parts.push('');
+  parts.push('- **code_available**: false');
+  parts.push(`- **code_id**: ${codeId}`);
+  parts.push(`- **code_name**: ${codeName ?? 'unknown (not registered in `consolidated_codes`)'}`);
+  parts.push('- **articles_imported**: 0');
+  parts.push(`- **article_number**: ${articleNumber}`);
+  if (asOfDate) {
+    parts.push(`- **requested_date**: ${asOfDate}`);
+  }
+  parts.push('');
+
+  parts.push('### What you can do instead');
+  parts.push('');
+  parts.push(
+    `- Call \`get-code-structure\` with \`code_id: "${codeId}"\` to see the import status law7 ` +
+      'reports for this code (0 articles / In Progress).'
+  );
+  parts.push('- Call `get-code-structure` without a code_id to list the codes that do hold articles.');
+  parts.push('- For the text of this code, consult the official source (pravo.gov.ru) directly.');
+  parts.push('');
+
+  return parts.join('\n');
+}
+
+/**
+ * Build the refusal returned when the code IS imported but this article number is
+ * absent from it.
+ *
+ * The article count is stated so the reader can tell "absent from law7's copy of
+ * this code" from "does not exist in the code".
+ */
+function formatArticleNotFound(params: {
+  codeId: string;
+  codeName: string | null;
+  articleNumber: string;
+  articlesImported: number;
+  asOfDate?: string;
+}): string {
+  const { codeId, codeName, articleNumber, articlesImported, asOfDate } = params;
+  const parts: string[] = [];
+
+  parts.push('## Article not found');
+  parts.push('');
+  parts.push(
+    `**REFUSED**: law7 holds ${articlesImported} article rows for ${codeId}` +
+      (codeName ? ` (${codeName})` : '') +
+      `, and Article ${articleNumber} is not among them` +
+      (asOfDate ? ` for any date, including ${asOfDate}` : '') +
+      '. This means the number is absent from law7\'s copy of the code; it does NOT establish ' +
+      'that no such article exists in the code itself.'
+  );
+  parts.push('');
+  parts.push('- **article_found**: false');
+  parts.push('- **code_available**: true');
+  parts.push(`- **code_id**: ${codeId}`);
+  parts.push(`- **code_name**: ${codeName ?? 'unknown (not registered in `consolidated_codes`)'}`);
+  parts.push(`- **article_number**: ${articleNumber}`);
+  parts.push(`- **articles_imported**: ${articlesImported}`);
+  if (asOfDate) {
+    parts.push(`- **requested_date**: ${asOfDate}`);
+  }
+  parts.push('');
+
+  parts.push('### What you can do instead');
+  parts.push('');
+  parts.push(
+    `- Call \`get-code-structure\` with \`code_id: "${codeId}"\` to list the article numbers law7 ` +
+      'actually holds for this code.'
+  );
+  parts.push(
+    '- Check whether the article belongs to another part of the same code (e.g. `GK_RF_2`, ' +
+      '`GK_RF_3`, `GK_RF_4`, `NK_RF_2`), which law7 stores under a separate code_id.'
+  );
+  parts.push('- Verify the article number against the official source (pravo.gov.ru).');
+  parts.push('');
+
+  return parts.join('\n');
+}
+
+/**
+ * Refuse an empty article lookup, naming the true reason: no such code in law7 vs
+ * no such number in a code law7 does hold.
+ */
+async function formatArticleLookupFailure(
+  codeId: string,
+  codeName: string | null,
+  articleNumber: string,
+  asOfDate?: string
+): Promise<string> {
+  const articlesImported = await getCodeArticleCount(codeId);
+
+  if (articlesImported === 0) {
+    return formatCodeNotImported({ codeId, codeName, articleNumber, asOfDate });
+  }
+
+  return formatArticleNotFound({
+    codeId,
+    codeName,
+    articleNumber,
+    articlesImported,
+    asOfDate,
+  });
+}
+
+/**
  * Execute the get-article-version tool
  */
 export async function executeGetArticleVersion(input: GetArticleVersionInput): Promise<string> {
@@ -271,6 +422,7 @@ export async function executeGetArticleVersion(input: GetArticleVersionInput): P
 
   // Get code info for context
   const codeStructure = await getCodeStructure(code_id);
+  const codeName = codeStructure?.code?.name ?? null;
 
   let article;
   let amendmentChain;
@@ -289,7 +441,7 @@ export async function executeGetArticleVersion(input: GetArticleVersionInput): P
     const versions = chain?.versions ?? [];
 
     if (versions.length === 0) {
-      return `Article not found: ${code_id} Article ${article_number} as of ${as_of_date}`;
+      return formatArticleLookupFailure(code_id, codeName, article_number, as_of_date);
     }
 
     // getAmendmentChain returns versions ordered by version_date ASC
@@ -301,7 +453,9 @@ export async function executeGetArticleVersion(input: GetArticleVersionInput): P
     const hasRealHistory = versions.length > 1 || amendmentsApplied > 0;
 
     if (!dateCovered || !hasRealHistory) {
+      const corpusSnapshotDate = await getCorpusSnapshotDate();
       return formatNoHistoricalVersion({
+        corpusSnapshotDate,
         codeId: code_id,
         articleNumber: article_number,
         asOfDate: as_of_date,
@@ -317,7 +471,7 @@ export async function executeGetArticleVersion(input: GetArticleVersionInput): P
     article = await getArticleVersionOnDate(code_id, article_number, as_of_date);
 
     if (!article) {
-      return `Article not found: ${code_id} Article ${article_number} as of ${as_of_date}`;
+      return formatArticleLookupFailure(code_id, codeName, article_number, as_of_date);
     }
   } else {
     // Get current version
@@ -333,7 +487,7 @@ export async function executeGetArticleVersion(input: GetArticleVersionInput): P
                `Date range: ${formatDate(chain.versions[0].version_date)} - ` +
                `${formatDate(chain.versions[chain.versions.length - 1].version_date)}`;
       }
-      return `Article not found: ${code_id} Article ${article_number}`;
+      return formatArticleLookupFailure(code_id, codeName, article_number);
     }
   }
 
@@ -380,7 +534,14 @@ law7 currently stores ONE imported snapshot per article and has applied ZERO ame
 exists for the code - or the date precedes the oldest snapshot we hold - this tool
 REFUSES with a \`## No historical version available\` block (\`history_available: false\`)
 and returns NO article text. It will never label the current text as the text in force
-on a past date. Omit \`as_of_date\` to get the snapshot law7 actually holds.
+on a past date. When \`as_of_date\` is later than law7's corpus snapshot (max
+\`documents.publish_date\`), the refusal also says so: the corpus is frozen at that date and
+later amendments are unknown.
+
+An empty lookup is never reported as "article not found" when the code itself is missing:
+a code with 0 imported articles (e.g. KAS_RF) returns \`## Code not imported\`
+(\`code_available: false\`), while a code law7 did import returns \`## Article not found\`
+(\`article_found: false\`) together with the number of article rows held for that code.
 
 First, use get-code-structure to list available codes, then query specific articles.
 

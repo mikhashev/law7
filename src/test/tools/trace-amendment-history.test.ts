@@ -10,6 +10,7 @@ vi.mock('../../db/consolidation_queries.js', () => ({
   getAmendmentChain: vi.fn(),
   getAmendmentApplications: vi.fn(),
   getAmendmentApplicationCount: vi.fn(),
+  getCodeArticleCount: vi.fn(),
   getCodeStructure: vi.fn(),
 }));
 
@@ -23,6 +24,7 @@ import {
   getAmendmentChain,
   getAmendmentApplications,
   getAmendmentApplicationCount,
+  getCodeArticleCount,
   getCodeStructure,
 } from '../../db/consolidation_queries.js';
 
@@ -32,6 +34,8 @@ describe('trace-amendment-history tool', () => {
     // amendment_applications is empty in the live database; individual tests
     // override this when they need a code that does have applied amendments.
     vi.mocked(getAmendmentApplicationCount).mockResolvedValue(0);
+    // Default: the code IS imported; tests for an unimported code override this.
+    vi.mocked(getCodeArticleCount).mockResolvedValue(551);
   });
 
   afterEach(() => {
@@ -275,8 +279,9 @@ describe('trace-amendment-history tool', () => {
       expect(result).toContain('[REPEALED]');
     });
 
-    it('should return message when no amendment history found', async () => {
+    it('should refuse with "Article not found" and the code article count for an absent number', async () => {
       vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
+      vi.mocked(getCodeArticleCount).mockResolvedValue(551);
       vi.mocked(getAmendmentChain).mockResolvedValue({
         article_number: '999',
         code_id: 'GK_RF',
@@ -291,8 +296,41 @@ describe('trace-amendment-history tool', () => {
 
       const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
-      expect(result).toContain('No amendment history found');
-      expect(result).toContain('GK_RF Article 999');
+      expect(result).toContain('## Article not found');
+      expect(result).toContain('- **article_found**: false');
+      expect(result).toContain('- **code_available**: true');
+      expect(result).toContain('- **articles_imported**: 551');
+      expect(result).not.toContain('## Code not imported');
+    });
+
+    it('should refuse with "Code not imported" when the code holds no articles at all', async () => {
+      vi.mocked(getCodeStructure).mockResolvedValue({
+        code: {
+          code: 'KAS_RF',
+          name: 'Кодекс административного судопроизводства',
+          short_name: 'КАС РФ',
+        },
+      } as any);
+      vi.mocked(getCodeArticleCount).mockResolvedValue(0);
+      vi.mocked(getAmendmentChain).mockResolvedValue({
+        article_number: '1',
+        code_id: 'KAS_RF',
+        versions: [],
+        current_version: null,
+      });
+
+      const input = {
+        code_id: 'KAS_RF',
+        article_number: '1',
+      };
+
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
+
+      expect(result).toContain('## Code not imported');
+      expect(result).toContain('- **code_available**: false');
+      expect(result).toContain('- **articles_imported**: 0');
+      expect(result).toContain('Кодекс административного судопроизводства');
+      expect(result).not.toContain('## Article not found');
     });
 
     it('should refuse to call a single snapshot a version history', async () => {
@@ -553,8 +591,24 @@ describe('trace-amendment-history tool', () => {
       expect(result).toContain('Трудовой кодекс');
       expect(result).toContain('**history_available**: false');
       expect(result).toContain('0 amendments applied - history not generated');
+      expect(result).toContain('**articles_imported**: 551');
       // Must not imply the code was never amended.
       expect(result).toContain('NOT a statement that the code was');
+    });
+
+    it('should say nothing is held at all for a code with no imported articles', async () => {
+      vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
+      vi.mocked(getAmendmentApplications).mockResolvedValue([]);
+      vi.mocked(getCodeArticleCount).mockResolvedValue(0);
+
+      const input = {
+        code_id: 'KAS_RF',
+      };
+
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
+
+      expect(result).toContain('**articles_imported**: 0');
+      expect(result).toContain('0 articles imported and 0 amendments applied');
     });
   });
 

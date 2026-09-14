@@ -10,6 +10,7 @@ import {
   getAmendmentChain,
   getAmendmentApplications,
   getAmendmentApplicationCount,
+  getCodeArticleCount,
   getCodeStructure,
 } from '../db/consolidation_queries.js';
 
@@ -229,7 +230,58 @@ export async function executeTraceAmendmentHistory(input: TraceAmendmentHistoryI
     const chain = await getAmendmentChain(code_id, article_number);
 
     if (chain.versions.length === 0) {
-      return `No amendment history found for ${code_id} Article ${article_number}`;
+      // "No amendment history found for this article" is a claim about the article.
+      // When the code holds no articles at all it is false: law7 never imported the
+      // code, so no article of it could have a history here.
+      const articlesImported = await getCodeArticleCount(code_id);
+      const codeName = codeStructure.code?.name ?? null;
+
+      if (articlesImported === 0) {
+        return [
+          '## Code not imported',
+          '',
+          `**REFUSED**: law7 holds 0 articles for ${code_id}` +
+            (codeName ? ` (${codeName})` : '') +
+            `, so it has no amendment history - and no article text - for Article ${article_number}. ` +
+            'This is NOT a statement that the article was never amended, nor that it does not exist.',
+          '',
+          '- **code_available**: false',
+          `- **code_id**: ${code_id}`,
+          `- **code_name**: ${codeName ?? 'unknown (not registered in `consolidated_codes`)'}`,
+          '- **articles_imported**: 0',
+          `- **article_number**: ${article_number}`,
+          '',
+          '### What you can do instead',
+          '',
+          `- Call \`get-code-structure\` with \`code_id: "${code_id}"\` to see the import status ` +
+            'law7 reports for this code (0 articles / In Progress).',
+          '- Consult pravo.gov.ru for the real amendment record of this code.',
+          '',
+        ].join('\n');
+      }
+
+      return [
+        '## Article not found',
+        '',
+        `**REFUSED**: law7 holds ${articlesImported} article rows for ${code_id}` +
+          (codeName ? ` (${codeName})` : '') +
+          `, and Article ${article_number} is not among them, so there is no stored version of it ` +
+          'to trace. The number is absent from law7\'s copy of the code; that does NOT establish ' +
+          'that no such article exists in the code itself.',
+        '',
+        '- **article_found**: false',
+        '- **code_available**: true',
+        `- **code_id**: ${code_id}`,
+        `- **article_number**: ${article_number}`,
+        `- **articles_imported**: ${articlesImported}`,
+        '',
+        '### What you can do instead',
+        '',
+        `- Call \`get-code-structure\` with \`code_id: "${code_id}"\` to list the article numbers ` +
+          'law7 actually holds for this code.',
+        '- Verify the article number against the official source (pravo.gov.ru).',
+        '',
+      ].join('\n');
     }
 
     const amendmentsApplied = await getAmendmentApplicationCount(code_id);
@@ -242,12 +294,17 @@ export async function executeTraceAmendmentHistory(input: TraceAmendmentHistoryI
     if (applications.length === 0) {
       // "No history found" reads like "this code was never amended". It is not:
       // the consolidation engine has simply never run for this code.
+      const articlesImported = await getCodeArticleCount(code_id);
+
       return [
         `# Amendment History: ${codeStructure.code.name} (${code_id})`,
         '',
         '**history_available**: false',
+        `**articles_imported**: ${articlesImported}`,
         '',
-        `**0 amendments applied - history not generated for ${code_id}.**`,
+        articlesImported === 0
+          ? `**0 articles imported and 0 amendments applied - law7 holds nothing for ${code_id}.**`
+          : `**0 amendments applied - history not generated for ${code_id}.**`,
         '',
         'The `amendment_applications` table holds no rows for this code, so law7 cannot list, ' +
           'date or attribute any amendment to it. This is NOT a statement that the code was ' +

@@ -11,7 +11,9 @@ vi.mock('../../db/consolidation_queries.js', () => ({
   getArticleVersionOnDate: vi.fn(),
   getAmendmentChain: vi.fn(),
   getAmendmentApplicationCount: vi.fn(),
+  getCodeArticleCount: vi.fn(),
   getCodeStructure: vi.fn(),
+  getCorpusSnapshotDate: vi.fn(),
 }));
 
 vi.mock('../../config.js', () => ({
@@ -25,7 +27,9 @@ import {
   getArticleVersionOnDate,
   getAmendmentChain,
   getAmendmentApplicationCount,
+  getCodeArticleCount,
   getCodeStructure,
+  getCorpusSnapshotDate,
 } from '../../db/consolidation_queries.js';
 
 describe('get-article-version tool', () => {
@@ -33,6 +37,10 @@ describe('get-article-version tool', () => {
     vi.clearAllMocks();
     // amendment_applications is empty in the live database.
     vi.mocked(getAmendmentApplicationCount).mockResolvedValue(0);
+    // Default: the code IS imported (GK_RF holds 551 article rows live).
+    vi.mocked(getCodeArticleCount).mockResolvedValue(551);
+    // The live corpus is frozen at max(documents.publish_date) = 2026-02-06.
+    vi.mocked(getCorpusSnapshotDate).mockResolvedValue('2026-02-06');
   });
 
   afterEach(() => {
@@ -178,9 +186,10 @@ describe('get-article-version tool', () => {
       expect(getAmendmentChain).toHaveBeenCalledWith('GK_RF', '420');
     });
 
-    it('should return not found for non-existent article', async () => {
+    it('should refuse with "Article not found" and the code article count for an absent number', async () => {
       vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
       vi.mocked(getCurrentArticleVersion).mockResolvedValue(null);
+      vi.mocked(getCodeArticleCount).mockResolvedValue(551);
       vi.mocked(getAmendmentChain).mockResolvedValue({
         article_number: '999',
         code_id: 'GK_RF',
@@ -195,7 +204,13 @@ describe('get-article-version tool', () => {
 
       const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
-      expect(result).toContain('Article not found: GK_RF Article 999');
+      expect(result).toContain('## Article not found');
+      expect(result).toContain('- **article_found**: false');
+      expect(result).toContain('- **code_available**: true');
+      expect(result).toContain('- **articles_imported**: 551');
+      // The count is what lets the reader tell "absent from our data" from "does not exist".
+      expect(result).toContain('does NOT establish');
+      expect(result).not.toContain('## Code not imported');
     });
 
     it('should return helpful message for repealed articles without current version', async () => {
@@ -295,9 +310,10 @@ describe('get-article-version tool', () => {
       expect(getArticleVersionOnDate).toHaveBeenCalledWith('GK_RF', '420', '2020-06-01');
     });
 
-    it('should return not found for historical query with no results', async () => {
+    it('should refuse a historical query for an absent article number, naming the code article count', async () => {
       vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
       vi.mocked(getArticleVersionOnDate).mockResolvedValue(null);
+      vi.mocked(getCodeArticleCount).mockResolvedValue(551);
       vi.mocked(getAmendmentChain).mockResolvedValue({
         article_number: '999',
         code_id: 'GK_RF',
@@ -313,7 +329,48 @@ describe('get-article-version tool', () => {
 
       const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
-      expect(result).toContain('Article not found: GK_RF Article 999 as of 2020-01-01');
+      expect(result).toContain('## Article not found');
+      expect(result).toContain('- **article_found**: false');
+      expect(result).toContain('- **articles_imported**: 551');
+      expect(result).toContain('- **requested_date**: 2020-01-01');
+      expect(result).not.toContain('## Code not imported');
+    });
+
+    it('should refuse with "Code not imported" when the code holds no articles at all', async () => {
+      vi.mocked(getCodeStructure).mockResolvedValue({
+        code: {
+          code: 'KAS_RF',
+          name: 'Кодекс административного судопроизводства',
+          short_name: 'КАС РФ',
+        },
+      } as any);
+      vi.mocked(getArticleVersionOnDate).mockResolvedValue(null);
+      // KAS_RF is registered in consolidated_codes but has 0 imported articles.
+      vi.mocked(getCodeArticleCount).mockResolvedValue(0);
+      vi.mocked(getAmendmentChain).mockResolvedValue({
+        article_number: '1',
+        code_id: 'KAS_RF',
+        versions: [],
+        current_version: null,
+      } as any);
+
+      const input = {
+        code_id: 'KAS_RF',
+        article_number: '1',
+        as_of_date: '2015-01-01',
+      };
+
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
+
+      expect(result).toContain('## Code not imported');
+      expect(result).toContain('- **code_available**: false');
+      expect(result).toContain('- **code_id**: KAS_RF');
+      expect(result).toContain('Кодекс административного судопроизводства');
+      expect(result).toContain('- **articles_imported**: 0');
+      expect(result).toContain('get-code-structure');
+      // It must NOT claim anything about the article itself.
+      expect(result).not.toContain('## Article not found');
+      expect(result).not.toContain('article_found');
     });
 
     it('should validate date format', async () => {
@@ -456,6 +513,57 @@ describe('get-article-version tool', () => {
       expect(result).toContain('[CURRENT]');
       expect(result).toContain('Current text of article 105');
       expect(result).not.toContain('## No historical version available');
+    });
+
+    it('should give the frozen-corpus reason when the requested date is after the snapshot', async () => {
+      vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
+      vi.mocked(getAmendmentApplicationCount).mockResolvedValue(0);
+      vi.mocked(getCorpusSnapshotDate).mockResolvedValue('2026-02-06');
+      vi.mocked(getAmendmentChain).mockResolvedValue({
+        article_number: '105',
+        code_id: 'UK_RF',
+        versions: [singleSnapshot],
+        current_version: singleSnapshot,
+      } as any);
+
+      const input = {
+        code_id: 'UK_RF',
+        article_number: '105',
+        as_of_date: '2026-12-31',
+      };
+
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
+
+      expect(result).toContain('## No historical version available');
+      expect(result).toContain('- **corpus_snapshot_date**: 2026-02-06');
+      // Both true reasons must be stated, not only the missing-history one.
+      expect(result).toContain("is LATER than law7's corpus snapshot");
+      expect(result).toContain('frozen at that date');
+      expect(result).toContain('History has NOT been generated for UK_RF');
+      expect(result).not.toContain('Current text of article 105');
+    });
+
+    it('should not claim a frozen corpus when the requested date is before the snapshot', async () => {
+      vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
+      vi.mocked(getAmendmentApplicationCount).mockResolvedValue(0);
+      vi.mocked(getCorpusSnapshotDate).mockResolvedValue('2026-02-06');
+      vi.mocked(getAmendmentChain).mockResolvedValue({
+        article_number: '105',
+        code_id: 'UK_RF',
+        versions: [singleSnapshot],
+        current_version: singleSnapshot,
+      } as any);
+
+      const input = {
+        code_id: 'UK_RF',
+        article_number: '105',
+        as_of_date: '2015-01-01',
+      };
+
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
+
+      expect(result).toContain('## No historical version available');
+      expect(result).not.toContain("is LATER than law7's corpus snapshot");
     });
   });
 

@@ -237,6 +237,68 @@ export async function getAmendmentApplicationCount(codeId: string): Promise<numb
 }
 
 /**
+ * Count the article rows law7 holds for a code.
+ *
+ * Used to tell "this article number is absent from a code we did import" apart
+ * from "we never imported this code at all" - the two are indistinguishable in an
+ * empty result set, and reporting the first when the second is true states
+ * something false about the article.
+ */
+export async function getCodeArticleCount(codeId: string): Promise<number> {
+  const text = `
+    SELECT COUNT(*) as count
+    FROM code_article_versions
+    WHERE code_id = $1
+  `;
+  const results = await query<{ count: string | number | bigint }>(text, [codeId]);
+  return Number(results[0]?.count ?? 0);
+}
+
+/**
+ * Newest `documents.publish_date` in the corpus: the date the crawled corpus is
+ * frozen at. Nothing published after it is known to law7, so a query about a date
+ * later than this cannot be answered from the database at all - not even with a
+ * complete amendment history.
+ *
+ * Cached for the lifetime of the process: the corpus does not change while the
+ * MCP server runs, and every refusal path would otherwise pay for the scan.
+ */
+let corpusSnapshotDateCache: { value: string | null } | null = null;
+
+export async function getCorpusSnapshotDate(): Promise<string | null> {
+  if (corpusSnapshotDateCache) {
+    return corpusSnapshotDateCache.value;
+  }
+
+  const text = `SELECT MAX(publish_date) AS snapshot_date FROM documents`;
+  const results = await query<{ snapshot_date: Date | string | null }>(text);
+  const raw = results[0]?.snapshot_date ?? null;
+
+  let value: string | null = null;
+  if (raw) {
+    if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      value = raw;
+    } else {
+      // node-postgres parses a PostgreSQL `date` into a Date at LOCAL midnight;
+      // toISOString() would shift the calendar day back for positive UTC offsets.
+      const d = raw instanceof Date ? raw : new Date(raw);
+      if (!isNaN(d.getTime())) {
+        const pad = (n: number) => String(n).padStart(2, '0');
+        value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      }
+    }
+  }
+
+  corpusSnapshotDateCache = { value };
+  return value;
+}
+
+/** Test seam: drop the memoised corpus snapshot date. */
+export function resetCorpusSnapshotDateCache(): void {
+  corpusSnapshotDateCache = null;
+}
+
+/**
  * Get amendment application by eo_number
  */
 export async function getAmendmentApplication(

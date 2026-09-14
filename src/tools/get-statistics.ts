@@ -23,27 +23,40 @@ export interface Statistics {
   countries: { id: number; name: string; document_count: number }[];
   total_documents: number;
   documents_with_content: number;
-  /** document_content rows whose full_text is longer than BODY_TEXT_MIN_CHARS */
-  documents_with_body_text: number;
+  /** length(full_text) percentiles over document_content rows in scope */
+  content_length_p50: number | null;
+  content_length_p90: number | null;
+  content_length_max: number | null;
+  /** document_content rows whose full_text is longer than LONG_TEXT_CHARS */
+  documents_over_long_text: number;
   /** max(documents.publish_date): how current the crawled corpus is */
   snapshot_date: string | null;
-  /** max(documents.updated_at): when a sync last wrote to the corpus */
-  last_sync_at: string | null;
-  /** rows in code_article_versions */
+  /**
+   * max(documents.updated_at): the newest row write in `documents`. NOT the time a
+   * sync ran - law7 keeps no sync log, and a restore rewrites this timestamp.
+   */
+  corpus_last_write_at: string | null;
+  /** rows in code_article_versions for codes in scope */
   article_versions_total: number;
-  /** rows in amendment_applications */
+  /** rows in amendment_applications for codes in scope */
   amendments_applied: number;
-  /** false while no amendment has ever been applied */
+  /** codes in scope holding at least one applied amendment */
+  codes_with_applied_amendments: number;
+  /** consolidated codes in scope (the M of "N of M") */
+  codes_in_scope: number;
+  /** derived: codes_with_applied_amendments > 0 */
   history_available: boolean;
   publication_blocks: { code: string; name: string; count: number }[];
   vector_count?: number;
 }
 
 /**
- * Minimum full_text length that indicates a real act body rather than the
- * annotation-level text the crawler stores for most documents.
+ * One arbitrary cut through the full_text length distribution, reported alongside
+ * the distribution itself so nobody reads it as a body/annotation boundary: the
+ * live median is 447 characters and the maximum 5,565, so this line separates
+ * "the single longest rows" from the rest, not "act bodies" from "annotations".
  */
-const BODY_TEXT_MIN_CHARS = 5000;
+const LONG_TEXT_CHARS = 5000;
 
 /** Format every number in this tool the same way: 1136605 -> "1,136,605". */
 function formatCount(value: number | bigint | string | null | undefined): string {
@@ -68,6 +81,12 @@ function formatDateOnly(value: Date | string | null | undefined): string {
   const d = value instanceof Date ? value : new Date(value);
   if (isNaN(d.getTime())) return 'never';
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Render a character length, or "n/a" when the scope holds no rows. */
+function formatLength(value: number | string | null | undefined): string {
+  if (value === null || value === undefined) return 'n/a';
+  return `${formatCount(Math.round(Number(value)))} chars`;
 }
 
 /**
@@ -117,26 +136,52 @@ export async function executeGetStatistics(input: GetStatisticsInput): Promise<s
   const contentFilter = countryId
     ? `AND document_id IN (SELECT id FROM documents WHERE country_id = ${countryId})`
     : '';
+  //
+  // Scope note: `consolidated_codes`, `code_article_versions` and
+  // `amendment_applications` carry NO country column (verified against the live
+  // schema), so the consolidation counters are scoped to the set of registered
+  // consolidated codes - joined through `consolidated_codes` rather than counted
+  // over the whole table - and the country filter cannot narrow them further. That
+  // limit is stated in the output instead of being papered over.
   const factsResult = await query<{
     snapshot_date: Date | string | null;
-    last_sync_at: Date | string | null;
-    documents_with_body_text: bigint;
+    corpus_last_write_at: Date | string | null;
+    content_length_p50: number | string | null;
+    content_length_p90: number | string | null;
+    content_length_max: number | string | null;
+    documents_over_long_text: bigint;
     article_versions_total: bigint;
     amendments_applied: bigint;
+    codes_with_applied_amendments: bigint;
+    codes_in_scope: bigint;
   }>(`
     SELECT
       (SELECT MAX(publish_date) FROM documents ${docFilter}) AS snapshot_date,
-      (SELECT MAX(updated_at) FROM documents ${docFilter}) AS last_sync_at,
+      (SELECT MAX(updated_at) FROM documents ${docFilter}) AS corpus_last_write_at,
+      (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY length(full_text))
+         FROM document_content WHERE full_text IS NOT NULL ${contentFilter}) AS content_length_p50,
+      (SELECT percentile_cont(0.9) WITHIN GROUP (ORDER BY length(full_text))
+         FROM document_content WHERE full_text IS NOT NULL ${contentFilter}) AS content_length_p90,
+      (SELECT MAX(length(full_text))
+         FROM document_content WHERE full_text IS NOT NULL ${contentFilter}) AS content_length_max,
       (SELECT COUNT(*) FROM document_content
-         WHERE length(full_text) > ${BODY_TEXT_MIN_CHARS} ${contentFilter}) AS documents_with_body_text,
-      (SELECT COUNT(*) FROM code_article_versions) AS article_versions_total,
-      (SELECT COUNT(*) FROM amendment_applications) AS amendments_applied
+         WHERE length(full_text) > ${LONG_TEXT_CHARS} ${contentFilter}) AS documents_over_long_text,
+      (SELECT COUNT(*) FROM code_article_versions cav
+         JOIN consolidated_codes cc ON cc.code = cav.code_id) AS article_versions_total,
+      (SELECT COUNT(*) FROM amendment_applications aa
+         JOIN consolidated_codes cc ON cc.code = aa.code_id) AS amendments_applied,
+      (SELECT COUNT(DISTINCT aa.code_id) FROM amendment_applications aa
+         JOIN consolidated_codes cc ON cc.code = aa.code_id
+         WHERE aa.status = 'applied') AS codes_with_applied_amendments,
+      (SELECT COUNT(*) FROM consolidated_codes) AS codes_in_scope
   `);
   const facts = factsResult[0] ?? ({} as Record<string, never>);
-  const documentsWithBodyText = Number(facts.documents_with_body_text ?? 0);
+  const documentsOverLongText = Number(facts.documents_over_long_text ?? 0);
   const articleVersionsTotal = Number(facts.article_versions_total ?? 0);
   const amendmentsApplied = Number(facts.amendments_applied ?? 0);
-  const historyAvailable = amendmentsApplied > 0;
+  const codesWithAppliedAmendments = Number(facts.codes_with_applied_amendments ?? 0);
+  const codesInScope = Number(facts.codes_in_scope ?? 0);
+  const historyAvailable = codesWithAppliedAmendments > 0;
 
   // Get publication blocks
   const blocksResult = await query<{ code: string; short_name: string; count: bigint }>(`
@@ -186,7 +231,6 @@ export async function executeGetStatistics(input: GetStatisticsInput): Promise<s
   output += `### Overview\n\n`;
   output += `- **Total Documents**: ${formatCount(totalDocuments)}\n`;
   output += `- **Documents with Content**: ${formatCount(documentsWithContent)}\n`;
-  output += `- **Documents with Body Text** (full_text > ${formatCount(BODY_TEXT_MIN_CHARS)} chars): ${formatCount(documentsWithBodyText)}\n`;
   output += `- **Content Coverage**: ${totalDocuments > 0 ? ((documentsWithContent / totalDocuments) * 100).toFixed(1) : 0}%\n`;
 
   if (include_vector_stats) {
@@ -195,30 +239,52 @@ export async function executeGetStatistics(input: GetStatisticsInput): Promise<s
 
   output += `\n`;
 
+  // Content length distribution
+  output += `### Document Content Length\n\n`;
+  output += `- **document_content length p50**: ${formatLength(facts.content_length_p50)}\n`;
+  output += `- **document_content length p90**: ${formatLength(facts.content_length_p90)}\n`;
+  output += `- **document_content length max**: ${formatLength(facts.content_length_max)}\n`;
+  output += `- **Rows longer than ${formatCount(LONG_TEXT_CHARS)} chars**: ${formatCount(documentsOverLongText)}\n`;
+  output += `\n`;
+  output += `> "Documents with Content" counts \`document_content\` rows of ANY length. The\n`;
+  output += `> percentiles above say what those rows actually hold: at p50 they carry\n`;
+  output += `> annotation-level text (title, number, date), not an act body. The ${formatCount(LONG_TEXT_CHARS)}-character\n`;
+  output += `> line is one arbitrary cut through that distribution, not a body/annotation boundary -\n`;
+  output += `> read it against the maximum above before treating it as a count of full act texts.\n`;
+  output += `\n`;
+
   // Freshness
   output += `### Freshness\n\n`;
   output += `- **Snapshot Date** (max documents.publish_date): ${formatDateOnly(facts.snapshot_date)}\n`;
-  output += `- **Last Sync At** (max documents.updated_at): ${formatTimestamp(facts.last_sync_at)}\n`;
+  output += `- **corpus_last_write_at** (max documents.updated_at): ${formatTimestamp(facts.corpus_last_write_at)}\n`;
+  output += `- **sync_log**: none (no record of sync runs exists yet)\n`;
+  output += `\n`;
+  output += `> \`corpus_last_write_at\` is the newest row write in \`documents\`, NOT the time a sync\n`;
+  output += `> ran: a restore from backup rewrites it, and a sync that found nothing to change\n`;
+  output += `> leaves it untouched. law7 keeps no sync log, so "a sync ran and found nothing" and\n`;
+  output += `> "a sync never ran" cannot be told apart from this field.\n`;
   output += `\n`;
 
   // Consolidated codes / history
   output += `### Consolidated Codes\n\n`;
-  output += `- **Article Versions Total**: ${formatCount(articleVersionsTotal)}\n`;
-  output += `- **Amendments Applied**: ${formatCount(amendmentsApplied)}\n`;
-  output += `- **history_available**: ${historyAvailable}\n`;
+  output += `- **Codes in Scope** (rows in consolidated_codes): ${formatCount(codesInScope)}\n`;
+  output += `- **Article Versions Total** (code_article_versions for codes in scope): ${formatCount(articleVersionsTotal)}\n`;
+  output += `- **Amendments Applied** (amendment_applications for codes in scope): ${formatCount(amendmentsApplied)}\n`;
+  output += `- **codes_with_applied_amendments**: ${formatCount(codesWithAppliedAmendments)} of ${formatCount(codesInScope)}\n`;
+  output += `- **history_available** (derived): ${historyAvailable} - ${formatCount(codesWithAppliedAmendments)} of ${formatCount(codesInScope)} codes have any applied amendment\n`;
   output += `\n`;
 
-  if (!historyAvailable) {
-    output += `> No amendment has ever been applied (\`amendment_applications\` is empty), so every\n`;
-    output += `> article holds a single import snapshot. Historical (\`as_of_date\`) queries cannot be\n`;
-    output += `> answered and \`get-article-version\` refuses them rather than returning current text.\n`;
+  if (country_code) {
+    output += `> Scope note: \`consolidated_codes\`, \`code_article_versions\` and\n`;
+    output += `> \`amendment_applications\` carry no country column, so the counters in this section\n`;
+    output += `> cover every registered code and are NOT narrowed by \`country_code\`.\n`;
     output += `\n`;
   }
 
-  if (documentsWithBodyText < documentsWithContent) {
-    output += `> "Documents with Content" counts \`document_content\` rows of any length; most hold\n`;
-    output += `> annotation-level text (title, number, date), not the act body. "Documents with Body\n`;
-    output += `> Text" is the count that actually carries a full act text.\n`;
+  if (!historyAvailable) {
+    output += `> No amendment has ever been applied for any code in scope, so every article holds a\n`;
+    output += `> single import snapshot. Historical (\`as_of_date\`) queries cannot be answered and\n`;
+    output += `> \`get-article-version\` refuses them rather than returning current text.\n`;
     output += `\n`;
   }
 
@@ -251,14 +317,19 @@ export const getStatisticsTool: Tool = {
   description: `Get statistics about the legal document database.
 
 This tool returns aggregate statistics about the indexed legal documents:
-- total_documents, documents_with_content, documents_with_body_text
-  (documents_with_content counts document_content rows of ANY length - most are
-   annotation-level text, not act bodies; documents_with_body_text counts the rows
-   longer than 5000 characters)
-- snapshot_date (max documents.publish_date) and last_sync_at (max documents.updated_at),
-  so a caller can tell how stale the corpus is
-- article_versions_total, amendments_applied and history_available, so a caller can tell
-  whether historical (as_of_date) queries can be answered at all
+- total_documents, documents_with_content (document_content rows of ANY length), plus the
+  length distribution of those rows (p50 / p90 / max) and the count longer than 5000
+  characters - the distribution shows that most rows are annotation-level text, not act
+  bodies, and that the 5000-character line is one arbitrary cut, not a body/annotation
+  boundary
+- snapshot_date (max documents.publish_date) and corpus_last_write_at
+  (max documents.updated_at, the newest row write - NOT a sync timestamp; law7 keeps no
+  sync log, reported as sync_log: none), so a caller can tell how stale the corpus is
+- codes_in_scope, article_versions_total and amendments_applied (all scoped to registered
+  consolidated codes), codes_with_applied_amendments ("N of M") and the derived
+  history_available, so a caller can tell whether historical (as_of_date) queries can be
+  answered at all. The consolidation tables carry no country column, so country_code does
+  not narrow those counters.
 - vector chunk count, coverage, and breakdown by country / publication block
 
 All counts are formatted with thousands separators (en-US), e.g. 1,136,605.

@@ -32,10 +32,15 @@ import { getPointCount } from '../../db/qdrant.js';
  */
 const FACTS_ROW = {
   snapshot_date: '2026-02-06',
-  last_sync_at: new Date(2026, 1, 11, 1, 23, 45),
-  documents_with_body_text: 1n,
+  corpus_last_write_at: new Date(2026, 1, 11, 1, 23, 45),
+  content_length_p50: 447,
+  content_length_p90: 877,
+  content_length_max: 5565,
+  documents_over_long_text: 1n,
   article_versions_total: 6232n,
   amendments_applied: 0n,
+  codes_with_applied_amendments: 0n,
+  codes_in_scope: 23n,
 };
 
 describe('get-statistics tool', () => {
@@ -141,43 +146,95 @@ describe('get-statistics tool', () => {
       expect(result).toContain('450,000');
     });
 
-    it('should report corpus freshness', async () => {
+    it('should report corpus freshness without naming a sync that leaves no record', async () => {
       setupMocks();
 
       const result = await executeGetStatistics(GetStatisticsInputSchema.parse({}));
 
       expect(result).toContain('### Freshness');
       expect(result).toContain('**Snapshot Date** (max documents.publish_date): 2026-02-06');
-      expect(result).toContain('**Last Sync At** (max documents.updated_at): 2026-02-11 01:23:45');
+      expect(result).toContain('**corpus_last_write_at** (max documents.updated_at): 2026-02-11 01:23:45');
+      expect(result).toContain('**sync_log**: none (no record of sync runs exists yet)');
+      expect(result).toContain('NOT the time a sync');
+      // The old name claimed a process that leaves no trace.
+      expect(result).not.toContain('**Last Sync At**');
     });
 
-    it('should report documents with body text separately from documents with content', async () => {
+    it('should report the content length distribution, not a single body-text cutoff', async () => {
       setupMocks();
 
       const result = await executeGetStatistics(GetStatisticsInputSchema.parse({}));
 
-      expect(result).toContain('**Documents with Body Text** (full_text > 5,000 chars): 1');
-      // The caveat must appear whenever body-text count is lower than content count.
+      expect(result).toContain('### Document Content Length');
+      expect(result).toContain('**document_content length p50**: 447 chars');
+      expect(result).toContain('**document_content length p90**: 877 chars');
+      expect(result).toContain('**document_content length max**: 5,565 chars');
+      expect(result).toContain('**Rows longer than 5,000 chars**: 1');
+      expect(result).toContain('arbitrary cut');
       expect(result).toContain('annotation-level text');
+      // The 5,000-char count must no longer be presented as "documents with body text".
+      expect(result).not.toContain('Documents with Body Text');
     });
 
-    it('should report history_available: false when no amendments are applied', async () => {
+    it('should scope the consolidation counters and report codes_with_applied_amendments', async () => {
       setupMocks();
 
       const result = await executeGetStatistics(GetStatisticsInputSchema.parse({}));
 
       expect(result).toContain('### Consolidated Codes');
-      expect(result).toContain('**Article Versions Total**: 6,232');
-      expect(result).toContain('**Amendments Applied**: 0');
-      expect(result).toContain('**history_available**: false');
+      expect(result).toContain('**Codes in Scope** (rows in consolidated_codes): 23');
+      expect(result).toContain(
+        '**Article Versions Total** (code_article_versions for codes in scope): 6,232'
+      );
+      expect(result).toContain(
+        '**Amendments Applied** (amendment_applications for codes in scope): 0'
+      );
+      expect(result).toContain('**codes_with_applied_amendments**: 0 of 23');
+      expect(result).toContain(
+        '**history_available** (derived): false - 0 of 23 codes have any applied amendment'
+      );
       expect(result).toContain('No amendment has ever been applied');
     });
 
-    it('should report history_available: true when amendments exist', async () => {
+    it('should scope article_versions_total and amendments_applied through consolidated_codes', async () => {
+      setupMocks();
+
+      await executeGetStatistics(GetStatisticsInputSchema.parse({ country_code: 'RU' }));
+
+      const factsSql = vi
+        .mocked(query)
+        .mock.calls.map((call) => String(call[0]))
+        .find((sql) => sql.includes('snapshot_date'));
+
+      expect(factsSql).toBeDefined();
+      expect(factsSql).toContain('FROM code_article_versions cav');
+      expect(factsSql).toContain('JOIN consolidated_codes cc ON cc.code = cav.code_id');
+      expect(factsSql).toContain('FROM amendment_applications aa');
+      expect(factsSql).toContain('JOIN consolidated_codes cc ON cc.code = aa.code_id');
+    });
+
+    it('should state that country_code does not narrow the code counters', async () => {
+      setupMocks();
+
+      const result = await executeGetStatistics(
+        GetStatisticsInputSchema.parse({ country_code: 'RU' })
+      );
+
+      expect(result).toContain('carry no country column');
+      expect(result).toContain('NOT narrowed by `country_code`');
+    });
+
+    it('should report history_available: true when a code has applied amendments', async () => {
       setupMocks();
       vi.mocked(query).mockImplementation((text: string) => {
         if (text.includes('snapshot_date')) {
-          return Promise.resolve([{ ...FACTS_ROW, amendments_applied: 1234n }]);
+          return Promise.resolve([
+            {
+              ...FACTS_ROW,
+              amendments_applied: 1234n,
+              codes_with_applied_amendments: 7n,
+            },
+          ]);
         }
         if (text.includes('document_content')) {
           return Promise.resolve([{ count: 145500n }]);
@@ -187,8 +244,13 @@ describe('get-statistics tool', () => {
 
       const result = await executeGetStatistics(GetStatisticsInputSchema.parse({}));
 
-      expect(result).toContain('**Amendments Applied**: 1,234');
-      expect(result).toContain('**history_available**: true');
+      expect(result).toContain(
+        '**Amendments Applied** (amendment_applications for codes in scope): 1,234'
+      );
+      expect(result).toContain('**codes_with_applied_amendments**: 7 of 23');
+      expect(result).toContain(
+        '**history_available** (derived): true - 7 of 23 codes have any applied amendment'
+      );
       expect(result).not.toContain('No amendment has ever been applied');
     });
 
@@ -267,10 +329,15 @@ describe('get-statistics tool', () => {
           return Promise.resolve([
             {
               snapshot_date: null,
-              last_sync_at: null,
-              documents_with_body_text: 0n,
+              corpus_last_write_at: null,
+              content_length_p50: null,
+              content_length_p90: null,
+              content_length_max: null,
+              documents_over_long_text: 0n,
               article_versions_total: 0n,
               amendments_applied: 0n,
+              codes_with_applied_amendments: 0n,
+              codes_in_scope: 0n,
             },
           ]);
         }
@@ -282,7 +349,10 @@ describe('get-statistics tool', () => {
       expect(result).toContain('**Total Documents**: 0');
       expect(result).toContain('**Content Coverage**: 0%');
       expect(result).toContain('**Snapshot Date** (max documents.publish_date): never');
-      expect(result).toContain('**Last Sync At** (max documents.updated_at): never');
+      expect(result).toContain('**corpus_last_write_at** (max documents.updated_at): never');
+      // An empty scope must not be rendered as a length of 0 characters.
+      expect(result).toContain('**document_content length p50**: n/a');
+      expect(result).toContain('**codes_with_applied_amendments**: 0 of 0');
     });
 
     it('should calculate coverage percentage correctly', async () => {
