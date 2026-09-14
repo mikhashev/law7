@@ -68,6 +68,10 @@ data/
 # Claude Code local settings
 .claude/
 
+# .mcp.json registers the local orbit code-graph MCP server; it carries an
+# absolute path to this machine's orbit.exe, so it is per-machine, not shared.
+.mcp.json
+
 # npm (create .npmignore for npm package)
 .npmignore
 
