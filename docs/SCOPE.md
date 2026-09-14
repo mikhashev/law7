@@ -28,6 +28,18 @@ This file exists because the project's other documents were written at the scale
 | Tests and CI | As of 2026-09-14: 226 Python tests pass, 23 skipped (22 OCR-pending, 1 known production bug in `VersionInfo`); 125 TypeScript tests pass; `tsc` reports 0 errors. CI runs tsc, vitest, ruff and pytest behind gate scripts with known-failure allowlists (currently empty except a ruff baseline of 200 findings); any new failure fails the build. | Green CI on every commit; a schema test that fails when a documented number drifts from the database. |
 | Distribution | Source on GitHub (AGPL-3.0 with a section-7 linking exception, see `LICENSE-EXCEPTION.md`). Data as a Google Drive backup. No release, no tag, no package, no registry listing. | Tagged releases; data as backup + signed manifest; MCP server listed in registries. Free. No paid tier, ever. |
 
+### 1.1 The anchor horizon
+
+Two probes on 2026-09-14 draw the same border. The founding acts of 21 of the 23 consolidated codes (1993–2006) are not on publication.pravo.gov.ru at all (the earliest records found by search date from 2012; the portal describes itself as the official publication channel from 2011), and the detached signature is served for sampled regional documents but not for sampled federal ones. So an official artifact for Russian law has two independent properties, and the project must state them separately:
+
+| | artifact **available** (bytes at the source, hash can be shown — integrity) | artifact **signed** (signature can be shown — authorship) |
+|---|---|---|
+| before ~2012 | only as a scan, where one exists (ИПС shows the *current* text, not the original) | no — the portal did not exist |
+| after ~2012, regional | yes | yes (sampled) |
+| after ~2012, federal | yes | not served (sampled) |
+
+Consequences: for 22 of the 23 codes "signed" is unreachable in principle; a reconstruction of a code as of a date before the horizon rests on an unverifiable foundation (the base text and the early amendments), and because amendments address the text textually, an error in that foundation propagates silently through every later step. The horizon is a property of each country adapter, not a general assumption.
+
 ## 2. What this project is not
 
 - Not a legal advice system. It stores what the official publication said and what text results from applying published amendments. It does not decide which rule applies to a situation; transitional provisions are stored, not resolved.
