@@ -264,7 +264,7 @@ uv add package-name
 2. **Port Conflicts**: Services use non-default ports to avoid conflicts with ygbis project.
 3. **Hybrid Search**: Combines semantic search (Qdrant) with keyword search (PostgreSQL trigrams).
 4. **Official Sources**: All Russian legal data comes from pravo.gov.ru official API.
-5. **Historical Tracking**: The consolidation engine maintains full version history of legal articles from 2011-present.
+5. **Historical Tracking**: The consolidation engine is designed to maintain per-article version history, but it has not yet been run on real data — `amendment_applications` is empty and every article has a single version (see [docs/SCOPE.md](docs/SCOPE.md)).
 
 ## Two-Phase Development
 
@@ -307,7 +307,7 @@ The system currently supports **23 consolidated Russian legal codes**:
 | LK_RF | Лесной кодекс | Forest Code | government.ru |
 | KAS_RF | Кодекс административного судопроизводства | Administrative Procedure Code | kremlin.ru |
 
-**Total**: 23 code identifiers (19 unique codes, some split into parts like Civil Code and Tax Code)
+**Total**: 23 code identifiers in the registry (the Civil Code has 4 parts and the Tax Code 2, so 19 distinct codes); 22 identifiers imported, KAS_RF pending
 **Status**: 22 codes imported (6,232 articles, as of the 2026-02-11 snapshot measured 2026-09-14), KAS_RF pending import
 
 ## When to Update CLAUDE.md
