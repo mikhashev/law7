@@ -7,32 +7,49 @@ version: 2
 # itself stricter -- more lint rules enabled, new compiler diagnostics --
 # which inflates the CI gate baselines in scripts/tools/ci/ with no code
 # change at all (see scripts/tools/ci/README.md). So Dependabot is told to
-# skip semver-major updates here; a maintainer bumps a major manually, one
+# skip semver-major *version* updates here (security updates are not
+# affected -- see (a) below); a maintainer bumps a major manually, one
 # dependency per commit, re-measuring and updating the relevant
 # known_failures.txt baseline (with its recorded tool `version=`) in that
 # same commit. Minor/patch updates continue to flow through Dependabot as
 # before.
 #
-# What this policy does NOT do: it is not a way to stay on an old major.
-# Per GitHub's docs the `ignore` option is marked as affecting security
-# updates as well as version updates -- "All options marked with a
-# [shield-check] icon also change how Dependabot creates pull requests for
-# security updates, except where `target-branch` is used"
-# (docs.github.com/en/code-security/dependabot/working-with-dependabot/
-# dependabot-options-reference), and "you can configure Dependabot to ignore
-# those dependencies when it opens pull requests for version updates and
-# security updates"
-# (docs.github.com/en/code-security/dependabot/dependabot-version-updates/
-# controlling-dependencies-updated). Note the contrast with `update-types`
-# under `allow`, which the same reference explicitly limits to version
-# updates ("update-types only affects version updates, not security
-# updates"); no such carve-out is documented for `update-types` under
-# `ignore`.
+# What this policy does NOT do -- measured on this repo, not inferred from
+# the docs:
 #
-# So a semver-major *security* fix will NOT arrive as an automated PR here
-# either: this rule silences it too. Watch Dependabot alerts (the alert is
-# still raised; only the PR is suppressed) and bump the major by hand,
-# promptly, when one lands on a dependency we ship.
+# (a) It does not apply to SECURITY updates. Dependabot's own updater log
+#     says so, verbatim, in the job "Dependabot Updates uv in /. for pillow"
+#     (a *security* update job, pillow 11.3.0 -> 12.3.0), measured
+#     2026-09-14 16:32 UTC in run
+#     github.com/mikhashev/law7/actions/runs/34869196755:
+#       Ignored versions: version-update:semver-major - from
+#       .github/dependabot.yml (doesn't apply to security update)
+#     An earlier version of this comment claimed the opposite, reading the
+#     shield icon in the options reference ("All options marked with a
+#     [shield-check] icon also change how Dependabot creates pull requests
+#     for security updates") as covering `update-types` under `ignore`. That
+#     reading was ambiguous -- the icon marks the `ignore` option as a whole,
+#     and the same page's prose about ignoring dependencies does not
+#     separate the `versions` and `update-types` forms -- and the log wins
+#     over the reading. So: a semver-major *security* fix WILL arrive here as
+#     an automated PR, and must be reviewed like any other major -- one
+#     dependency per commit, and if it is a dev tool (ruff, black,
+#     typescript, pytest, vitest), re-measure the CI gate baselines in that
+#     same commit.
+#     Confirming the same run: the security-flagged major PRs #45 (black
+#     24.10.0 -> 26.3.1) and #46 (setuptools 81 -> 83) stayed open under this
+#     rule.
+#
+# (b) It closes matching PRs that are already open. On the first Dependabot
+#     run after this ignore rule was pushed, Dependabot itself closed the 8
+#     open semver-major *version-update* PRs -- #34 #35 #36 #38 #39 #40 #42
+#     #44, closed 16:31:54-57 UTC on 2026-09-14 by app/dependabot. An ignore
+#     rule is therefore retroactive, not just a filter on future runs: adding
+#     one discards the review work already sitting in those PRs.
+#
+# It is also not a way to stay on an old major: alerts are still raised, and
+# a major we choose not to take is a decision to record, not a default to
+# drift into.
 
 updates:
   - package-ecosystem: "npm"

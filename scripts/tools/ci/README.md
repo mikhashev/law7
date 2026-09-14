@@ -18,9 +18,11 @@ that lint finding, next gets a green build. So a fix and the matching
 allowlist/baseline shrink belong in the same commit.
 
 Rule: remove an entry when the test is fixed; never add an entry without a
-linked issue/stage note. Regenerate a section with `--generate` on the
-relevant script (see each script's `--help`) after confirming the new
-failures are real debt, not a regression.
+linked issue/stage note — and that half is now enforced, not advised: an
+entry with no `# ^` note on the next line is a parse error and the gate exits
+1 (see below). Regenerate a section with `--generate` on the relevant script
+(see each script's `--help`) after confirming the new failures are real debt,
+not a regression.
 
 ## Allowlist file format
 
@@ -45,12 +47,16 @@ baseline=200
   `[tsc-files]`, where the bare lines *are* the format (the allowlisted file
   paths, alongside `version=` and `baseline=`). Any other bare line under a
   section exits 1.
-* **A note attaches with `# ^`.** A line starting with `# ^` directly below
-  an entry is that entry's note — the "linked issue/stage note" the rule
-  above demands. `--generate` carries it forward unchanged for ids that are
-  still failing, and drops it together with its id when the id goes. A line
-  starting with `#` that is *not* `# ^` is an ordinary comment and attaches
-  to nothing.
+* **A note attaches with `# ^`, and every entry needs one.** A line starting
+  with `# ^` directly below an entry is that entry's note — the "linked
+  issue/stage note" the rule above demands. An entry with no such line below
+  it exits 1 with `path:line` and `entry has no note; add "# ^ <issue or
+  stage note>" on the next line`; a line starting with `#` that is *not*
+  `# ^` is an ordinary comment, attaches to nothing, and does **not** satisfy
+  the requirement. This applies to pytest node ids, vitest ids, and the file
+  paths under `[tsc-files]` alike. `--generate` carries a note forward
+  unchanged for ids that are still failing, and drops it together with its id
+  when the id goes.
 * **Inline `#` is rejected.** `a.py::test  # note` exits 1: the whole line is
   the id, `#` and all, so such an entry would match nothing and silently
   allowlist nothing. The message says to move the note to the next line as
@@ -116,17 +122,49 @@ the baseline is explained entirely by the tool version — if the same commit
 also touched code, nobody can tell afterwards which of the two moved the
 number.
 
-`dependabot.yml` enforces the "one commit" half of this by excluding
-semver-major updates from automated PRs for every ecosystem; a maintainer
-adopts a major manually (see the dated policy comment there, including what
-that exclusion also silences). The gate failing on a version mismatch is by
-design, not a bug: it is the mechanism that makes a silent redefinition of
-"known" impossible.
+`dependabot.yml` excludes semver-major *version* updates from automated PRs
+for every ecosystem, so a maintainer adopts a major manually, one per commit
+(see the dated policy comment there — including the measured fact that the
+exclusion does **not** cover security updates: a semver-major security fix
+still arrives as a PR and still needs its baselines re-measured in the same
+commit). The gate failing on a version mismatch is by design, not a bug: it
+is the mechanism that makes a silent redefinition of "known" impossible.
 
 Each script's `--generate` mode writes the current tool version alongside
 the fresh measurement, and preserves every other section already in the
 file untouched (so regenerating e.g. just `[ruff]` after a ruff-only bump
-does not clobber `[pytest]`'s `version=` in the same file). A
-`--override-version` flag exists on every script solely to simulate a
-version mismatch for testing the gate itself; it is not meant for normal
-use.
+does not clobber `[pytest]`'s `version=` in the same file).
+
+**`--generate` needs `--reason`.** It records `regenerated=<date> <reason>`
+(UTC date) in the section it rewrote and prints the was → now delta first:
+
+```
+$ uv run python scripts/tools/ci/check_ruff.py --generate \
+      --reason "ruff 0.9.0 bump, 12 new RUF rules"
+was: version=0.8.6 baseline=200 -> now: version=0.9.0 baseline=212
+Wrote version=0.9.0 baseline=212 to scripts/test/known_failures.txt
+```
+
+Without `--reason` it prints how to supply one and exits 2. Only the newest
+`regenerated=` line is kept — the file records the current state, git history
+holds the log. The reason is what a baseline that moved by 40 owes the next
+reader; the exit code alone cannot distinguish that from a move of 1.
+
+**`--override-version` must equal the installed tool.** Under `--generate` a
+mismatch exits 1:
+
+```
+override-version 0.16.7 does not match the installed ruff 0.8.6 -- a
+baseline may only carry the version that measured it
+```
+
+The flag exists solely to simulate a version mismatch when testing the gates
+themselves (`--override-version` without `--generate`); combined with
+`--generate` it would stamp a `version=` that nothing measured, which is the
+exact corruption the versioning scheme exists to prevent.
+
+**`--generate` writes `# ^ TODO: reason (added by --generate <date>)`** under
+any id or path it has just measured that has no note yet — otherwise it would
+produce a file its own parser rejects. Replace every TODO with a real
+issue/stage note before committing; a TODO in a committed allowlist is an
+allowance with no owner.

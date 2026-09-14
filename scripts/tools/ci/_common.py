@@ -11,8 +11,9 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 # scripts/tools/ci/_common.py -> repo root is three parents up.
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -39,7 +40,19 @@ def run_cmd(cmd: Sequence[str], **kwargs) -> subprocess.CompletedProcess:
 #     # ^ broken since migration 003, see audit/PLAN stage 3
 #
 # A plain "# ..." line is still just a comment and attaches to nothing.
+#
+# The note is REQUIRED, not decorative: an entry with no "# ^" line directly
+# below it is an AllowlistError. The headers have always said "never add an
+# entry without a linked issue/stage note", but only the reverse (a note with
+# no entry) was actually checked, so the rule was advice. An allowance nobody
+# can trace back to an issue or stage is an allowance nobody ever retires.
 NOTE_PREFIX = "# ^"
+
+# What --generate writes under a freshly measured id that has no note yet, so
+# that the file it produces passes this parser. It is a placeholder, not a
+# note: the README requires replacing it with a real issue/stage reference
+# before the commit.
+TODO_NOTE_TEMPLATE = "# ^ TODO: reason (added by --generate {date})"
 
 # Only [tsc-files] uses bare lines as data (the allowlisted file paths).
 # Under every other section a bare line is a typo -- most dangerously a node
@@ -107,19 +120,35 @@ def parse_allowlist(path: Path) -> Allowlist:
 
     A line starting with ``# ^`` is a note attached to the entry on the line
     directly above it: it is kept out of ``entries``/``lines`` and returned
-    in ``notes`` so ``--generate`` can carry it forward with its entry.
+    in ``notes`` so ``--generate`` can carry it forward with its entry. Every
+    entry must have one.
 
     Raises ``AllowlistError`` on a note with nothing above it to attach to,
-    an entry with an inline ``#``, or a bare line under a section that only
-    takes ``key=value``.
+    an entry with no note below it, an entry with an inline ``#``, or a bare
+    line under a section that only takes ``key=value``.
     """
     entries: list = []
     notes: dict = {}
     sections: dict = {}
     current: Section | None = None
-    # The note list of the entry on the previous line, or None if the
-    # previous line was anything else (blank, comment, header, key=value).
-    open_notes: list | None = None
+    # The entry written on the previous line as (where, entry, note list), or
+    # None if the previous line was anything else (blank, comment, header,
+    # key=value). An entry stays pending only until the next line settles
+    # whether it got its note.
+    pending: tuple | None = None
+
+    def close(pending_entry: tuple | None) -> None:
+        """Fail if the entry that just ended never got a ``# ^`` note."""
+        if pending_entry is None or pending_entry[2]:
+            return
+        entry_where, entry, _ = pending_entry
+        raise AllowlistError(
+            f"{entry_where}: entry {entry!r} has no note; add "
+            f"`# ^ <issue or stage note>` on the next line. Every allowlisted "
+            f"failure has to name the issue or stage that explains it -- an "
+            f"allowance nobody can trace back is one nobody ever retires."
+        )
+
     if not path.exists():
         return Allowlist(entries=entries, sections=sections, notes=notes)
     text = path.read_text(encoding="utf-8")
@@ -127,31 +156,30 @@ def parse_allowlist(path: Path) -> Allowlist:
         line = raw_line.strip()
         where = f"{path}:{lineno}"
         if line.startswith(NOTE_PREFIX):
-            if open_notes is None:
+            if pending is None:
                 raise AllowlistError(
                     f"{where}: note {line!r} has no entry to attach to. A "
                     f"'# ^ ...' note must sit on the line directly below the "
                     f"entry it annotates; use a plain '# ...' comment otherwise."
                 )
-            open_notes.append(line)
+            pending[2].append(line)
             continue
+        close(pending)
+        pending = None
         if not line or line.startswith("#"):
-            open_notes = None
             continue
         if line.startswith("[") and line.endswith("]"):
             name = line[1:-1].strip()
             current = sections.setdefault(name, Section(name=name))
-            open_notes = None
             continue
         if current is None:
             _reject_inline_comment(line, where)
             entries.append(line)
-            open_notes = notes.setdefault(line, [])
+            pending = (where, line, notes.setdefault(line, []))
             continue
         if "=" in line:
             key, _, value = line.partition("=")
             current.kv[key.strip()] = value.strip()
-            open_notes = None
             continue
         if current.name not in FREE_LINE_SECTIONS:
             raise AllowlistError(
@@ -162,7 +190,8 @@ def parse_allowlist(path: Path) -> Allowlist:
             )
         _reject_inline_comment(line, where)
         current.lines.append(line)
-        open_notes = current.notes.setdefault(line, [])
+        pending = (where, line, current.notes.setdefault(line, []))
+    close(pending)
     return Allowlist(entries=entries, sections=sections, notes=notes)
 
 
@@ -192,6 +221,113 @@ def render_entries(entries, notes: dict) -> list[str]:
         out.append(entry)
         out.extend(notes.get(entry, []))
     return out
+
+
+def utc_today() -> str:
+    """Today's date in UTC as ``YYYY-MM-DD``.
+
+    UTC, not local time, so two maintainers in different time zones stamp the
+    same regeneration with the same date.
+    """
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def todo_note() -> str:
+    """The placeholder note ``--generate`` writes under a brand-new id."""
+    return TODO_NOTE_TEMPLATE.format(date=utc_today())
+
+
+def fill_missing_notes(entries, notes: dict) -> dict:
+    """Return ``notes`` with a TODO placeholder for every entry that has none.
+
+    ``--generate`` measures ids the maintainer has never seen, so it cannot
+    know their issue/stage note -- but the file it writes still has to parse,
+    and the parser now requires a note per entry. Writing the placeholder
+    makes the gap visible in the diff (and in the file) instead of producing
+    a file that its own parser rejects.
+    """
+    filled = dict(notes)
+    for entry in entries:
+        if not filled.get(entry):
+            filled[entry] = [todo_note()]
+    return filled
+
+
+# ---------------------------------------------------------------------------
+# --generate guards
+# ---------------------------------------------------------------------------
+#
+# --generate rewrites a baseline: the one line in the repo that says what is
+# allowed to be broken. Two things must therefore be true of every run of it.
+#
+# 1. It says why. `regenerated=<date> <reason>` is written into the section it
+#    rewrote, so a baseline that moved carries the reason for the move in the
+#    file itself, not only in a commit message that the next reader has to go
+#    and find. Exactly one such line is kept (the newest); git history holds
+#    the earlier ones.
+# 2. It cannot assert a version it did not measure. `--override-version`
+#    exists to simulate a mismatched tool for the gate's own tests; combined
+#    with --generate it would stamp a version= that nothing measured, which is
+#    precisely the silent baseline corruption the version scheme exists to
+#    prevent. So under --generate the override must equal the installed tool.
+
+REGENERATED_KEY = "regenerated"
+
+# Exit code for a --generate invoked without --reason: a usage error, like
+# argparse's own, and distinct from 1 (the gate failed / refused).
+USAGE_EXIT = 2
+
+
+def regenerated_value(reason: str) -> str:
+    """The value for the ``regenerated=`` key: UTC date, then the reason."""
+    return f"{utc_today()} {' '.join(reason.split())}"
+
+
+def was_now_line(metric: str, was_version, was_value, now_version, now_value) -> str:
+    """One line naming what --generate changed, e.g.::
+
+        was: version=0.8.6 baseline=200 -> now: version=0.8.6 baseline=190
+
+    Printed before the write so the operator sees the delta they are about to
+    commit -- a baseline that moves by 40 and one that moves by 1 look
+    identical in the tool's exit code.
+    """
+    was_version = "none" if was_version is None else was_version
+    was_value = "none" if was_value is None else was_value
+    return (
+        f"was: version={was_version} {metric}={was_value} -> "
+        f"now: version={now_version} {metric}={now_value}"
+    )
+
+
+def check_generate_args(
+    reason: "str | None",
+    override_version: "str | None",
+    tool_name: str,
+    installed_version: "Callable[[], str]",
+) -> "tuple[str, int] | None":
+    """Validate a ``--generate`` request; return ``(message, exit_code)``.
+
+    Returns ``None`` when the request is allowed to proceed.
+    """
+    if reason is None or not reason.strip():
+        return (
+            f'{tool_name}: --generate requires --reason "<text>" -- the reason is '
+            f"written into the file as `{REGENERATED_KEY}=<date> <reason>`, so a "
+            f"moved baseline says why it moved. Example: --generate --reason "
+            f'"ruff 0.9.0 bump, 12 new RUF rules".',
+            USAGE_EXIT,
+        )
+    if override_version:
+        installed = installed_version()
+        if installed != override_version:
+            return (
+                f"override-version {override_version} does not match the installed "
+                f"{tool_name} {installed} -- a baseline may only carry the version "
+                f"that measured it",
+                1,
+            )
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +403,9 @@ def render_other_sections(sections: dict, skip: set[str]) -> list[str]:
     recorded ``version=``) that lives in the same file -- exactly the kind
     of silent baseline corruption this versioning scheme exists to prevent.
     So every write_* helper below calls this to carry forward whatever
-    other sections were already on disk, unchanged.
+    other sections were already on disk, unchanged -- including each one's
+    ``regenerated=`` line, which belongs to the section it annotates and must
+    not be reassigned to whichever tool happened to run last.
     """
     out: list[str] = []
     for name, section in sections.items():

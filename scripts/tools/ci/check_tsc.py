@@ -17,11 +17,20 @@ code with no source change at all. So ``[tsc-files]`` also records
 the running tsc version doesn't match it. See check_tool_version in
 _common.py.
 
+Every allowlisted file path carries a ``# ^`` note naming the issue or stage
+that explains it; a path without one is a parse error, not a style nit.
+
+``--generate`` leaves a trail: it requires ``--reason "<text>"``, prints the
+was -> now delta, and records ``regenerated=<date> <reason>`` in the
+``[tsc-files]`` section. It also refuses a ``--override-version`` that
+differs from the installed tsc, so a baseline can never claim a version that
+did not measure it.
+
 Usage:
     npx tsc --noEmit -p . --pretty false is invoked internally; or pass an
     existing compiler log:
         python scripts/tools/ci/check_tsc.py --tsc-log path/to/log.txt
-        python scripts/tools/ci/check_tsc.py --generate
+        python scripts/tools/ci/check_tsc.py --generate --reason "why"
 """
 from __future__ import annotations
 
@@ -33,16 +42,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import (  # noqa: E402
+    REGENERATED_KEY,
     REPO_ROOT,
     Allowlist,
     AllowlistError,
+    check_generate_args,
     check_tool_version,
+    fill_missing_notes,
     get_tsc_version,
     parse_allowlist,
+    regenerated_value,
     rel_to_repo,
     render_entries,
     render_other_sections,
     run_cmd,
+    was_now_line,
 )
 
 ALLOWLIST_PATH = REPO_ROOT / "src" / "test" / "known_failures.txt"
@@ -75,7 +89,7 @@ def parse_errors(log_path: Path) -> list[str]:
 
 
 def write_allowlist(
-    error_files: list[str], baseline: int, version: str, existing: Allowlist
+    error_files: list[str], baseline: int, version: str, reason: str, existing: Allowlist
 ) -> None:
     """Rewrite the ``[tsc-files]`` section in place, preserving the vitest
     preamble entries that check_vitest.py --generate already wrote, with
@@ -84,17 +98,21 @@ def write_allowlist(
     wanted).
 
     ``[tsc-files]`` is the one section whose bare lines are data, so its
-    file paths can carry ``# ^`` notes too; a note for a file that no longer
-    errors is dropped along with the path.
+    file paths are entries like any other: each one needs a ``# ^`` note, a
+    note for a file that no longer errors is dropped along with the path, and
+    a newly measured path gets the TODO placeholder so the generated file
+    passes its own parser.
     """
     lines = render_entries(existing.entries, existing.notes)
     section = existing.sections.get("tsc-files")
     file_notes = section.notes if section else {}
+    paths = sorted(set(error_files))
     lines.append("")
     lines.append("[tsc-files]")
     lines.append(f"version={version}")
-    lines.extend(render_entries(sorted(set(error_files)), file_notes))
+    lines.extend(render_entries(paths, fill_missing_notes(paths, file_notes)))
     lines.append(f"baseline={baseline}")
+    lines.append(f"{REGENERATED_KEY}={regenerated_value(reason)}")
     lines.extend(render_other_sections(existing.sections, skip={"tsc-files"}))
     ALLOWLIST_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
@@ -113,11 +131,20 @@ def main() -> int:
         help="Overwrite the [tsc-files] section with the current tool version and erroring files/count.",
     )
     ap.add_argument(
+        "--reason",
+        default=None,
+        help=(
+            "Why the baseline is being regenerated. Required with --generate; "
+            "recorded in the [tsc-files] section as `regenerated=<date> <reason>`."
+        ),
+    )
+    ap.add_argument(
         "--override-version",
         default=None,
         help=(
             "Use this string as the 'running' tsc version instead of actually "
-            "invoking `tsc --version`. For testing the version-mismatch gate only."
+            "invoking `tsc --version`. For testing the version-mismatch gate only; "
+            "with --generate it must equal the installed tsc."
         ),
     )
     args = ap.parse_args()
@@ -139,16 +166,23 @@ def main() -> int:
     error_files = parse_errors(log_path)
     total = len(error_files)
     running_version = args.override_version or get_tsc_version()
+    section = allow.sections.get("tsc-files")
 
     if args.generate:
-        write_allowlist(error_files, total, running_version, allow)
+        refusal = check_generate_args(args.reason, args.override_version, "tsc", get_tsc_version)
+        if refusal:
+            message, code = refusal
+            print(message)
+            return code
+        old_version = section.kv.get("version") if section else None
+        old_baseline = section.kv.get("baseline") if section else None
+        print(was_now_line("baseline", old_version, old_baseline, running_version, total))
+        write_allowlist(error_files, total, running_version, args.reason, allow)
         print(
             f"Wrote version={running_version}, {len(set(error_files))} file(s), "
             f"baseline={total}, to {rel}"
         )
         return 0
-
-    section = allow.sections.get("tsc-files")
 
     version_error = check_tool_version(section, running_version, "tsc", str(rel))
     if version_error:

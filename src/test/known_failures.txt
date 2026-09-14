@@ -4,12 +4,16 @@
 # under a section allowlists nothing), formatted as:
 #   relative/path/to/file.test.ts > describe block > ... > it name
 # A whole line starting with '#' is a comment; an inline '#' is rejected.
-# Attach the required issue/stage note on the line directly below the id:
+# Every id MUST carry an issue/stage note on the line directly below it:
 #   src/test/x.test.ts > suite > it name
 #   # ^ broken since migration 003, see audit/PLAN stage 3
-# Notes are carried forward by --generate and dropped with their id.
-# Remove an entry when the test is fixed; never add an entry without a
-# linked issue/stage note. See scripts/tools/ci/README.md.
+# An id with no '# ^' note below it is rejected and the gate exits 1 -- the
+# rule is enforced by the parser, not left to the reader. A plain '# ...'
+# comment is not a note and does not satisfy it.
+# Notes are carried forward by --generate and dropped with their id;
+# --generate writes '# ^ TODO: reason ...' under an id it has just measured,
+# and that TODO must be replaced with a real note before committing.
+# Remove an entry when the test is fixed. See scripts/tools/ci/README.md.
 
 [vitest]
 version=2.1.9

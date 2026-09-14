@@ -15,10 +15,19 @@ change at all, so the ``[pytest]`` section of the allowlist also records
 failure ids) if the running pytest version doesn't match it. See
 check_tool_version in _common.py.
 
+Every allowlisted id carries a ``# ^`` note naming the issue or stage that
+explains it; an entry without one is a parse error, not a style nit.
+
+``--generate`` leaves a trail: it requires ``--reason "<text>"``, prints the
+was -> now delta, and records ``regenerated=<date> <reason>`` in the
+``[pytest]`` section. It also refuses a ``--override-version`` that differs
+from the installed pytest, so the id list can never claim a version that did
+not measure it.
+
 Usage:
     uv run --no-sync python scripts/tools/ci/check_pytest.py
     uv run --no-sync python scripts/tools/ci/check_pytest.py --junit-xml path/to/report.xml
-    uv run --no-sync python scripts/tools/ci/check_pytest.py --generate
+    uv run --no-sync python scripts/tools/ci/check_pytest.py --generate --reason "why"
 """
 from __future__ import annotations
 
@@ -30,16 +39,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _common import (  # noqa: E402
+    REGENERATED_KEY,
     REPO_ROOT,
     Allowlist,
     AllowlistError,
+    check_generate_args,
     check_tool_version,
+    fill_missing_notes,
     get_pytest_version,
     parse_allowlist,
+    regenerated_value,
     rel_to_repo,
     render_entries,
     render_other_sections,
     run_cmd,
+    was_now_line,
 )
 
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "test" / "known_failures.txt"
@@ -50,12 +64,16 @@ HEADER = """\
 # One pytest node id (file::Class::test or file::test) per line, ABOVE the
 # [pytest] header -- an id written under a section allowlists nothing.
 # A whole line starting with '#' is a comment; an inline '#' is rejected.
-# Attach the required issue/stage note on the line directly below the id:
+# Every id MUST carry an issue/stage note on the line directly below it:
 #   scripts/test/x.py::test_y
 #   # ^ broken since migration 003, see audit/PLAN stage 3
-# Notes are carried forward by --generate and dropped with their id.
-# Remove an entry when the test is fixed; never add an entry without a
-# linked issue/stage note. See scripts/tools/ci/README.md.
+# An id with no '# ^' note below it is rejected and the gate exits 1 -- the
+# rule is enforced by the parser, not left to the reader. A plain '# ...'
+# comment is not a note and does not satisfy it.
+# Notes are carried forward by --generate and dropped with their id;
+# --generate writes '# ^ TODO: reason ...' under an id it has just measured,
+# and that TODO must be replaced with a real note before committing.
+# Remove an entry when the test is fixed. See scripts/tools/ci/README.md.
 """
 
 
@@ -98,16 +116,19 @@ def parse_failures(junit_xml: Path) -> list[str]:
     return sorted(ids)
 
 
-def write_allowlist(failures: list[str], version: str, existing: Allowlist) -> None:
+def write_allowlist(failures: list[str], version: str, reason: str, existing: Allowlist) -> None:
     lines = [HEADER.rstrip("\n")]
     if failures:
         lines.append("")
         # Notes ride along with the ids that survive; a note whose id is no
-        # longer failing disappears together with that id.
-        lines.extend(render_entries(failures, existing.notes))
+        # longer failing disappears together with that id. A newly measured
+        # id has no note yet, so it gets the TODO placeholder -- otherwise
+        # --generate would write a file its own parser rejects.
+        lines.extend(render_entries(failures, fill_missing_notes(failures, existing.notes)))
     lines.append("")
     lines.append("[pytest]")
     lines.append(f"version={version}")
+    lines.append(f"{REGENERATED_KEY}={regenerated_value(reason)}")
     lines.extend(render_other_sections(existing.sections, skip={"pytest"}))
     ALLOWLIST_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
@@ -126,11 +147,20 @@ def main() -> int:
         help="Overwrite the allowlist with the current tool version and failing/erroring tests.",
     )
     ap.add_argument(
+        "--reason",
+        default=None,
+        help=(
+            "Why the allowlist is being regenerated. Required with --generate; "
+            "recorded in the [pytest] section as `regenerated=<date> <reason>`."
+        ),
+    )
+    ap.add_argument(
         "--override-version",
         default=None,
         help=(
             "Use this string as the 'running' pytest version instead of actually "
-            "invoking `pytest --version`. For testing the version-mismatch gate only."
+            "invoking `pytest --version`. For testing the version-mismatch gate only; "
+            "with --generate it must equal the installed pytest."
         ),
     )
     args = ap.parse_args()
@@ -151,15 +181,25 @@ def main() -> int:
 
     failures = parse_failures(junit_xml)
     running_version = args.override_version or get_pytest_version()
+    section = allow.sections.get("pytest")
 
     if args.generate:
-        write_allowlist(failures, running_version, allow)
+        refusal = check_generate_args(
+            args.reason, args.override_version, "pytest", get_pytest_version
+        )
+        if refusal:
+            message, code = refusal
+            print(message)
+            return code
+        old_version = section.kv.get("version") if section else None
+        print(
+            was_now_line("entries", old_version, len(allow.entries), running_version, len(failures))
+        )
+        write_allowlist(failures, running_version, args.reason, allow)
         print(f"Wrote version={running_version} and {len(failures)} entries to {rel}")
         return 0
 
-    version_error = check_tool_version(
-        allow.sections.get("pytest"), running_version, "pytest", str(rel)
-    )
+    version_error = check_tool_version(section, running_version, "pytest", str(rel))
     if version_error:
         print(version_error)
         return 1
@@ -186,7 +226,7 @@ def main() -> int:
         print(
             "A stale entry is a pre-issued permission for a future failure: it "
             "keeps the build green for whoever breaks that test next. "
-            f"Remove it from {rel} (or re-measure with --generate)."
+            f'Remove it from {rel} (or re-measure with --generate --reason "<why>").'
         )
         return 1
 
