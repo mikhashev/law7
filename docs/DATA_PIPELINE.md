@@ -581,7 +581,7 @@ State Automated System "Justice" (ГАС РФ "Правосудие").
 
 ```bash
 # Test SUDRF scraper (requires Russian IP)
-uv run python scripts/tests/test_sudrf_scraper.py
+uv run python scripts/scrapers_manual/test_sudrf_scraper.py
 
 # Expected output: Found N decisions
 # If blocked: "недоступна - ошибка 403"

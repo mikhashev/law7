@@ -24,7 +24,7 @@ Alternative approaches:
 - Official institutional access
 
 Usage:
-    uv run python scripts/tests/test_sudrf_scraper.py
+    uv run python scripts/scrapers_manual/test_sudrf_scraper.py
 """
 import asyncio
 import logging
