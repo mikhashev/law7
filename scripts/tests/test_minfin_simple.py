@@ -5,7 +5,7 @@ Simple test for Minfin portal access.
 This script tests if we can access the Minfin portal and parse the HTML structure.
 
 Usage:
-    cd scripts && poetry run python tests/test_minfin_simple.py
+    cd scripts && uv run python tests/test_minfin_simple.py
 """
 
 import asyncio
@@ -37,7 +37,7 @@ async def main():
         print("[OK] aiohttp imported")
     except ImportError as e:
         print(f"[FAIL] aiohttp not available: {e}")
-        print("  Run: poetry run pip install aiohttp")
+        print("  Run: uv add aiohttp")
         return
 
     try:

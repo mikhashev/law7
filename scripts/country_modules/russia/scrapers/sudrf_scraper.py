@@ -195,7 +195,7 @@ class SudrfScraper(BaseScraper):
         self._driver = None
 
         if not SELENIUM_AVAILABLE and use_selenium:
-            logger.warning("Selenium requested but not available. Install with: poetry add selenium webdriver-manager")
+            logger.warning("Selenium requested but not available. Install with: uv add selenium webdriver-manager")
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session with connector and cookie jar."""
@@ -259,7 +259,7 @@ class SudrfScraper(BaseScraper):
             ChromeDriver instance (cached or newly created)
         """
         if not SELENIUM_AVAILABLE:
-            raise RuntimeError("Selenium not available. Install with: poetry add selenium webdriver-manager")
+            raise RuntimeError("Selenium not available. Install with: uv add selenium webdriver-manager")
 
         if self._driver is None:
             options = ChromeOptions()

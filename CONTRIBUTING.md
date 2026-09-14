@@ -15,7 +15,7 @@ npm run build
 
 **Python (Data Pipeline):**
 ```bash
-poetry install
+uv sync
 ```
 
 3. Start Docker services:
@@ -72,12 +72,12 @@ docs(readme): update installation instructions
 ### Python
 - Use `black` formatter (line-length: 100)
 - Use `ruff` for linting
-- Run tests: `poetry run pytest`
+- Run tests: `uv run pytest`
 
 ## Testing
 
 - **MCP Server:** Test with `npx @modelcontextprotocol/inspector node dist/index.js`
-- **Python:** Run `poetry run pytest`
+- **Python:** Run `uv run pytest`
 - **Database:** Ensure PostgreSQL, Qdrant, and Redis are running
 
 ## AI-Assisted Development

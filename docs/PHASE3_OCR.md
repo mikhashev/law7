@@ -117,7 +117,7 @@ def benchmark_ocr():
 ### Implementation
 
 1. Select best OCR engine from benchmark
-2. Add Poetry dependency (e.g., `paddleocr` or `paddlepaddle`)
+2. Add dependency with `uv add` (e.g., `paddleocr` or `paddlepaddle`)
 3. Update `.env` with selected engine
 4. Deploy with feature flag (process 10% of documents first)
 5. Monitor accuracy and performance

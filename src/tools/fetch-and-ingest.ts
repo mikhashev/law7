@@ -65,8 +65,8 @@ export async function executeFetchAndIngest(input: FetchAndIngestInput): Promise
     let stdout = '';
     let stderr = '';
 
-    // Spawn Python process
-    const pythonProcess = spawn('python', args, {
+    // Spawn Python process through uv so the project venv is used
+    const pythonProcess = spawn('uv', ['run', 'python', ...args], {
       cwd: path.resolve(__dirname, '../..'),
       env: {
         ...process.env,

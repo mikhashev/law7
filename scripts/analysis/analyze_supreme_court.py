@@ -6,7 +6,7 @@ This script analyzes the Supreme Court portal (vsrf.gov.ru) to understand
 its structure, API availability, and document listing patterns.
 
 Usage:
-    poetry run python scripts/analysis/analyze_supreme_court.py
+    uv run python scripts/analysis/analyze_supreme_court.py
 """
 
 import sys

@@ -248,7 +248,7 @@ The following analysis scripts were created and can be re-run:
 
 **Re-run command:**
 ```bash
-poetry run python scripts/analysis/analyze_all_portals.py
+uv run python scripts/analysis/analyze_all_portals.py
 ```
 
 **Results location:**

@@ -105,7 +105,7 @@ Once VPN is configured, run:
 
 ```bash
 # From law7 directory
-poetry run python scripts/explorer/api_explorer.py
+uv run python scripts/explorer/api_explorer.py
 ```
 
 Expected output:

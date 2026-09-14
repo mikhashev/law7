@@ -3,7 +3,7 @@
 Test Ministry of Finance scraper implementation.
 
 Usage:
-    cd scripts && poetry run python tests/test_scraper.py
+    cd scripts && uv run python tests/test_scraper.py
 """
 
 import asyncio

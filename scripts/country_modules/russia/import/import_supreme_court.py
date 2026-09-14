@@ -10,8 +10,8 @@ Phase 7C scope:
 - Presidium Resolutions (Постановления Президиума ВС РФ)
 
 Usage:
-    poetry run python scripts/country_modules/russia/import/import_supreme_court.py --year 2025 --limit 10
-    poetry run python scripts/country_modules/russia/import/import_supreme_court.py --all
+    uv run python scripts/country_modules/russia/import/import_supreme_court.py --year 2025 --limit 10
+    uv run python scripts/country_modules/russia/import/import_supreme_court.py --all
 """
 
 import asyncio

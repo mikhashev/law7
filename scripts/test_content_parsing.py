@@ -2,7 +2,7 @@
 Test script for content parsing from API metadata.
 
 Tests the PravoContentParser with real data from the database.
-Usage: poetry run python scripts/test_content_parsing.py --limit 5
+Usage: uv run python scripts/test_content_parsing.py --limit 5
 """
 import argparse
 import logging
@@ -68,7 +68,7 @@ def test_content_parsing(limit: int = 5, skip_existing: bool = True):
 
     if not documents:
         logger.warning("No documents found in database!")
-        logger.info("  Run 'poetry run python scripts/sync/initial_sync.py --daily' to fetch documents")
+        logger.info("  Run 'uv run python scripts/sync/initial_sync.py --daily' to fetch documents")
         return
 
     logger.info(f"Found {len(documents)} documents to test\n")
@@ -136,7 +136,7 @@ def test_content_parsing(limit: int = 5, skip_existing: bool = True):
     # If all successful, suggest running full sync
     if fail_count == 0 and success_count > 0:
         logger.info("\nTo parse and store content for all documents:")
-        logger.info("  poetry run python scripts/sync/content_sync.py --skip-embeddings")
+        logger.info("  uv run python scripts/sync/content_sync.py --skip-embeddings")
 
 
 def test_live_api_fetch(limit: int = 1):

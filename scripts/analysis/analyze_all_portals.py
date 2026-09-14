@@ -5,7 +5,7 @@ Run all Phase 7C portal analysis scripts.
 This script runs all three portal analysis scripts and generates a consolidated report.
 
 Usage:
-    poetry run python scripts/analysis/analyze_all_portals.py
+    uv run python scripts/analysis/analyze_all_portals.py
 """
 
 import sys

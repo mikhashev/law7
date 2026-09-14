@@ -181,26 +181,25 @@ Option 3: [description] | [pros] | [cons] | [when to choose]
 
 ## Dependency Management Rules
 
-**CRITICAL**: Always use `poetry` for Python dependency management, never `pip` directly.
+**CRITICAL**: Always use `uv` for Python dependency management, never `pip` directly.
 
 ```bash
-# ✅ CORRECT - Use Poetry
-poetry add package-name
-poetry run pip install package-name
-poetry install
+# ✅ CORRECT - Use uv
+uv add package-name
+uv sync
 
-# ❌ WRONG - Never use pip directly outside of Poetry
+# ❌ WRONG - Never use pip directly outside of uv
 pip install package-name
 python -m pip install package-name
 ```
 
-**Why?** This project uses Poetry for dependency management. Installing packages with `pip` directly bypasses Poetry's virtual environment and can cause version conflicts.
+**Why?** This project uses uv for dependency management. Installing packages with `pip` directly bypasses uv's virtual environment and can cause version conflicts.
 
 **Special case for PyTorch with CUDA support**:
 ```bash
-# For CUDA-enabled PyTorch, use Poetry's pip wrapper:
-poetry run pip uninstall torch -y
-poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+# CUDA-enabled PyTorch is configured in pyproject.toml via the
+# [[tool.uv.index]] "pytorch-cu128" index, so a plain sync is enough:
+uv sync
 ```
 
 ## Getting Context with Git
@@ -691,7 +690,7 @@ TodoWrite([
 **Before marking a task as complete, verify:**
 
 - [ ] All code follows project conventions (check existing patterns)
-- [ ] Tests pass (run `npm test` or `poetry run pytest`)
+- [ ] Tests pass (run `npm test` or `uv run pytest`)
 - [ ] Build succeeds (run `npm run build` or equivalent)
 - [ ] No new warnings introduced
 - [ ] Documentation updated (if applicable)

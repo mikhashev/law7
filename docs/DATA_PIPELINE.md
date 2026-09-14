@@ -51,7 +51,7 @@ All documents are:
 cd docker && docker-compose up -d
 
 # 2. Import base legal codes (~6 hours, ~6,700 articles across 23 codes)
-poetry run python scripts/import/import_base_code.py --all
+uv run python scripts/import/import_base_code.py --all
 
 # 3. Build and start the MCP server
 npm run build
@@ -67,10 +67,10 @@ npm start
 **Optional: For full semantic search** across 157k+ amendment documents:
 ```bash
 # Step 4: Fetch amendment documents from API (~6 hours for 2022-2026)
-poetry run python scripts/sync/initial_sync.py --start-date 2022-01-01
+uv run python scripts/sync/initial_sync.py --start-date 2022-01-01
 
 # Step 5: Generate embeddings for semantic search (~2-3 hours)
-poetry run python scripts/sync/content_sync.py --recreate-collection
+uv run python scripts/sync/content_sync.py --recreate-collection
 ```
 
 After Steps 4-5, you also get:
@@ -113,16 +113,16 @@ docker-compose ps
 
 ```bash
 # List all available codes
-poetry run python scripts/import/import_base_code.py --list
+uv run python scripts/import/import_base_code.py --list
 
 # Import all codes
-poetry run python scripts/import/import_base_code.py --all
+uv run python scripts/import/import_base_code.py --all
 
 # Import specific code
-poetry run python scripts/import/import_base_code.py --code GK_RF
+uv run python scripts/import/import_base_code.py --code GK_RF
 
 # Show all available options
-poetry run python scripts/import/import_base_code.py --help
+uv run python scripts/import/import_base_code.py --help
 ```
 
 **Available options:**
@@ -199,7 +199,7 @@ Imports the foundational Russian legal codes from official sources.
 Fetches document metadata from pravo.gov.ru and stores in PostgreSQL.
 
 ```bash
-poetry run python scripts/sync/initial_sync.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
+uv run python scripts/sync/initial_sync.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
 ```
 
 **Options:**
@@ -213,13 +213,13 @@ poetry run python scripts/sync/initial_sync.py --start-date YYYY-MM-DD --end-dat
 
 ```bash
 # Sync all documents from 2022 onwards
-poetry run python scripts/sync/initial_sync.py --start-date 2022-01-01
+uv run python scripts/sync/initial_sync.py --start-date 2022-01-01
 
 # Sync only federal government documents
-poetry run python scripts/sync/initial_sync.py --block government
+uv run python scripts/sync/initial_sync.py --block government
 
 # Daily sync (for cron/scheduler)
-poetry run python scripts/sync/initial_sync.py --daily
+uv run python scripts/sync/initial_sync.py --daily
 ```
 
 **Current Status:**
@@ -244,7 +244,7 @@ Extracts document text from API metadata and generates embeddings for semantic s
 
 ```bash
 # Parse content AND generate embeddings in one pass
-poetry run python scripts/sync/content_sync.py --recreate-collection
+uv run python scripts/sync/content_sync.py --recreate-collection
 ```
 
 **Current Status:**
@@ -261,13 +261,13 @@ poetry run python scripts/sync/content_sync.py --recreate-collection
 
 ```bash
 # Test with 100 documents first
-poetry run python scripts/sync/content_sync.py --limit 100 --recreate-collection
+uv run python scripts/sync/content_sync.py --limit 100 --recreate-collection
 
 # Only parse content (skip embeddings) - for testing
-poetry run python scripts/sync/content_sync.py --skip-embeddings
+uv run python scripts/sync/content_sync.py --skip-embeddings
 
 # Only generate embeddings from existing content (resume mode)
-poetry run python scripts/sync/content_sync.py --skip-content --recreate-collection
+uv run python scripts/sync/content_sync.py --skip-content --recreate-collection
 ```
 
 **All Options:**
@@ -304,7 +304,7 @@ The script includes automatic memory cleanup:
 
 ```bash
 # Watch the logs
-poetry run python scripts/sync/content_sync.py --recreate-collection
+uv run python scripts/sync/content_sync.py --recreate-collection
 
 # You'll see output like:
 # [DOC 1/156000] Постановление Правительства... (0 chars, type: xxx)
@@ -440,7 +440,7 @@ Set up a cron job to sync new documents daily:
 
 ```bash
 # Add to crontab (crontab -e)
-0 2 * * * cd /path/to/law7 && poetry run python scripts/sync/initial_sync.py --daily
+0 2 * * * cd /path/to/law7 && uv run python scripts/sync/initial_sync.py --daily
 ```
 
 ### Regenerate Embeddings
@@ -448,7 +448,7 @@ Set up a cron job to sync new documents daily:
 If you update the embedding model:
 
 ```bash
-poetry run python scripts/sync/content_sync.py --recreate-collection
+uv run python scripts/sync/content_sync.py --recreate-collection
 ```
 
 ### Backup Database
@@ -491,19 +491,19 @@ The data pipeline includes scrapers for official ministry letters and interpreta
 
 ```bash
 # Import from specific agency (last 5 years)
-poetry run python scripts/country_modules/russia/import/import_ministry_letters.py --agency minfin
+uv run python scripts/country_modules/russia/import/import_ministry_letters.py --agency minfin
 
 # Import from Rostrud
-poetry run python scripts/country_modules/russia/import/import_ministry_letters.py --agency rostrud --since 2020-01-01
+uv run python scripts/country_modules/russia/import/import_ministry_letters.py --agency rostrud --since 2020-01-01
 
 # Import without date filter
-poetry run python scripts/country_modules/russia/import/import_ministry_letters.py --agency rostrud --all
+uv run python scripts/country_modules/russia/import/import_ministry_letters.py --agency rostrud --all
 
 # Import from all agencies
-poetry run python scripts/country_modules/russia/import/import_ministry_letters.py
+uv run python scripts/country_modules/russia/import/import_ministry_letters.py
 
 # Test with limit
-poetry run python scripts/country_modules/russia/import/import_ministry_letters.py --agency rostrud --limit 10
+uv run python scripts/country_modules/russia/import/import_ministry_letters.py --agency rostrud --limit 10
 ```
 
 **Options:**
@@ -533,7 +533,7 @@ poetry run python scripts/country_modules/russia/import/import_ministry_letters.
 
 ```bash
 # Sync Constitutional Court decisions
-poetry run python scripts/sync/court_sync.py --start-date 2022-01-01 --end-date 2024-12-31
+uv run python scripts/sync/court_sync.py --start-date 2022-01-01 --end-date 2024-12-31
 ```
 
 ### General Jurisdiction Courts (SUDRF)
@@ -579,7 +579,7 @@ State Automated System "Justice" (ГАС РФ "Правосудие").
 
 ```bash
 # Test SUDRF scraper (requires Russian IP)
-poetry run python scripts/tests/test_sudrf_scraper.py
+uv run python scripts/tests/test_sudrf_scraper.py
 
 # Expected output: Found N decisions
 # If blocked: "недоступна - ошибка 403"

@@ -6,7 +6,7 @@ This script analyzes the Moscow City Duma portal (duma.mos.ru) to understand
 its structure, API availability, and KoAP document patterns.
 
 Usage:
-    poetry run python scripts/analysis/analyze_moscow_duma.py
+    uv run python scripts/analysis/analyze_moscow_duma.py
 """
 
 import sys

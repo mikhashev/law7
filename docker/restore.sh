@@ -352,7 +352,7 @@ show_summary() {
     echo ""
     echo "You can now:"
     echo "  1. Start the MCP server: cd .. && npm start"
-    echo "  2. Or run data sync scripts: poetry run python scripts/sync/content_sync.py"
+    echo "  2. Or run data sync scripts: uv run python scripts/sync/content_sync.py"
     echo ""
     echo "To verify the restore:"
     echo "  # PostgreSQL"

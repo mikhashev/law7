@@ -6,7 +6,7 @@ This script analyzes the Ministry of Finance portal (minfin.gov.ru) to understan
 its structure, API availability, and document listing patterns.
 
 Usage:
-    poetry run python scripts/analysis/analyze_minfin.py
+    uv run python scripts/analysis/analyze_minfin.py
 """
 
 import sys

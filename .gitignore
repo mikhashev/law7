@@ -42,15 +42,13 @@ backups/
 # Logs
 *.log
 
-# Poetry
-poetry.lock
-
 # Testing
 .coverage
 htmlcov/
 .pytest_cache/
 
 # Virtual environments
+.venv/
 venv/
 env/
 ENV/

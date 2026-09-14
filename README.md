@@ -237,8 +237,8 @@ docker-compose up -d
 #### 2. Run Initial Data Sync (Python)
 
 ```bash
-# Using Poetry
-poetry run python scripts/sync/initial_sync.py
+# Using uv
+uv run python scripts/sync/initial_sync.py
 ```
 
 ### 3. Start MCP Server (TypeScript)

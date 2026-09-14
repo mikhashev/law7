@@ -243,7 +243,7 @@ git clone https://github.com/your-username/law7.git
 cd law7
 
 # Install Python dependencies
-poetry install
+uv sync
 
 # Install Node dependencies
 npm install
@@ -252,7 +252,7 @@ npm install
 cd docker && docker-compose up -d
 
 # Run tests
-poetry run pytest
+uv run pytest
 npm test
 ```
 

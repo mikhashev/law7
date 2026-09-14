@@ -80,10 +80,10 @@ PostgreSQL + Qdrant (embeddings per article)
 - [ ] **Run content sync + embeddings** - See [docs/DATA_PIPELINE.md](docs/DATA_PIPELINE.md)
   ```bash
   # Quick test with 100 docs
-  poetry run python scripts/sync/content_sync.py --limit 100 --recreate-collection
+  uv run python scripts/sync/content_sync.py --limit 100 --recreate-collection
 
   # Full run with 156k docs
-  poetry run python scripts/sync/content_sync.py --recreate-collection
+  uv run python scripts/sync/content_sync.py --recreate-collection
   ```
 - [ ] Test all 7 MCP tools with real data
 
@@ -165,7 +165,7 @@ PostgreSQL + Qdrant (embeddings per article)
 ```bash
 # Already tested with 5 documents - working
 # For full 4,600 documents:
-poetry run python scripts/sync/content_sync.py --recreate-collection
+uv run python scripts/sync/content_sync.py --recreate-collection
 ```
 
 ### OCR Enhancement (See question)

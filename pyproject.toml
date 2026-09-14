@@ -1,45 +1,66 @@
-[tool.poetry]
+[project]
 name = "law7"
 version = "0.1.0"
 description = "Data pipeline for law7 - crawls, parses, and indexes legal documents"
-authors = ["Mike Shevchenko <legoogmiha@gmail.com>, Law7 Contributors"]
-packages = [{include = "scripts", from = "."}]
-
-[tool.poetry.dependencies]
-python = "^3.11"
-pandas = "^2.2.2"
-sqlalchemy = "^2.0.29"
-psycopg2-binary = "^2.9.9"
-requests = "^2.31.0"
-beautifulsoup4 = "^4.12.3"
-pdfplumber = "^0.11.4"
-sentence-transformers = "^5.0.0"
-qdrant-client = "^1.12.1"
-tqdm = "^4.66.4"
-python-dotenv = "^1.0.1"
-pytesseract = "^0.3.13"
-Pillow = "^11.1.0"
-torch = [
-    {version = "^2.0.0", source = "pytorch", markers = "sys_platform == 'linux'"},
-    {version = "^2.0.0", markers = "sys_platform == 'darwin' and platform_machine == 'arm64'"},
-    {version = "^2.0.0", source = "pytorch", markers = "sys_platform == 'win32'"},
+authors = [
+    { name = "Mike Shevchenko", email = "legoogmiha@gmail.com" },
+    { name = "Law7 Contributors" },
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2.2,<3.0.0",
+    "sqlalchemy>=2.0.29,<3.0.0",
+    "psycopg2-binary>=2.9.9,<3.0.0",
+    "requests>=2.31.0,<3.0.0",
+    "beautifulsoup4>=4.12.3,<5.0.0",
+    "pdfplumber>=0.11.4,<0.12.0",
+    "sentence-transformers>=5.0.0,<6.0.0",
+    "qdrant-client>=1.12.1,<2.0.0",
+    "tqdm>=4.66.4,<5.0.0",
+    "python-dotenv>=1.0.1,<2.0.0",
+    "pytesseract>=0.3.13,<0.4.0",
+    "Pillow>=11.1.0,<12.0.0",
+    "torch>=2.0.0,<3.0.0",
+    # imported by country_modules/russia/sync/content_sync.py; was missing from
+    # the Poetry config and had to be installed by hand
+    "psutil>=5.9.0",
 ]
 
-[[tool.poetry.source]]
-name = "pytorch"
-url = "https://download.pytorch.org/whl/cu124"
+# selenium, webdriver-manager and aiohttp are optional, used only by the
+# court/sudrf/minfin scrapers. Install on demand with:
+#   uv add selenium webdriver-manager aiohttp
 
-# selenium and webdriver-manager are installed via pip to avoid poetry source issues
-# run: poetry run pip install selenium webdriver-manager
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.3.4"
-black = "^24.10.0"
-ruff = "^0.8.4"
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4,<9.0.0",
+    "black>=24.10.0,<25.0.0",
+    "ruff>=0.8.4,<0.9.0",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["scripts"]
+
+[tool.uv]
+package = true
+
+# PyTorch CUDA wheels. cu128 is required for Blackwell (sm_120) GPUs;
+# the older cu124 build the Poetry config used does not support them.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+]
+
+[tool.pytest.ini_options]
+testpaths = ["scripts/test"]
 
 [tool.black]
 line-length = 100

@@ -56,7 +56,7 @@ When deploying Law7:
 4. **Dependencies**
    - Regularly update dependencies
    - Review security advisories for dependencies
-   - Use `npm audit` and `poetry check` regularly
+   - Use `npm audit` and `uv lock --check` regularly
 
 ## Security Features
 

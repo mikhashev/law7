@@ -8,9 +8,9 @@ This is the initial implementation for Phase 1 (Foundation) of the court
 decision fetching feature.
 
 Usage:
-    poetry run python scripts/sync/court_sync.py --start-date 2022-01-01 --end-date 2024-12-31
-    poetry run python scripts/sync/court_sync.py --last-days 30
-    poetry run python scripts/sync/court_sync.py --test --limit 10
+    uv run python scripts/sync/court_sync.py --start-date 2022-01-01 --end-date 2024-12-31
+    uv run python scripts/sync/court_sync.py --last-days 30
+    uv run python scripts/sync/court_sync.py --test --limit 10
 """
 import argparse
 import hashlib

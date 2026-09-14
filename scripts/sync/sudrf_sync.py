@@ -5,8 +5,8 @@ Fetches court decisions from sudrf.ru (general jurisdiction courts) and stores
 them in the database.
 
 Usage:
-    poetry run python scripts/sync/sudrf_sync.py --limit 10 --test
-    poetry run python scripts/sync/sudrf_sync.py --start-date 2022-01-01 --end-date 2024-12-31
+    uv run python scripts/sync/sudrf_sync.py --limit 10 --test
+    uv run python scripts/sync/sudrf_sync.py --start-date 2022-01-01 --end-date 2024-12-31
 
 Note: This is Phase 4 implementation for comprehensive court decision fetching.
 """

@@ -24,13 +24,13 @@ npx @modelcontextprotocol/inspector node dist/index.js  # Test MCP tools
 
 ### Python (Data Pipeline)
 ```bash
-poetry install                    # Install dependencies
-poetry run python scripts/sync/initial_sync.py        # Initial data import
-poetry run python scripts/sync/content_sync.py        # Sync document content + embeddings
-poetry run python scripts/import/import_base_code.py  # Import base legal codes
-poetry run black scripts/         # Format Python code (line-length: 100)
-poetry run ruff check scripts/    # Lint Python code
-poetry run pytest scripts/        # Run tests
+uv sync                    # Install dependencies
+uv run python scripts/sync/initial_sync.py        # Initial data import
+uv run python scripts/sync/content_sync.py        # Sync document content + embeddings
+uv run python scripts/import/import_base_code.py  # Import base legal codes
+uv run black scripts/         # Format Python code (line-length: 100)
+uv run ruff check scripts/    # Lint Python code
+uv run pytest scripts/        # Run tests
 ```
 
 **See [docs/DATA_PIPELINE.md](docs/DATA_PIPELINE.md) for complete data pipeline instructions.**
@@ -57,22 +57,22 @@ cd docker
 ## Installation
 
 ### Prerequisites
-- Python 3.10+ with [Poetry](https://python-poetry.org/)
+- Python 3.11+ with [uv](https://docs.astral.sh/uv/)
 - Node.js 18+ with npm
 - Docker & Docker Compose
 
 ### Windows Setup
 
 ```bash
-# Install Poetry (if not already installed)
-pip install poetry
+# Install uv (if not already installed)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 
 # Start Docker services
 cd docker
 docker-compose up -d
 
 # Install Python dependencies
-poetry install
+uv sync
 
 # Install Node dependencies
 npm install
@@ -85,15 +85,15 @@ npm start
 ### macOS/Linux Setup
 
 ```bash
-# Install Poetry (if not already installed)
-curl -sSL https://install.python-poetry.org | python3 -
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Start Docker services
 cd docker
 docker-compose up -d
 
 # Install dependencies
-poetry install
+uv sync
 npm install
 
 # Build and run
@@ -108,7 +108,7 @@ npm start
 docker-compose ps
 
 # Test Python environment
-poetry run python -c "import scripts.core.db; print('Python OK')"
+uv run python -c "import scripts.core.db; print('Python OK')"
 
 # Test TypeScript build
 npm run build
@@ -228,8 +228,8 @@ docker exec law7-postgres psql -U law7 -d law7 -c "\d table_name"
 
 **For Python dependencies:**
 ```bash
-# Always use Poetry, never pip directly
-poetry add package-name
+# Always use uv, never pip directly
+uv add package-name
 ```
 
 ### Five Core Principles

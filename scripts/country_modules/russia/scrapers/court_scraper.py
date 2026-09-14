@@ -191,7 +191,7 @@ class CourtScraper(BaseScraper):
             ChromeDriver instance (cached or newly created)
         """
         if not SELENIUM_AVAILABLE:
-            raise RuntimeError("Selenium not available. Install with: poetry add selenium webdriver-manager")
+            raise RuntimeError("Selenium not available. Install with: uv add selenium webdriver-manager")
 
         if self._driver is None:
             options = ChromeOptions()
