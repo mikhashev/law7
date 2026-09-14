@@ -46,6 +46,12 @@ Consequences: for 22 of the 23 codes "signed" is unreachable in principle; a rec
 - Not a replacement for the official source. The official publication is the only authority; law7 is a verifiable, machine-readable derivative of it.
 - Not tied to any transport or network. Federation means "a node near the source extracts, anyone verifies by hash"; how bytes move is out of scope.
 
+## 2.1 One rule every record obeys
+
+Every recorded measurement carries the instrument and its version; every recorded claim carries the frame in which it is true.
+
+This is the manifest schema of Stage 3 (`extractor_id@version`, `retrieved_at`, `content_bound`) applied to the repository itself. The rule was not designed; it was extracted from six fixes on 2026-09-14 that had one shape - a record that did not carry the identity of what produced it: a glossary checker that compared numbers by magnitude rather than by reference frame; "signature does not exist" written where "not observed by three probes" was measured; a column named `eo_number` holding a law number; a tag whose statements were refuted by the next commits; a CI baseline without the tool version that measured it; one column holding an act publication for one row and a code record for the others. Two instruments now go red on this shape: the `version=` line in each CI baseline and the citation checker over the glossary.
+
 ## 3. How to re-measure
 
 ```bash
