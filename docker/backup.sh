@@ -265,7 +265,6 @@ https://github.com/mikhashev/law7/docs/BACKUP_RESTORE.md
 Edit \`docker/.env\` to change ports:
 \`\`\`
 DB_PORT=5434
-REDIS_PORT=6381
 \`\`\`
 
 ### Out of memory during restore

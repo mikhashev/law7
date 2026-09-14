@@ -14,7 +14,7 @@ async function main() {
   // Log configuration
   if (config.logging.level === 'debug') {
     // Never log the raw config: stderr is the client's log channel for a stdio
-    // MCP server, and config carries DB/Redis passwords (js/clear-text-logging).
+    // MCP server, and config carries the DB password (js/clear-text-logging).
     console.error('Law7 MCP Server Configuration:', JSON.stringify(redactConfig(), null, 2));
   }
 

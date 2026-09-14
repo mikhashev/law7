@@ -39,13 +39,9 @@ export const qdrant = {
   vectorSize: parseInt(process.env.QDRANT_VECTOR_SIZE || '1024'),
 };
 
-// Redis configuration
-export const redis = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6380'),
-  password: process.env.REDIS_PASSWORD || '',
-  ttl: parseInt(process.env.REDIS_TTL || '3600'), // 1 hour default
-};
+// NOTE: Redis was removed on 2026-09-14. It was provisioned in docker-compose and
+// configured here, but no code ever connected to it. Add it back when a cache is
+// actually implemented.
 
 // MCP Server configuration
 export const server = {
@@ -57,9 +53,8 @@ export const server = {
 export const search = {
   defaultMaxResults: parseInt(process.env.DEFAULT_MAX_RESULTS || '10'),
   defaultMaxTokens: parseInt(process.env.DEFAULT_MAX_TOKENS || '10000'),
-  hybridSearchEnabled: process.env.HYBRID_SEARCH_ENABLED === 'true',
-  semanticWeight: parseFloat(process.env.SEMANTIC_WEIGHT || '0.7'),
-  keywordWeight: parseFloat(process.env.KEYWORD_WEIGHT || '0.3'),
+  // NOTE: hybridSearchEnabled / semanticWeight / keywordWeight were removed on
+  // 2026-09-14: no code read them, and hybrid search is not implemented.
 };
 
 // Logging configuration
@@ -72,7 +67,6 @@ export const logging = {
 export const config = {
   db,
   qdrant,
-  redis,
   server,
   search,
   logging,
@@ -131,7 +125,7 @@ export function redactSecrets(value: unknown, seen: WeakSet<object> = new WeakSe
 /**
  * Return a redacted deep copy of the configuration, safe for logging.
  * For a stdio MCP server stderr is the client's log channel, so the raw config
- * (which carries DB/Redis passwords) must never be written there.
+ * (which carries the DB password) must never be written there.
  */
 export function redactConfig(cfg: unknown = config): Record<string, unknown> {
   return redactSecrets(cfg) as Record<string, unknown>;

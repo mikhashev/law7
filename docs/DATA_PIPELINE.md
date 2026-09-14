@@ -47,7 +47,7 @@ All documents are:
 ```bash
 # 0. Setup MCP settings for AI
 
-# 1. Start Docker services (PostgreSQL, Qdrant, Redis)
+# 1. Start Docker services (PostgreSQL, Qdrant)
 cd docker && docker-compose up -d
 
 # 2. Import base legal codes (~6 hours, 6,232 articles across 22 of 23 codes; KAS_RF pending)
@@ -104,7 +104,7 @@ cd docker && docker-compose up -d
 
 # Verify services are running
 docker-compose ps
-# Should show: postgres (5433), qdrant (6333), redis (6380)
+# Should show: postgres (5433), qdrant (6333)
 ```
 
 ## Step 1: Import Base Legal Codes (Quick Start - Do This First!)

@@ -9,7 +9,7 @@ Law7 is a legal document system that uses a **hybrid architecture**:
 - **MCP Server (TypeScript)** in `/src` - Serves legal document queries to AI assistants via MCP protocol
 
 ```
-Python Pipeline → PostgreSQL + Qdrant + Redis → TypeScript MCP Server → AI Assistants
+Python Pipeline → PostgreSQL + Qdrant → TypeScript MCP Server → AI Assistants
 ```
 
 ## Development Commands
@@ -37,12 +37,12 @@ uv run pytest scripts/        # Run tests
 
 ### Docker Services
 ```bash
-cd docker && docker-compose up -d    # Start PostgreSQL (5433), Qdrant (6333), Redis (6380)
+cd docker && docker-compose up -d    # Start PostgreSQL (5433), Qdrant (6333)
 docker-compose logs -f postgres       # View logs
 docker-compose down                   # Stop services
 ```
 
-**Note**: Non-default ports are used to avoid conflicts with other containers: PostgreSQL **5433**, Redis **6380**, Qdrant **6333**.
+**Note**: Non-default ports are used to avoid conflicts with other containers: PostgreSQL **5433**, Qdrant **6333**.
 
 ### Database Backup and Restore
 ```bash
@@ -188,7 +188,7 @@ Note: there is no `document_chunks` table — text chunks for embeddings live on
 
 **Qdrant**: Stores 768-dimensional embeddings using deepvk/USER2-base model
 
-**Redis**: Provisioned in docker-compose but not used by the MCP server yet
+**Redis**: Removed 2026-09-14; add back when a cache is actually implemented
 
 ## Key Dependencies
 
@@ -196,7 +196,6 @@ Note: there is no `document_chunks` table — text chunks for embeddings live on
 - `@modelcontextprotocol/sdk` - MCP protocol implementation
 - `pg` - PostgreSQL client
 - `@qdrant/js-client-rest` - Vector DB client
-- `ioredis` - Redis client
 - `zod` - Schema validation
 
 ### Python

@@ -215,7 +215,8 @@ See [docs/DATA_PIPELINE.md](docs/DATA_PIPELINE.md) for complete data pipeline do
 
 ## Quick Start (Development)
 
-> **Note**: Default ports are PostgreSQL **5433**, Redis **6380**, Qdrant **6333** (to avoid conflicts with other projects).
+> **Note**: Default ports are PostgreSQL **5433**, Qdrant **6333** (to avoid conflicts with other projects).
+> Redis was removed 2026-09-14; add back when a cache is actually implemented.
 
 ### Option A: Restore from Backup (Recommended - ~5 minutes)
 
@@ -272,7 +273,6 @@ npx @modelcontextprotocol/inspector node dist/index.js
 - `@modelcontextprotocol/sdk` - MCP protocol
 - `pg` - PostgreSQL client
 - `@qdrant/js-client-rest` - Qdrant vector DB client
-- `ioredis` - Redis client
 
 ### Python (Data Pipeline)
 - `pandas` - Data processing

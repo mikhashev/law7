@@ -40,27 +40,13 @@ services:
     networks:
       - law7-network
 
-  redis:
-    image: redis:7-alpine
-    container_name: law7-redis
-    ports:
-      - "6380:6379"
-    volumes:
-      - law7_redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    networks:
-      - law7-network
+# NOTE: the redis service was removed 2026-09-14. It was provisioned here but no
+# code ever connected to it. Add it back when a cache is actually implemented.
 
 volumes:
   law7_postgres_data:
     driver: local
   law7_qdrant_data:
-    driver: local
-  law7_redis_data:
     driver: local
 
 networks:

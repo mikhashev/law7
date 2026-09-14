@@ -114,7 +114,7 @@ def fetch_original_code_from_pravo(code_id: str) -> str:
 
 ### Current State
 
-`use_hybrid` parameter exists in schema but not implemented
+`use_hybrid` parameter was never implemented and was removed from the schema on 2026-09-14 (search is keyword-only until embeddings are wired)
 
 ### Implementation
 

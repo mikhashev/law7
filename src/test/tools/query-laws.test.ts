@@ -38,7 +38,6 @@ describe('query-laws tool', () => {
         country_code: 'RU',
         query: 'labor contract',
         max_results: 5,
-        use_hybrid: false,
       };
       const result = QueryLawsInputSchema.safeParse(input);
       expect(result.success).toBe(true);
@@ -53,7 +52,6 @@ describe('query-laws tool', () => {
       if (result.success) {
         expect(result.data.country_code).toBe('RU'); // default
         expect(result.data.max_results).toBe(10); // default
-        expect(result.data.use_hybrid).toBe(false); // default
       }
     });
 
@@ -108,7 +106,6 @@ describe('query-laws tool', () => {
         country_code: 'RU',
         query: 'labor contract',
         max_results: 10,
-        use_hybrid: false,
       };
 
       const result = await executeQueryLaws(input);
@@ -126,7 +123,6 @@ describe('query-laws tool', () => {
         country_code: 'RU',
         query: 'nonexistent query',
         max_results: 10,
-        use_hybrid: false,
       };
 
       const result = await executeQueryLaws(input);
@@ -150,7 +146,6 @@ describe('query-laws tool', () => {
         country_code: 'RU',
         query: 'simple',
         max_results: 10,
-        use_hybrid: false,
       };
 
       const result = await executeQueryLaws(input);
@@ -172,7 +167,6 @@ describe('query-laws tool', () => {
         country_code: 'RU',
         query: 'test',
         max_results: 5,
-        use_hybrid: false,
       };
 
       const result = await executeQueryLaws(input);
@@ -198,7 +192,6 @@ describe('query-laws tool', () => {
         country_code: 'US',  // Using US as a test country code
         query: 'test',
         max_results: 10,
-        use_hybrid: false,
       };
 
       await executeQueryLaws(input);
@@ -215,7 +208,6 @@ describe('query-laws tool', () => {
         country_code: 'RU',
         query: 'test',
         max_results: 10,
-        use_hybrid: false,
       };
 
       await expect(executeQueryLaws(input)).rejects.toThrow('Database connection failed');

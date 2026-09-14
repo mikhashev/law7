@@ -4,17 +4,19 @@
  */
 
 import { z } from 'zod';
+import { numericString } from './schema-utils.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import {
   getAmendmentChain,
   getAmendmentApplications,
+  getAmendmentApplicationCount,
   getCodeStructure,
 } from '../db/consolidation_queries.js';
 
 // Input schema for trace-amendment-history tool
 export const TraceAmendmentHistoryInputSchema = z.object({
   code_id: z.string().describe('Code ID (e.g., "GK_RF", "TK_RF")'),
-  article_number: z.string().optional().describe('Article number (e.g., "123"). If not provided, shows amendment history for entire code.'),
+  article_number: numericString('Article number (e.g., "123"). If not provided, shows amendment history for entire code.').optional(),
   include_details: z.boolean().optional().default(true).describe('Include detailed change information'),
   limit: z.number().optional().default(50).describe('Maximum number of amendments to show'),
 });
@@ -33,14 +35,40 @@ function formatDate(date: Date | string | null): string {
 /**
  * Format article amendment chain
  */
-function formatArticleAmendmentChain(chain: any, includeDetails: boolean): string {
+function formatArticleAmendmentChain(
+  chain: any,
+  includeDetails: boolean,
+  amendmentsApplied: number
+): string {
   const parts: string[] = [];
 
   parts.push(`# Amendment History: Article ${chain.article_number}`);
   parts.push('');
   parts.push(`**Code ID**: ${chain.code_id}`);
-  parts.push(`**Total Versions**: ${chain.versions.length}`);
-  parts.push('');
+
+  // A single stored snapshot with no applied amendments is NOT a version history.
+  // Printing "Total Versions: 1" invites the reader to believe the article was
+  // never amended; say plainly that history was never generated instead.
+  const hasRealHistory = chain.versions.length > 1 || amendmentsApplied > 0;
+  if (!hasRealHistory) {
+    parts.push('**history_available**: false');
+    parts.push('');
+    parts.push(
+      `**${chain.versions.length} version, ${amendmentsApplied} amendments applied - history not generated.**`
+    );
+    parts.push('');
+    parts.push(
+      'law7 holds a single imported snapshot of this article and has applied no amendments ' +
+        '(no rows in `amendment_applications` for this code). This is NOT evidence that the ' +
+        'article was never amended - it means the amendment history has never been built. ' +
+        'Do not present the snapshot below as a complete version history.'
+    );
+    parts.push('');
+  } else {
+    parts.push(`**Total Versions**: ${chain.versions.length}`);
+    parts.push(`**Amendments Applied**: ${amendmentsApplied}`);
+    parts.push('');
+  }
 
   if (chain.current_version) {
     parts.push(`**Current Version**: ${formatDate(chain.current_version.version_date)}`);
@@ -49,7 +77,7 @@ function formatArticleAmendmentChain(chain: any, includeDetails: boolean): strin
   }
 
   parts.push('');
-  parts.push('## Version History');
+  parts.push(hasRealHistory ? '## Version History' : '## Stored Snapshot (not a version history)');
   parts.push('');
 
   // Show versions in reverse chronological order
@@ -204,13 +232,29 @@ export async function executeTraceAmendmentHistory(input: TraceAmendmentHistoryI
       return `No amendment history found for ${code_id} Article ${article_number}`;
     }
 
-    return formatArticleAmendmentChain(chain, include_details);
+    const amendmentsApplied = await getAmendmentApplicationCount(code_id);
+
+    return formatArticleAmendmentChain(chain, include_details, amendmentsApplied);
   } else {
     // Get amendment applications for entire code
     const applications = await getAmendmentApplications(code_id);
 
     if (applications.length === 0) {
-      return `No amendment history found for ${codeStructure.code.name} (${code_id})`;
+      // "No history found" reads like "this code was never amended". It is not:
+      // the consolidation engine has simply never run for this code.
+      return [
+        `# Amendment History: ${codeStructure.code.name} (${code_id})`,
+        '',
+        '**history_available**: false',
+        '',
+        `**0 amendments applied - history not generated for ${code_id}.**`,
+        '',
+        'The `amendment_applications` table holds no rows for this code, so law7 cannot list, ' +
+          'date or attribute any amendment to it. This is NOT a statement that the code was ' +
+          'never amended - the amendment history has simply never been built. Consult ' +
+          'pravo.gov.ru for the real amendment record.',
+        '',
+      ].join('\n');
     }
 
     // Limit results
@@ -231,8 +275,13 @@ export const traceAmendmentHistoryTool: Tool = {
   name: 'trace-amendment-history',
   description: `Track the amendment history for a consolidated legal code or specific article.
 
-This tool provides a complete history of amendments applied to a code or article,
-including:
+⚠️ NO AMENDMENT HISTORY HAS BEEN GENERATED YET. The \`amendment_applications\` table is
+empty and every article has exactly one stored snapshot, so for every code this tool
+currently answers "N versions, 0 amendments applied - history not generated" with
+\`history_available: false\`. An empty result means the history was never built, NOT that
+the code or article was never amended - never report it as the latter.
+
+When history does exist, this tool provides:
 - Chronological list of amendments
 - Status of each amendment (applied, pending, failed, conflict)
 - Articles affected by each amendment

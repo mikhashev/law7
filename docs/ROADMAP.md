@@ -180,7 +180,7 @@ Question: Can we use https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B or from o
 ### MCP Server Enhancements
 - [x] **Improved keyword search**: OR fallback when AND returns no results (2025-01-21)
 - [ ] Implement hybrid search (keyword + semantic combined)
-  - Note: `use_hybrid` parameter exists in schema but not implemented
+  - Note: the `use_hybrid` parameter was never implemented and was removed from the schema on 2026-09-14; search is keyword-only until embeddings are wired
   - Requires: Embedding generation in MCP server (currently only in Python pipeline)
   - Requires: Combine Qdrant semantic + PostgreSQL keyword results
 - [ ] Add document summarization tool

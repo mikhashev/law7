@@ -10,6 +10,7 @@ vi.mock('../../db/consolidation_queries.js', () => ({
   getCurrentArticleVersion: vi.fn(),
   getArticleVersionOnDate: vi.fn(),
   getAmendmentChain: vi.fn(),
+  getAmendmentApplicationCount: vi.fn(),
   getCodeStructure: vi.fn(),
 }));
 
@@ -19,11 +20,19 @@ vi.mock('../../config.js', () => ({
   },
 }));
 
-import { getCurrentArticleVersion, getArticleVersionOnDate, getAmendmentChain, getCodeStructure } from '../../db/consolidation_queries.js';
+import {
+  getCurrentArticleVersion,
+  getArticleVersionOnDate,
+  getAmendmentChain,
+  getAmendmentApplicationCount,
+  getCodeStructure,
+} from '../../db/consolidation_queries.js';
 
 describe('get-article-version tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // amendment_applications is empty in the live database.
+    vi.mocked(getAmendmentApplicationCount).mockResolvedValue(0);
   });
 
   afterEach(() => {
@@ -127,7 +136,7 @@ describe('get-article-version tool', () => {
         include_amendment_chain: false,
       };
 
-      const result = await executeGetArticleVersion(input);
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
       expect(result).toContain('Гражданский кодекс');
       expect(result).toContain('Article 420');
@@ -162,7 +171,7 @@ describe('get-article-version tool', () => {
         include_amendment_chain: true,
       };
 
-      const result = await executeGetArticleVersion(input);
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
       expect(result).toContain('Amendment History');
       expect(result).toContain('2 version');
@@ -184,7 +193,7 @@ describe('get-article-version tool', () => {
         article_number: '999',
       };
 
-      const result = await executeGetArticleVersion(input);
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
       expect(result).toContain('Article not found: GK_RF Article 999');
     });
@@ -213,7 +222,7 @@ describe('get-article-version tool', () => {
         article_number: '80',
       };
 
-      const result = await executeGetArticleVersion(input);
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
       expect(result).toContain('Article 80 exists but has no current version');
       expect(result).toContain('may be repealed');
@@ -256,9 +265,20 @@ describe('get-article-version tool', () => {
       created_at: new Date('2024-01-01'),
     };
 
-    it('should return article version as of specific date', async () => {
+    it('should return article version as of specific date when real history exists', async () => {
       vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
       vi.mocked(getArticleVersionOnDate).mockResolvedValue(mockHistoricalArticle as any);
+      // Two stored versions + applied amendments = genuine history.
+      vi.mocked(getAmendmentApplicationCount).mockResolvedValue(150);
+      vi.mocked(getAmendmentChain).mockResolvedValue({
+        article_number: '420',
+        code_id: 'GK_RF',
+        versions: [
+          mockHistoricalArticle,
+          { ...mockHistoricalArticle, id: '2', version_date: new Date('2023-01-15'), is_current: true },
+        ],
+        current_version: null,
+      } as any);
 
       const input = {
         code_id: 'GK_RF',
@@ -267,7 +287,7 @@ describe('get-article-version tool', () => {
         include_amendment_chain: false,
       };
 
-      const result = await executeGetArticleVersion(input);
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
       expect(result).toContain('Article 420');
       expect(result).toContain('[HISTORICAL]');
@@ -278,6 +298,12 @@ describe('get-article-version tool', () => {
     it('should return not found for historical query with no results', async () => {
       vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
       vi.mocked(getArticleVersionOnDate).mockResolvedValue(null);
+      vi.mocked(getAmendmentChain).mockResolvedValue({
+        article_number: '999',
+        code_id: 'GK_RF',
+        versions: [],
+        current_version: null,
+      } as any);
 
       const input = {
         code_id: 'GK_RF',
@@ -285,7 +311,7 @@ describe('get-article-version tool', () => {
         as_of_date: '2020-01-01',
       };
 
-      const result = await executeGetArticleVersion(input);
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
       expect(result).toContain('Article not found: GK_RF Article 999 as of 2020-01-01');
     });
@@ -299,7 +325,7 @@ describe('get-article-version tool', () => {
         as_of_date: 'invalid-date',
       };
 
-      const result = await executeGetArticleVersion(input);
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
       expect(result).toContain('Invalid date format');
       expect(result).toContain('invalid-date');
@@ -309,6 +335,12 @@ describe('get-article-version tool', () => {
     it('should accept valid date formats', async () => {
       vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
       vi.mocked(getArticleVersionOnDate).mockResolvedValue(mockHistoricalArticle as any);
+      vi.mocked(getAmendmentChain).mockResolvedValue({
+        article_number: '420',
+        code_id: 'GK_RF',
+        versions: [mockHistoricalArticle],
+        current_version: null,
+      } as any);
 
       const validDates = ['2020-01-01', '2024-12-31', '2000-06-15'];
 
@@ -319,10 +351,111 @@ describe('get-article-version tool', () => {
           as_of_date: date,
         };
 
-        const result = await executeGetArticleVersion(input);
+        const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
         expect(result).not.toContain('Invalid date format');
       }
+    });
+  });
+
+  describe('Historical queries without real history (tool honesty)', () => {
+    const mockCodeStructure = {
+      code: {
+        code: 'UK_RF',
+        name: 'Уголовный кодекс',
+        short_name: 'УК РФ',
+      },
+    };
+
+    const singleSnapshot = {
+      id: '1',
+      code_id: 'UK_RF',
+      article_number: '105',
+      version_date: new Date('2023-11-30'),
+      article_text: 'Current text of article 105...',
+      article_title: 'Убийство',
+      amendment_eo_number: null,
+      amendment_date: null,
+      is_current: true,
+      is_repealed: false,
+      repealed_date: null,
+      text_hash: 'abc',
+      created_at: new Date('2024-01-01'),
+    };
+
+    it('should refuse an as_of_date query when only one version and no amendments exist', async () => {
+      vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
+      vi.mocked(getAmendmentApplicationCount).mockResolvedValue(0);
+      vi.mocked(getAmendmentChain).mockResolvedValue({
+        article_number: '105',
+        code_id: 'UK_RF',
+        versions: [singleSnapshot],
+        current_version: singleSnapshot,
+      } as any);
+
+      const input = {
+        code_id: 'UK_RF',
+        article_number: '105',
+        as_of_date: '2015-01-01',
+      };
+
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
+
+      expect(result).toContain('## No historical version available');
+      expect(result).toContain('**history_available**: false');
+      // The refusal names the oldest version we hold and the amendment count.
+      expect(result).toContain('**oldest_version_date**: 2023-11-30');
+      expect(result).toContain('**amendments_applied**: 0');
+      expect(result).toContain('History has NOT been generated for UK_RF');
+      // Crucially: no article text, no [CURRENT] badge.
+      expect(result).not.toContain('[CURRENT]');
+      expect(result).not.toContain('Current text of article 105');
+      expect(getArticleVersionOnDate).not.toHaveBeenCalled();
+    });
+
+    it('should refuse when the requested date precedes the oldest version held', async () => {
+      vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
+      vi.mocked(getAmendmentApplicationCount).mockResolvedValue(12);
+      vi.mocked(getAmendmentChain).mockResolvedValue({
+        article_number: '105',
+        code_id: 'UK_RF',
+        versions: [
+          singleSnapshot,
+          { ...singleSnapshot, id: '2', version_date: new Date('2024-06-01') },
+        ],
+        current_version: singleSnapshot,
+      } as any);
+
+      const input = {
+        code_id: 'UK_RF',
+        article_number: '105',
+        as_of_date: '2015-01-01',
+      };
+
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
+
+      expect(result).toContain('## No historical version available');
+      expect(result).toContain('is EARLIER than the oldest version law7 holds');
+      expect(result).toContain('**oldest_version_date**: 2023-11-30');
+      expect(result).not.toContain('[CURRENT]');
+      expect(getArticleVersionOnDate).not.toHaveBeenCalled();
+    });
+
+    it('should still return the current text when no as_of_date is supplied', async () => {
+      vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
+      vi.mocked(getAmendmentApplicationCount).mockResolvedValue(0);
+      vi.mocked(getCurrentArticleVersion).mockResolvedValue(singleSnapshot as any);
+
+      const input = {
+        code_id: 'UK_RF',
+        article_number: '105',
+      };
+
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
+
+      expect(result).toContain('[CURRENT]');
+      expect(result).toContain('Current text of article 105');
+      expect(result).not.toContain('## No historical version available');
     });
   });
 
@@ -368,7 +501,7 @@ describe('get-article-version tool', () => {
         article_number: '80',
       };
 
-      const result = await executeGetArticleVersion(input);
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
       expect(result).toContain('[REPEALED]');
       expect(result).toContain('repealed on');
@@ -397,7 +530,7 @@ describe('get-article-version tool', () => {
         article_number: '420',
       };
 
-      const result = await executeGetArticleVersion(input);
+      const result = await executeGetArticleVersion(GetArticleVersionInputSchema.parse(input));
 
       expect(result).toContain('[CURRENT]');
     });
@@ -429,7 +562,7 @@ describe('get-article-version tool', () => {
         article_number: '420',
       };
 
-      await expect(executeGetArticleVersion(input)).rejects.toThrow('Database connection failed');
+      await expect(executeGetArticleVersion(GetArticleVersionInputSchema.parse(input))).rejects.toThrow('Database connection failed');
     });
   });
 });

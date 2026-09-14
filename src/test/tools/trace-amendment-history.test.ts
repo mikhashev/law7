@@ -9,6 +9,7 @@ import { executeTraceAmendmentHistory, TraceAmendmentHistoryInputSchema } from '
 vi.mock('../../db/consolidation_queries.js', () => ({
   getAmendmentChain: vi.fn(),
   getAmendmentApplications: vi.fn(),
+  getAmendmentApplicationCount: vi.fn(),
   getCodeStructure: vi.fn(),
 }));
 
@@ -18,11 +19,19 @@ vi.mock('../../config.js', () => ({
   },
 }));
 
-import { getAmendmentChain, getAmendmentApplications, getCodeStructure } from '../../db/consolidation_queries.js';
+import {
+  getAmendmentChain,
+  getAmendmentApplications,
+  getAmendmentApplicationCount,
+  getCodeStructure,
+} from '../../db/consolidation_queries.js';
 
 describe('trace-amendment-history tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // amendment_applications is empty in the live database; individual tests
+    // override this when they need a code that does have applied amendments.
+    vi.mocked(getAmendmentApplicationCount).mockResolvedValue(0);
   });
 
   afterEach(() => {
@@ -180,7 +189,7 @@ describe('trace-amendment-history tool', () => {
         limit: 50,
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('Amendment History: Article 420');
       expect(result).toContain('**Total Versions**: 3');
@@ -199,7 +208,7 @@ describe('trace-amendment-history tool', () => {
         include_details: true,
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('**Text**:');
       expect(result).toContain('Latest version of article text');
@@ -215,7 +224,7 @@ describe('trace-amendment-history tool', () => {
         include_details: false,
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('Amendment History: Article 420');
       expect(result).not.toContain('**Text**:');
@@ -231,7 +240,7 @@ describe('trace-amendment-history tool', () => {
         include_details: true,
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       // First version in output should be the latest (2023)
       const firstVersionIndex = result.indexOf('15.01.2023');
@@ -260,7 +269,7 @@ describe('trace-amendment-history tool', () => {
         article_number: '420',
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('[CURRENT]');
       expect(result).toContain('[REPEALED]');
@@ -280,10 +289,50 @@ describe('trace-amendment-history tool', () => {
         article_number: '999',
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('No amendment history found');
       expect(result).toContain('GK_RF Article 999');
+    });
+
+    it('should refuse to call a single snapshot a version history', async () => {
+      vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
+      vi.mocked(getAmendmentApplicationCount).mockResolvedValue(0);
+      vi.mocked(getAmendmentChain).mockResolvedValue({
+        article_number: '105',
+        code_id: 'UK_RF',
+        versions: [mockAmendmentChain.versions[0]],
+        current_version: mockAmendmentChain.versions[0],
+      } as any);
+
+      const input = {
+        code_id: 'UK_RF',
+        article_number: '105',
+      };
+
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
+
+      expect(result).toContain('**history_available**: false');
+      expect(result).toContain('1 version, 0 amendments applied - history not generated');
+      // The misleading "Total Versions: 1" line must be gone.
+      expect(result).not.toContain('**Total Versions**: 1');
+    });
+
+    it('should report versions and applied amendments when history really exists', async () => {
+      vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
+      vi.mocked(getAmendmentApplicationCount).mockResolvedValue(150);
+      vi.mocked(getAmendmentChain).mockResolvedValue(mockAmendmentChain as any);
+
+      const input = {
+        code_id: 'GK_RF',
+        article_number: '420',
+      };
+
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
+
+      expect(result).toContain('**Total Versions**: 3');
+      expect(result).toContain('**Amendments Applied**: 150');
+      expect(result).not.toContain('history not generated');
     });
 
     it('should handle article without current version', async () => {
@@ -300,7 +349,7 @@ describe('trace-amendment-history tool', () => {
         article_number: '420',
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       // Implementation uses markdown bold formatting
       expect(result).toContain('**Current Version**: None (article may be repealed)');
@@ -400,7 +449,7 @@ describe('trace-amendment-history tool', () => {
         limit: 50,
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('Amendment History: Трудовой кодекс');
       // Implementation uses markdown bold formatting
@@ -421,7 +470,7 @@ describe('trace-amendment-history tool', () => {
         include_details: true,
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('**Articles Affected**: 3');
       expect(result).toContain('  - Added: 1');
@@ -438,7 +487,7 @@ describe('trace-amendment-history tool', () => {
         include_details: false,
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('Amendment History: Трудовой кодекс');
       expect(result).not.toContain('**Articles Affected**:');
@@ -454,7 +503,7 @@ describe('trace-amendment-history tool', () => {
         limit: 2,
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       // Should show 2 amendments (from 4)
       expect(result.split('### [APPLIED]').length - 1).toBe(2);
@@ -468,7 +517,7 @@ describe('trace-amendment-history tool', () => {
         code_id: 'TK_RF',
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('[FAILED]');
       // Implementation shows error as "**Error**: message"
@@ -484,14 +533,14 @@ describe('trace-amendment-history tool', () => {
         code_id: 'TK_RF',
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('[APPLIED]');
       expect(result).toContain('[PENDING]');
       expect(result).toContain('[FAILED]');
     });
 
-    it('should return message when no amendment applications found', async () => {
+    it('should say history was not generated when no amendment applications exist', async () => {
       vi.mocked(getCodeStructure).mockResolvedValue(mockCodeStructure as any);
       vi.mocked(getAmendmentApplications).mockResolvedValue([]);
 
@@ -499,10 +548,13 @@ describe('trace-amendment-history tool', () => {
         code_id: 'TK_RF',
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
-      expect(result).toContain('No amendment history found');
       expect(result).toContain('Трудовой кодекс');
+      expect(result).toContain('**history_available**: false');
+      expect(result).toContain('0 amendments applied - history not generated');
+      // Must not imply the code was never amended.
+      expect(result).toContain('NOT a statement that the code was');
     });
   });
 
@@ -514,7 +566,7 @@ describe('trace-amendment-history tool', () => {
         code_id: 'INVALID_CODE',
       };
 
-      const result = await executeTraceAmendmentHistory(input);
+      const result = await executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input));
 
       expect(result).toContain('Code not found: INVALID_CODE');
     });
@@ -526,7 +578,7 @@ describe('trace-amendment-history tool', () => {
         code_id: 'GK_RF',
       };
 
-      await expect(executeTraceAmendmentHistory(input)).rejects.toThrow('Database connection failed');
+      await expect(executeTraceAmendmentHistory(TraceAmendmentHistoryInputSchema.parse(input))).rejects.toThrow('Database connection failed');
     });
   });
 });

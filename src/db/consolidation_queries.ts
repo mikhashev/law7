@@ -219,6 +219,24 @@ export async function getAmendmentApplications(
 }
 
 /**
+ * Count amendment applications recorded for a code.
+ *
+ * This is the honesty check used by `get-article-version` and
+ * `trace-amendment-history`: if a code has zero amendment applications, no
+ * historical consolidation has ever been generated for it, so the single
+ * snapshot stored per article cannot be attributed to any past date.
+ */
+export async function getAmendmentApplicationCount(codeId: string): Promise<number> {
+  const text = `
+    SELECT COUNT(*) as count
+    FROM amendment_applications
+    WHERE code_id = $1
+  `;
+  const results = await query<{ count: string | number | bigint }>(text, [codeId]);
+  return Number(results[0]?.count ?? 0);
+}
+
+/**
  * Get amendment application by eo_number
  */
 export async function getAmendmentApplication(

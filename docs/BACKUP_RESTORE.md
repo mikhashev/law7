@@ -20,7 +20,7 @@ The law7 project uses three databases:
 |----------|---------|------------|---------------|
 | PostgreSQL | Legal documents metadata and content | Yes | ~217 MB |
 | Qdrant | Vector embeddings for semantic search | Yes | ~2-300 MB |
-| Redis | Provisioned in docker-compose but not used by the MCP server yet | No | - |
+| Redis | Removed 2026-09-14; add back when a cache is actually implemented | N/A | - |
 
 **Total backup size**: ~218 MB compressed (current)
 
@@ -231,7 +231,6 @@ Common changes in `.env`:
 ```bash
 # Change ports if conflicts exist
 DB_PORT=5434
-REDIS_PORT=6381
 ```
 
 #### 4. Start Containers
@@ -320,7 +319,6 @@ Tell them to:
 **Solution**: Change ports in `docker/.env`:
 ```bash
 DB_PORT=5434       # Instead of 5433
-REDIS_PORT=6381    # Instead of 6380
 # Qdrant URL in .env must also match
 ```
 

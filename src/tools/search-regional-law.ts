@@ -4,12 +4,13 @@
  */
 
 import { z } from 'zod';
+import { numericString } from './schema-utils.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { query as dbQuery } from '../db/postgres.js';
 
 // Input schema for search-regional-law tool
 export const SearchRegionalLawInputSchema = z.object({
-  region_id: z.string().optional().describe('Region ID (OKATO code, e.g., "77" for Moscow, "78" for SPb)'),
+  region_id: numericString('Region ID (OKATO code, e.g., "77" for Moscow, "78" for SPb)').optional(),
   region_name: z.string().optional().describe('Region name (e.g., "Moscow", "Saint Petersburg")'),
   query: z.string().describe('Search query text'),
   document_type: z.string().optional().describe('Filter by document type (e.g., "law", "decree", "resolution")'),

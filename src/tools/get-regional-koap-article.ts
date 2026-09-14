@@ -4,14 +4,15 @@
  */
 
 import { z } from 'zod';
+import { numericString } from './schema-utils.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { query as dbQuery } from '../db/postgres.js';
 
 // Input schema for get-regional-koap-article tool
 export const GetRegionalKoapArticleInputSchema = z.object({
-  region_id: z.string().describe('Region ID (OKATO code, e.g., "77" for Moscow)'),
+  region_id: numericString('Region ID (OKATO code, e.g., "77" for Moscow)'),
   code_id: z.string().optional().describe('Code ID (e.g., "KOAP_MOSCOW") - inferred from region if not provided'),
-  article_number: z.string().describe('Article number (e.g., "1.1", "5.35")'),
+  article_number: numericString('Article number (e.g., "1.1", "5.35")'),
   version_date: z.string().optional().describe('Version date (YYYY-MM-DD) - defaults to current version'),
 });
 
@@ -37,8 +38,8 @@ const REGION_TO_KOAP: Record<string, string> = {
 function formatKoapArticle(article: any): string {
   const parts: string[] = [];
 
-  parts.push(`**${article.code_name}**`);
-  parts.push(`Регион: ${article.region_name}`);
+  parts.push(`**${article.code_name || article.code_id}**`);
+  parts.push(`Регион: ${article.region_name || article.region_id}`);
 
   if (article.chapter_number) {
     parts.push(`Глава: ${article.chapter_number}`);
@@ -93,59 +94,77 @@ export async function executeGetRegionalKoapArticle(input: GetRegionalKoapArticl
     return `Error: Could not determine KoAP code ID for region ${region_id}. Please provide code_id explicitly.`;
   }
 
-  // Build query
-  const conditions: string[] = [
-    'country_code = $1',
-    'region_id = $2',
-    'code_id = $3',
-    'article_number = $4'
-  ];
+  // NOTE: `regional_code_articles` has NO `region_name` column - the region and code
+  // names live in `regional_codes`, which keys its country as `country_id` ('RUS'),
+  // not `country_code`. The previous query selected non-existent columns and spliced
+  // `ORDER BY ... LIMIT 1` into its AND-joined WHERE list, so it could only ever throw.
   const params: any[] = ['RU', region_id, koapCodeId, article_number];
-  let paramIndex = 5;
-
-  // If version_date is specified, get specific version
-  // Otherwise, get current version
+  let versionClause = 'AND a.is_current = true';
   if (version_date) {
-    conditions.push(`version_date <= $${paramIndex++}`);
     params.push(version_date);
-    conditions.push(`ORDER BY version_date DESC LIMIT 1`);
-  } else {
-    conditions.push(`is_current = true`);
+    versionClause = `AND a.version_date <= $${params.length}`;
   }
-
-  const whereClause = conditions.join(' AND ');
 
   const sql = `
     SELECT
-      id, region_id, region_name, code_id,
-      article_number, chapter_number, part_number,
-      article_title, article_content,
-      status, effective_from, effective_until,
-      version_date, is_current, source_url
-    FROM regional_code_articles
-    WHERE ${whereClause}
+      a.id, a.region_id, a.code_id,
+      a.article_number, a.chapter_number, a.part_number,
+      a.article_title, a.article_content,
+      a.status, a.effective_from, a.effective_until,
+      a.version_date, a.is_current, a.source_url,
+      rc.region_name,
+      rc.code_name
+    FROM regional_code_articles a
+    LEFT JOIN regional_codes rc
+      ON rc.region_id = a.region_id
+     AND rc.code_id = a.code_id
+    WHERE a.country_code = $1
+      AND a.region_id = $2
+      AND a.code_id = $3
+      AND a.article_number = $4
+      ${versionClause}
+    ORDER BY a.version_date DESC
+    LIMIT 1
   `;
 
   try {
     const result = await dbQuery(sql, params);
 
     if (result.length === 0) {
-      return `Article ${article_number} not found in ${koapCodeId} for region ${region_id}.`;
+      // Distinguish "this article is missing" from "no regional law has ever been
+      // imported" - the second is the current state and must not read as a fact
+      // about the article.
+      const totals = await dbQuery<{ articles: string; codes: string }>(`
+        SELECT
+          (SELECT COUNT(*) FROM regional_code_articles) AS articles,
+          (SELECT COUNT(*) FROM regional_codes) AS codes
+      `);
+      const articleRows = Number(totals[0]?.articles ?? 0);
+      const codeRows = Number(totals[0]?.codes ?? 0);
+
+      if (articleRows === 0) {
+        return [
+          '## No regional data',
+          '',
+          '**data_available**: false',
+          '',
+          `law7 holds NO regional legal acts at all: \`regional_code_articles\` has ${articleRows} rows ` +
+            `and \`regional_codes\` has ${codeRows} rows. The regional KoAP corpus has never been ` +
+            'imported.',
+          '',
+          `This is NOT a statement about region ${region_id} article ${article_number} - law7 simply ` +
+            'has nothing to say about regional administrative law yet. Consult the official regional ' +
+            'publication instead.',
+          '',
+        ].join('\n');
+      }
+
+      return version_date
+        ? `Article ${article_number} not found in ${koapCodeId} for region ${region_id} as of ${version_date}.`
+        : `Article ${article_number} not found in ${koapCodeId} for region ${region_id}.`;
     }
 
-    const article = result[0];
-
-    // Get code name from regional_codes table
-    const codeResult = await dbQuery(
-      'SELECT code_name FROM regional_codes WHERE country_code = $1 AND region_id = $2 AND code_id = $3',
-      ['RU', region_id, koapCodeId]
-    );
-
-    if (codeResult.length > 0) {
-      article.code_name = codeResult[0].code_name;
-    }
-
-    return formatKoapArticle(article);
+    return formatKoapArticle(result[0]);
   } catch (error) {
     console.error('Error fetching regional KoAP article:', error);
     return `Error fetching regional KoAP article: ${(error as Error).message}`;
@@ -160,6 +179,11 @@ export const getRegionalKoapArticleTool: Tool = {
   description: `Get specific article from regional Russian Administrative Code (KoAP).
 
 This tool retrieves articles from regional administrative codes (Кодекс об административных правонарушениях) for Russian regions.
+
+⚠️ NO REGIONAL DATA IS LOADED YET. \`regional_code_articles\` and \`regional_codes\` are both
+empty, so this tool returns a \`## No regional data\` result (\`data_available: false\`) for
+every query. That result means law7 has nothing imported - never report it as "no such
+article exists".
 
 Phase 7C covers top 10 regions by population:
 - Moscow (77), Moscow Region (50), Saint Petersburg (78)

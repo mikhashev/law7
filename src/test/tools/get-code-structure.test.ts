@@ -114,7 +114,7 @@ describe('get-code-structure tool', () => {
 
       const input = {};
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       expect(result).toContain('Available Consolidated Codes');
       expect(result).toContain('Гражданский кодекс');
@@ -129,7 +129,7 @@ describe('get-code-structure tool', () => {
 
       const input = {};
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       expect(result).toContain('| Code | Name |');
       expect(result).toContain('| GK_RF |');
@@ -141,7 +141,7 @@ describe('get-code-structure tool', () => {
 
       const input = {};
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       expect(result).toContain('In Progress');
     });
@@ -161,7 +161,7 @@ describe('get-code-structure tool', () => {
 
       const input = {};
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       expect(result).toContain('N/A');
     });
@@ -230,7 +230,7 @@ describe('get-code-structure tool', () => {
         article_limit: 100,
       };
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       expect(result).toContain('Гражданский кодекс');
       expect(result).toContain('ГК РФ');
@@ -249,7 +249,7 @@ describe('get-code-structure tool', () => {
         article_limit: 100,
       };
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       expect(result).toContain('## Articles');
       expect(result).toContain('Article 1');
@@ -266,7 +266,7 @@ describe('get-code-structure tool', () => {
         article_limit: 100,
       };
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       expect(result).toContain('Гражданский кодекс');
       expect(result).toContain('Statistics');
@@ -305,7 +305,7 @@ describe('get-code-structure tool', () => {
         article_limit: 50,
       };
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       // Should show 50 articles and "and 100 more" message
       expect(result).toContain('Article 50');
@@ -332,7 +332,7 @@ describe('get-code-structure tool', () => {
         include_articles: true,
       };
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       expect(result).toContain('[REPEALED]');
     });
@@ -345,7 +345,7 @@ describe('get-code-structure tool', () => {
         include_articles: true,
       };
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       expect(result).toContain('[HISTORICAL]');
     });
@@ -367,7 +367,7 @@ describe('get-code-structure tool', () => {
         include_articles: true,
       };
 
-      const result = await executeGetCodeStructure(input);
+      const result = await executeGetCodeStructure(GetCodeStructureInputSchema.parse(input));
 
       expect(result).toContain('Code not found: INVALID_CODE');
       expect(result).toContain('Available Consolidated Codes');
@@ -381,7 +381,7 @@ describe('get-code-structure tool', () => {
 
       const input = {};
 
-      await expect(executeGetCodeStructure(input)).rejects.toThrow('Database connection failed');
+      await expect(executeGetCodeStructure(GetCodeStructureInputSchema.parse(input))).rejects.toThrow('Database connection failed');
     });
   });
 });

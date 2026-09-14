@@ -1,20 +1,17 @@
 /**
  * Query Laws Tool
- * Search for legal documents using semantic and keyword search
+ * Search for legal documents using keyword (full-text) search
  */
 
 import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import { search } from '../db/qdrant.js';
 import { searchDocuments } from '../db/postgres.js';
-import { config } from '../config.js';
 
 // Input schema for query-laws tool
 export const QueryLawsInputSchema = z.object({
   country_code: z.string().optional().default('RU').describe('Country code (ISO 3166-1 alpha-2, e.g., "RU", "US")'),
   query: z.string().describe('Search query for finding relevant legal documents'),
   max_results: z.number().optional().default(10).describe('Maximum number of results to return'),
-  use_hybrid: z.boolean().optional().default(false).describe('Use hybrid search (keyword + semantic)'),
 });
 
 export type QueryLawsInput = z.infer<typeof QueryLawsInputSchema>;
@@ -63,11 +60,11 @@ function formatDocument(doc: any): string {
  * Execute the query-laws tool
  */
 export async function executeQueryLaws(input: QueryLawsInput): Promise<string> {
-  const { country_code, query, max_results, use_hybrid } = input;
+  const { country_code, query, max_results } = input;
 
-  // For now, use keyword search since we don't have embedding generation in MCP server yet
-  // TODO: Add embedding generation for semantic search
-
+  // Keyword-only search (PostgreSQL full-text / trigram). Semantic search is not
+  // wired up: the MCP server has no embedding generation, so the vectors in
+  // Qdrant are never read. See Stage 6+ of the roadmap.
   const results = await searchDocuments(query, max_results, undefined, country_code);
 
   if (results.length === 0) {
@@ -93,6 +90,13 @@ export const queryLawsTool: Tool = {
   name: 'query-laws',
   description: `Search for INDIVIDUAL legal documents (laws, decrees, resolutions, court decisions, regulations) using full-text search.
 
+SEARCH IS KEYWORD-ONLY (PostgreSQL full-text / trigram matching over document text).
+Semantic / hybrid (embedding) search is NOT implemented: the MCP server does not
+generate query embeddings and never reads the Qdrant vector collection. Results are
+lexical matches only - a query that uses different wording than the source text may
+return nothing even when a relevant document exists. Embeddings are planned for
+Stage 6+.
+
 ⚠️ IMPORTANT - Choose the RIGHT tool:
 ❌ DO NOT use this for queries about specific code articles (e.g., "Constitution article 1", "Civil Code article 420")
    → For consolidated legal codes with articles, use get-article-version instead
@@ -107,7 +111,6 @@ Args:
   country_code: Country code (ISO 3166-1 alpha-2, e.g., "RU", "US") to search within (default: "RU")
   query: Search query text (keywords or phrases)
   max_results: Maximum number of results to return (default: 10)
-  use_hybrid: Enable hybrid keyword + semantic search (default: false)
 
 Examples:
   Search for documents about labor:
@@ -131,11 +134,6 @@ Examples:
         type: 'number',
         description: 'Maximum number of results to return',
         default: 10,
-      },
-      use_hybrid: {
-        type: 'boolean',
-        description: 'Use hybrid search (keyword + semantic)',
-        default: false,
       },
     },
     required: ['query'],

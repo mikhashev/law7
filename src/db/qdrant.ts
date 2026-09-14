@@ -134,10 +134,15 @@ export async function getCollectionInfo(): Promise<any> {
 
 /**
  * Get point count
+ *
+ * NOTE: `@qdrant/js-client-rest` already unwraps the REST envelope, so
+ * `getCollection()` returns the collection info object itself (the REST API
+ * wraps it in `{ result: ... }`, the JS client does not). Reading
+ * `info.result.points_count` therefore always yielded `undefined` -> 0.
  */
 export async function getPointCount(): Promise<number> {
   const info = await getCollectionInfo();
-  return info.result?.points_count || 0;
+  return info?.points_count ?? 0;
 }
 
 /**
