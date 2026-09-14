@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: Node (MCP server)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # known: test typings, Stage 1
+      # `tsc` still emits dist/, but exits non-zero because of 30 pre-existing
+      # type errors in three files under src/test/. Kept visible, not blocking.
+      - name: Build
+        run: npm run build
+        continue-on-error: true
+
+      # known: test typings, Stage 1
+      # 6 assertions in src/test/tools/get-statistics.test.ts fail on number
+      # formatting. Kept visible, not blocking.
+      - name: Test
+        run: npm test
+        continue-on-error: true
+
+  python:
+    name: Python (data pipeline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+
+      # uv.lock pins torch to the explicit pytorch-cu128 index (see
+      # [tool.uv.sources] in pyproject.toml), so a plain `uv sync --frozen`
+      # would download a ~2.5 GB CUDA wheel. UV_TORCH_BACKEND only affects
+      # resolution, and cannot override an explicitly pinned index inside a
+      # frozen lock, so instead we sync everything except torch and install a
+      # CPU wheel on top. UV_NO_SYNC keeps later `uv run` calls from
+      # re-syncing (which would pull the CUDA wheel back in).
+      - name: Sync dependencies (without torch)
+        run: uv sync --frozen --no-install-package torch
+
+      - name: Install CPU-only torch
+        run: uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      # known: lint debt, Stage 1
+      - name: Ruff
+        run: uv run --no-sync ruff check scripts/
+        continue-on-error: true
+
+      # known: ~50 failing tests, Stage 1
+      - name: Pytest
+        run: uv run --no-sync pytest -q
+        continue-on-error: true

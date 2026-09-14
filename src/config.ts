@@ -80,3 +80,59 @@ export const config = {
 
 // Type exports
 export type Config = typeof config;
+
+// ---------------------------------------------------------------------------
+// Secret redaction
+// ---------------------------------------------------------------------------
+
+/** Keys whose values must never be logged (password / secret / *token / *key). */
+const SENSITIVE_KEY_PATTERN = /password|secret|token$|key$/i;
+
+/** Matches the userinfo part of a URL, e.g. `postgresql://user:pass@host`. */
+const URL_USERINFO_PATTERN = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s@]*@/g;
+
+/** Placeholder written in place of any redacted value. */
+const REDACTED = '***';
+
+/**
+ * Recursively deep-copy a value, replacing sensitive values with `***`.
+ *
+ * - Any property whose name matches /password|secret|token|key$/i is replaced.
+ * - Any URL userinfo (`scheme://user:pass@host`) inside a string is replaced.
+ *
+ * Getters (such as `db.connectionString`) are evaluated during the copy, so the
+ * resulting object is a plain, safe-to-log snapshot.
+ */
+export function redactSecrets(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+  if (typeof value === 'string') {
+    return value.replace(URL_USERINFO_PATTERN, `$1${REDACTED}@`);
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+
+  if (seen.has(value as object)) {
+    return '[Circular]';
+  }
+  seen.add(value as object);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSecrets(item, seen));
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    result[key] = SENSITIVE_KEY_PATTERN.test(key) ? REDACTED : redactSecrets(item, seen);
+  }
+  return result;
+}
+
+/**
+ * Return a redacted deep copy of the configuration, safe for logging.
+ * For a stdio MCP server stderr is the client's log channel, so the raw config
+ * (which carries DB/Redis passwords) must never be written there.
+ */
+export function redactConfig(cfg: unknown = config): Record<string, unknown> {
+  return redactSecrets(cfg) as Record<string, unknown>;
+}
