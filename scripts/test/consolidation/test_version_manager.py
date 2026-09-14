@@ -111,7 +111,7 @@ class TestVersionManagerInit:
 class TestSaveSnapshot:
     """Tests for save_snapshot method."""
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_save_snapshot_success(self, mock_get_conn):
         """Test successful snapshot save."""
         mock_conn = MagicMock()
@@ -132,7 +132,7 @@ class TestSaveSnapshot:
         mock_conn.execute.assert_called_once()
         mock_conn.commit.assert_called_once()
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_save_snapshot_with_provided_conn(self, mock_get_conn):
         """Test saving snapshot with provided connection."""
         mock_conn = MagicMock()
@@ -149,7 +149,7 @@ class TestSaveSnapshot:
         # Should use provided connection, not get_db_connection
         mock_conn.execute.assert_called_once()
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_save_snapshot_database_error(self, mock_get_conn):
         """Test handling database error during save."""
         mock_conn = MagicMock()
@@ -170,7 +170,7 @@ class TestSaveSnapshot:
 class TestGetCurrentVersion:
     """Tests for get_current_version method."""
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_get_current_version_found(self, mock_get_conn):
         """Test getting current version when found."""
         mock_row = (
@@ -197,7 +197,7 @@ class TestGetCurrentVersion:
         assert snapshot.article_title == "Test Title"
         assert snapshot.is_current is True
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_get_current_version_not_found(self, mock_get_conn):
         """Test getting current version when not found."""
         mock_result = MagicMock()
@@ -212,7 +212,7 @@ class TestGetCurrentVersion:
         assert snapshot is None
 
     @pytest.mark.skip(reason="Source code bug: VersionInfo missing repealed_date field")
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_get_current_version_cached(self, mock_get_conn):
         """Test that current version can come from cache."""
         # NOTE: This test is skipped because _version_info_to_snapshot
@@ -240,7 +240,7 @@ class TestGetCurrentVersion:
 class TestGetVersionOnDate:
     """Tests for get_version_on_date method."""
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_get_version_on_date_found(self, mock_get_conn):
         """Test getting version on specific date."""
         mock_row = (
@@ -265,7 +265,7 @@ class TestGetVersionOnDate:
         assert snapshot is not None
         assert snapshot.version_date == date(2025, 6, 1)
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_get_version_on_date_not_found(self, mock_get_conn):
         """Test getting version on date when not found."""
         mock_result = MagicMock()
@@ -283,7 +283,7 @@ class TestGetVersionOnDate:
 class TestGetAmendmentChain:
     """Tests for get_amendment_chain method."""
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_get_amendment_chain(self, mock_get_conn):
         """Test getting full amendment chain."""
         mock_rows = [
@@ -306,7 +306,7 @@ class TestGetAmendmentChain:
         assert chain.current_version is not None
         assert chain.current_version.is_current is True
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_get_amendment_chain_empty(self, mock_get_conn):
         """Test getting amendment chain with no versions."""
         mock_result = MagicMock()
@@ -326,7 +326,7 @@ class TestGetAmendmentChain:
 class TestMarkOldVersionsAsNotCurrent:
     """Tests for mark_old_versions_as_not_current method."""
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_mark_old_versions(self, mock_get_conn):
         """Test marking old versions as not current."""
         mock_conn = MagicMock()
@@ -342,7 +342,7 @@ class TestMarkOldVersionsAsNotCurrent:
         mock_conn.execute.assert_called_once()
         mock_conn.commit.assert_called_once()
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_mark_old_versions_with_conn(self, mock_get_conn):
         """Test marking with provided connection."""
         mock_conn = MagicMock()
@@ -364,7 +364,7 @@ class TestMarkOldVersionsAsNotCurrent:
 class TestGetArticleHistory:
     """Tests for get_article_history convenience function."""
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_get_article_history(self, mock_get_conn):
         """Test getting article history."""
         mock_rows = [
@@ -385,7 +385,7 @@ class TestGetArticleHistory:
         assert len(history) == 1
         assert history[0]["amendment_eo_number"] == "eo123"
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_get_article_history_with_date_range(self, mock_get_conn):
         """Test getting article history with date range."""
         mock_result = MagicMock()
@@ -409,7 +409,7 @@ class TestGetArticleHistory:
         assert "start_date" in params
         assert "end_date" in params
 
-    @patch("scripts.consolidation.version_manager.get_db_connection")
+    @patch("country_modules.russia.consolidation.version_manager.get_db_connection")
     def test_get_article_history_error(self, mock_get_conn):
         """Test handling database error."""
         mock_get_conn.side_effect = Exception("Database error")

@@ -77,7 +77,7 @@ class TestCodeConsolidatorInit:
 class TestFetchOriginalCode:
     """Tests for fetch_original_code method."""
 
-    @patch("scripts.consolidation.consolidate.logger")
+    @patch("country_modules.russia.consolidation.consolidate.logger")
     def test_fetch_original_code_not_implemented(self, mock_logger):
         """Test that original code fetch returns empty (not implemented)."""
         consolidator = CodeConsolidator("TK_RF")
@@ -91,8 +91,8 @@ class TestFetchOriginalCode:
 class TestFetchAmendments:
     """Tests for fetch_amendments method."""
 
-    @patch("scripts.consolidation.consolidate.get_db_connection")
-    @patch("scripts.consolidation.consolidate.AmendmentParser")
+    @patch("country_modules.russia.consolidation.consolidate.get_db_connection")
+    @patch("country_modules.russia.consolidation.consolidate.AmendmentParser")
     def test_fetch_amendments_success(self, mock_parser_class, mock_get_conn):
         """Test successful amendment fetching."""
         # Setup mock parser
@@ -122,8 +122,8 @@ class TestFetchAmendments:
         assert len(amendments) == 1
         assert amendments[0].eo_number == "eo123"
 
-    @patch("scripts.consolidation.consolidate.get_db_connection")
-    @patch("scripts.consolidation.consolidate.AmendmentParser")
+    @patch("country_modules.russia.consolidation.consolidate.get_db_connection")
+    @patch("country_modules.russia.consolidation.consolidate.AmendmentParser")
     def test_fetch_amendments_filters_by_code(self, mock_parser_class, mock_get_conn):
         """Test that amendments are filtered by code."""
         mock_parser = MagicMock()
@@ -161,7 +161,7 @@ class TestFetchAmendments:
         assert len(amendments) == 1
         assert amendments[0].code_id == "TK_RF"
 
-    @patch("scripts.consolidation.consolidate.get_db_connection")
+    @patch("country_modules.russia.consolidation.consolidate.get_db_connection")
     def test_fetch_amendments_with_start_date(self, mock_get_conn):
         """Test fetching amendments with start date filter."""
         mock_result = MagicMock()
@@ -183,7 +183,7 @@ class TestFetchAmendments:
 class TestApplyAmendment:
     """Tests for apply_amendment method."""
 
-    @patch("scripts.consolidation.consolidate.VersionManager")
+    @patch("country_modules.russia.consolidation.consolidate.VersionManager")
     def test_apply_amendment_basic(self, mock_vm_class):
         """Test basic amendment application."""
         mock_vm = MagicMock()
@@ -216,10 +216,10 @@ class TestApplyAmendment:
 class TestConsolidate:
     """Tests for consolidate method."""
 
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.apply_amendment")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.fetch_amendments")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.fetch_original_code")
-    @patch("scripts.consolidation.consolidate.logger")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.apply_amendment")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.fetch_amendments")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.fetch_original_code")
+    @patch("country_modules.russia.consolidation.consolidate.logger")
     def test_consolidate_no_amendments(
         self, mock_logger, mock_fetch_orig, mock_fetch_amend, mock_apply
     ):
@@ -234,16 +234,21 @@ class TestConsolidate:
         assert result["amendments_processed"] == 0
         assert result["articles_updated"] == 0
 
-    @patch("scripts.consolidation.consolidate.VersionManager")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.apply_amendment")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.fetch_amendments")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.fetch_original_code")
-    @pytest.mark.skip(reason="complex mocking issue")
+    @patch("country_modules.russia.consolidation.consolidate.VersionManager")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.apply_amendment")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.fetch_amendments")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.fetch_original_code")
     def test_consolidate_with_amendments(
         self, mock_fetch_orig, mock_fetch_amend, mock_apply, mock_vm_class
     ):
         """Test consolidation with amendments."""
-        mock_fetch_orig.return_value = {}
+        # consolidate() overwrites current_articles with fetch_original_code()'s
+        # result in Step 1, so the starting article state must be returned here
+        # (setting consolidator.current_articles directly before calling
+        # consolidate() has no effect - it gets clobbered immediately).
+        mock_fetch_orig.return_value = {
+            "123": ArticleSnapshot(article_number="123"),
+        }
 
         amendment = ParsedAmendment(
             eo_number="eo123",
@@ -257,7 +262,9 @@ class TestConsolidate:
             effective_date=date(2026, 1, 1),
         )
         mock_fetch_amend.return_value = [amendment]
-        mock_apply.return_value = {}
+        mock_apply.return_value = {
+            "123": ArticleSnapshot(article_number="123"),
+        }
 
         # Mock version_manager.save_snapshot
         mock_vm = MagicMock()
@@ -265,9 +272,6 @@ class TestConsolidate:
         mock_vm_class.return_value = mock_vm
 
         consolidator = CodeConsolidator("TK_RF")
-        consolidator.current_articles = {
-            "123": ArticleSnapshot(article_number="123"),
-        }
         # Mock parse_change_details to return our changes
         # Also mock the MagicMock's article_number to return a string (or be truthy)
         change = MagicMock()
@@ -281,10 +285,10 @@ class TestConsolidate:
         assert result["snapshots_saved"] == 1
         assert result["articles_updated"] == 1
 
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.apply_amendment")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.fetch_amendments")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.fetch_original_code")
-    @patch("scripts.consolidation.consolidate.logger")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.apply_amendment")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.fetch_amendments")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.fetch_original_code")
+    @patch("country_modules.russia.consolidation.consolidate.logger")
     def test_consolidate_handles_amendment_error(
         self, mock_logger, mock_fetch_orig, mock_fetch_amend, mock_apply
     ):
@@ -313,7 +317,7 @@ class TestConsolidate:
 class TestConsolidateCodeConvenience:
     """Tests for consolidate_code convenience function."""
 
-    @patch("scripts.consolidation.consolidate.CodeConsolidator")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator")
     def test_consolidate_code_function(self, mock_cc_class):
         """Test consolidate_code convenience function."""
         mock_consolidator = MagicMock()
@@ -330,8 +334,7 @@ class TestConsolidateCodeConvenience:
 class TestMain:
     """Tests for main entry point."""
 
-    @pytest.mark.skip(reason="sys.argv patching issues in pytest")
-    @patch("scripts.consolidation.consolidate.consolidate_code")
+    @patch("country_modules.russia.consolidation.consolidate.consolidate_code")
     @patch("sys.argv", ["consolidate.py", "--code", "TK_RF"])
     def test_main_basic(self, mock_consolidate):
         """Test main with basic arguments."""
@@ -348,9 +351,8 @@ class TestMain:
 
         mock_consolidate.assert_called_once()
 
-    @patch("scripts.consolidate.consolidate.consolidate_code")
+    @patch("country_modules.russia.consolidation.consolidate.consolidate_code")
     @patch("sys.argv", ["consolidate.py", "--code", "TK_RF", "--start-date", "2026-01-01"])
-    @pytest.mark.skip(reason="sys.argv patching issues")
     def test_main_with_start_date(self, mock_consolidate):
         """Test main with start date argument."""
         mock_consolidate.return_value = {
@@ -367,9 +369,8 @@ class TestMain:
         call_args = mock_consolidate.call_args
         assert call_args[1]["start_date"] == date(2026, 1, 1)
 
-    @patch("scripts.consolidate.consolidate.consolidate_code")
+    @patch("country_modules.russia.consolidation.consolidate.consolidate_code")
     @patch("sys.argv", ["consolidate.py", "--code", "TK_RF", "--rebuild"])
-    @pytest.mark.skip(reason="sys.argv patching issues")
     def test_main_with_rebuild(self, mock_consolidate):
         """Test main with rebuild flag."""
         mock_consolidate.return_value = {
@@ -386,7 +387,7 @@ class TestMain:
         call_args = mock_consolidate.call_args
         assert call_args[1]["rebuild"] is True
 
-    @patch("scripts.consolidation.consolidate.consolidate_code")
+    @patch("country_modules.russia.consolidation.consolidate.consolidate_code")
     @patch("sys.argv", ["consolidate.py", "--code", "INVALID"])
     def test_main_invalid_code(self, mock_consolidate):
         """Test main with invalid code ID."""
@@ -398,8 +399,8 @@ class TestMain:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.fetch_amendments")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.fetch_original_code")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.fetch_amendments")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.fetch_original_code")
     def test_consolidate_with_empty_current_articles(self, mock_fetch_orig, mock_fetch_amend):
         """Test consolidation when current_articles is empty."""
         mock_fetch_orig.return_value = {}
@@ -412,16 +413,21 @@ class TestEdgeCases:
         assert result["status"] == "completed"
         assert result["amendments_processed"] == 0
 
-    @patch("scripts.consolidation.consolidation.VersionManager")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.apply_amendment")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.fetch_amendments")
-    @patch("scripts.consolidation.consolidate.CodeConsolidator.fetch_original_code")
-    @pytest.mark.skip(reason="complex mocking issue")
+    @patch("country_modules.russia.consolidation.consolidate.VersionManager")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.apply_amendment")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.fetch_amendments")
+    @patch("country_modules.russia.consolidation.consolidate.CodeConsolidator.fetch_original_code")
     def test_consolidate_save_snapshot_fails(
         self, mock_fetch_orig, mock_fetch_amend, mock_apply, mock_vm_class
     ):
         """Test consolidation when snapshot save fails."""
-        mock_fetch_orig.return_value = {}
+        # consolidate() overwrites current_articles with fetch_original_code()'s
+        # result in Step 1, so the starting article state must be returned here
+        # (setting consolidator.current_articles directly before calling
+        # consolidate() has no effect - it gets clobbered immediately).
+        mock_fetch_orig.return_value = {
+            "123": ArticleSnapshot(article_number="123"),
+        }
 
         amendment = ParsedAmendment(
             eo_number="eo123",
@@ -433,7 +439,9 @@ class TestEdgeCases:
             effective_date=date(2026, 1, 1),
         )
         mock_fetch_amend.return_value = [amendment]
-        mock_apply.return_value = {}
+        mock_apply.return_value = {
+            "123": ArticleSnapshot(article_number="123"),
+        }
 
         # Mock version_manager to fail saving
         mock_vm = MagicMock()
@@ -441,9 +449,6 @@ class TestEdgeCases:
         mock_vm_class.return_value = mock_vm
 
         consolidator = CodeConsolidator("TK_RF")
-        consolidator.current_articles = {
-            "123": ArticleSnapshot(article_number="123"),
-        }
         # Mock parse_change_details to return our changes with proper article_number
         change = MagicMock()
         change.article_number = "123"

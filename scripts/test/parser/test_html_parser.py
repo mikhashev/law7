@@ -23,7 +23,7 @@ from scripts.parser.html_parser import (
 class TestPravoContentParserInit:
     """Tests for PravoContentParser initialization."""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_init_default(self):
         """Test default initialization."""
         parser = PravoContentParser()
@@ -32,7 +32,7 @@ class TestPravoContentParserInit:
         assert parser.session is not None
         assert parser._driver is None
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_init_with_ocr_enabled(self):
         """Test initialization with OCR enabled (when dependencies available)."""
         parser = PravoContentParser(use_ocr=True)
@@ -41,7 +41,7 @@ class TestPravoContentParserInit:
         # use_ocr will be False if dependencies aren't available
         assert parser.use_ocr in [True, False]
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_init_with_custom_timeout(self):
         """Test initialization with custom timeout."""
         parser = PravoContentParser(timeout=60)
@@ -51,14 +51,14 @@ class TestPravoContentParserInit:
 class TestGetPdfUrl:
     """Tests for get_pdf_url method."""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_get_pdf_url(self):
         """Test PDF URL generation."""
         parser = PravoContentParser()
         url = parser.get_pdf_url("0001202601170001")
         assert url == "http://publication.pravo.gov.ru/file/pdf?eoNumber=0001202601170001"
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_get_pdf_url_empty(self):
         """Test PDF URL with empty eoNumber."""
         parser = PravoContentParser()
@@ -69,7 +69,7 @@ class TestGetPdfUrl:
 class TestGetDocumentViewUrl:
     """Tests for get_document_view_url method."""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_get_document_view_url(self):
         """Test document view URL generation."""
         parser = PravoContentParser()
@@ -80,7 +80,7 @@ class TestGetDocumentViewUrl:
 class TestParseFromApiData:
     """Tests for parse_from_api_data method."""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_parse_from_api_data_full(self):
         """Test parsing with all fields present (Russian content)."""
         parser = PravoContentParser()
@@ -104,7 +104,7 @@ class TestParseFromApiData:
         assert "pdf_url" in result
         assert "html_url" in result
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_parse_from_api_data_minimal(self):
         """Test parsing with minimal data."""
         parser = PravoContentParser()
@@ -122,7 +122,7 @@ class TestParseFromApiData:
         # Empty text produces empty hash (per _generate_text_hash logic)
         assert result["text_hash"] == ""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_parse_from_api_data_with_html_tags(self):
         """Test that HTML tags are cleaned from title."""
         parser = PravoContentParser()
@@ -139,7 +139,7 @@ class TestParseFromApiData:
         assert "\n" in result["full_text"]
         assert "<br>" not in result["full_text"]
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_parse_from_api_data_duplicate_content(self):
         """Test that duplicate content is handled."""
         parser = PravoContentParser()
@@ -159,7 +159,7 @@ class TestParseFromApiData:
 class TestTextHashGeneration:
     """Tests for text hash generation."""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_generate_text_hash_consistent(self):
         """Test that hash is consistent for same text."""
         parser = PravoContentParser()
@@ -170,7 +170,7 @@ class TestTextHashGeneration:
 
         assert hash1 == hash2
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_generate_text_hash_different(self):
         """Test that different texts produce different hashes."""
         parser = PravoContentParser()
@@ -180,7 +180,7 @@ class TestTextHashGeneration:
 
         assert hash1 != hash2
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_generate_text_hash_empty(self):
         """Test hash generation for empty text."""
         parser = PravoContentParser()
@@ -191,7 +191,7 @@ class TestTextHashGeneration:
 class TestCleanHtmlText:
     """Tests for _clean_html_text method."""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_clean_html_text_removes_tags(self):
         """Test that HTML tags are removed."""
         parser = PravoContentParser()
@@ -203,7 +203,7 @@ class TestCleanHtmlText:
         assert "<b>" not in result
         assert "Hello world" == result
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_clean_html_text_replaces_br(self):
         """Test that <br> tags are replaced with newlines."""
         parser = PravoContentParser()
@@ -218,7 +218,7 @@ class TestCleanHtmlText:
         assert "Line 3" in result
         assert "<br" not in result
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_clean_html_text_removes_whitespace(self):
         """Test that extra whitespace is normalized."""
         parser = PravoContentParser()
@@ -228,14 +228,14 @@ class TestCleanHtmlText:
 
         assert "Hello world test" == result
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_clean_html_text_empty(self):
         """Test cleaning empty text."""
         parser = PravoContentParser()
         result = parser._clean_html_text("")
         assert result == ""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_clean_html_text_none(self):
         """Test cleaning None text."""
         parser = PravoContentParser()
@@ -246,7 +246,7 @@ class TestCleanHtmlText:
 class TestParseDocument:
     """Tests for parse_document method."""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_parse_document_without_selenium(self):
         """Test parsing without Selenium (API data only)."""
         parser = PravoContentParser()
@@ -265,8 +265,8 @@ class TestParseDocument:
         assert "full_text" in result
         assert "Test Complex Name" in result["full_text"]
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", True)
-    @patch("scripts.parser.html_parser.PravoContentParser.fetch_with_selenium")
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", True)
+    @patch("country_modules.russia.parsers.html_parser.PravoContentParser.fetch_with_selenium")
     def test_parse_document_with_selenium_success(self, mock_fetch):
         """Test parsing with Selenium when successful."""
         # Content must be > 100 characters to be accepted (see parse_document line 434)
@@ -287,8 +287,8 @@ class TestParseDocument:
         assert result["selenium_used"] is True
         assert "full_text" in result
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", True)
-    @patch("scripts.parser.html_parser.PravoContentParser.fetch_with_selenium")
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", True)
+    @patch("country_modules.russia.parsers.html_parser.PravoContentParser.fetch_with_selenium")
     def test_parse_document_selenium_short_fallback(self, mock_fetch):
         """Test that short Selenium content falls back to API data."""
         mock_fetch.return_value = "short"  # Less than 100 chars
@@ -311,7 +311,7 @@ class TestParseDocument:
 class TestContextManager:
     """Tests for context manager functionality."""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_context_manager_exit(self):
         """Test that parser cleans up resources on exit."""
         with PravoContentParser() as parser:
@@ -323,7 +323,7 @@ class TestContextManager:
         # but we can verify the context manager works
         assert True  # If we get here, context manager worked
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_close_method(self):
         """Test close method."""
         parser = PravoContentParser()
@@ -334,8 +334,8 @@ class TestContextManager:
 class TestConvenienceFunction:
     """Tests for parse_pravo_document convenience function."""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
-    @patch("scripts.parser.html_parser.PravoContentParser")
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.PravoContentParser")
     def test_convenience_function(self, mock_parser_class):
         """Test the convenience function."""
         mock_parser = MagicMock()
@@ -352,7 +352,7 @@ class TestConvenienceFunction:
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_parse_empty_document(self):
         """Test parsing a document with empty fields."""
         parser = PravoContentParser()
@@ -368,7 +368,7 @@ class TestEdgeCases:
         assert result["eo_number"] == ""
         assert result["full_text"] == ""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_parse_missing_fields(self):
         """Test parsing with missing fields."""
         parser = PravoContentParser()
@@ -379,7 +379,7 @@ class TestEdgeCases:
         assert result["eo_number"] == ""
         assert result["full_text"] == ""
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_special_characters_in_text(self):
         """Test handling of special characters."""
         parser = PravoContentParser()
@@ -396,7 +396,7 @@ class TestEdgeCases:
         assert "&amp;" not in result["title"] or "&" in result["title"]
         assert "<tag>" not in result["title"] or ">" in result["title"]
 
-    @patch("scripts.parser.html_parser.SELENIUM_AVAILABLE", False)
+    @patch("country_modules.russia.parsers.html_parser.SELENIUM_AVAILABLE", False)
     def test_unicode_characters(self):
         """Test handling of Unicode characters (Cyrillic)."""
         parser = PravoContentParser()
