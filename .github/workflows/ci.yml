@@ -25,22 +25,39 @@ jobs:
           node-version: '24'
           cache: 'npm'
 
+      # The tsc/vitest gate scripts below (scripts/tools/ci/check_tsc.py,
+      # check_vitest.py) are stdlib-only Python; this job doesn't need the
+      # project's uv-managed environment, just an interpreter on PATH.
+      - name: Install Python (for CI gate scripts)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Install dependencies
         run: npm ci
 
-      # known: test typings, Stage 1
-      # `tsc` still emits dist/, but exits non-zero because of 30 pre-existing
-      # type errors in three files under src/test/. Kept visible, not blocking.
+      # `tsc` still emits dist/ even when it exits non-zero, so build and
+      # gating are separate steps: this one produces dist/ and is allowed to
+      # fail here, and check_tsc.py decides whether the failure is new.
       - name: Build
-        run: npm run build
+        run: npx tsc -p .
         continue-on-error: true
 
-      # known: test typings, Stage 1
-      # 6 assertions in src/test/tools/get-statistics.test.ts fail on number
-      # formatting. Kept visible, not blocking.
+      # Fails only on a tsc error outside the known files listed under
+      # [tsc-files] in src/test/known_failures.txt, or on a count above the
+      # recorded tsc_baseline. See scripts/tools/ci/README.md.
+      - name: Check build (tsc)
+        run: python scripts/tools/ci/check_tsc.py
+
+      # Same pattern as Build: this step surfaces normal vitest output and
+      # is allowed to fail; check_vitest.py makes the actual pass/fail call.
       - name: Test
         run: npm test
         continue-on-error: true
+
+      # Fails only on a vitest failure not listed in src/test/known_failures.txt.
+      - name: Check test (vitest)
+        run: python scripts/tools/ci/check_vitest.py
 
   python:
     name: Python (data pipeline)
@@ -66,12 +83,24 @@ jobs:
       - name: Install CPU-only torch
         run: uv pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-      # known: lint debt, Stage 1
+      # Surfaces normal ruff output; the actual pass/fail call is made by
+      # check_ruff.py below.
       - name: Ruff
         run: uv run --no-sync ruff check scripts/
         continue-on-error: true
 
-      # known: ~50 failing tests, Stage 1
+      # Fails only if the total finding count exceeds the recorded
+      # ruff_baseline under [ruff] in scripts/test/known_failures.txt.
+      - name: Check lint (ruff)
+        run: uv run --no-sync python scripts/tools/ci/check_ruff.py
+
+      # Surfaces normal pytest output; the actual pass/fail call is made by
+      # check_pytest.py below.
       - name: Pytest
         run: uv run --no-sync pytest -q
         continue-on-error: true
+
+      # Fails only on a failing/erroring test not listed in
+      # scripts/test/known_failures.txt.
+      - name: Check tests (pytest)
+        run: uv run --no-sync python scripts/tools/ci/check_pytest.py

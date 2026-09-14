@@ -1,0 +1,15 @@
+# Stage 1 debt: known vitest/tsc failures for src/ (Phase 7A tool tests).
+#
+# One vitest test id per line, formatted as:
+#   relative/path/to/file.test.ts > describe block > ... > it name
+# '#' starts a comment. Remove an entry when the test is fixed; never add an
+# entry without a linked issue/stage note. See scripts/tools/ci/README.md.
+#
+# Currently empty: regenerate via
+#   npx vitest run --reporter=json --outputFile=<tmp>
+#   python scripts/tools/ci/check_vitest.py --json-report <tmp> --generate
+
+[tsc-files]
+# Currently empty: regenerate via
+#   python scripts/tools/ci/check_tsc.py --generate
+tsc_baseline=0
