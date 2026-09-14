@@ -5,6 +5,8 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.0-orange)](package.json)
 
+> **Current state and vocabulary.** What this repository actually contains today, measured against the live database, is in [docs/SCOPE.md](docs/SCOPE.md); the words the project uses in a specific sense are in [docs/GLOSSARY.md](docs/GLOSSARY.md). Numbers elsewhere in this README are updated by re-measuring, and SCOPE.md wins if they disagree.
+
 ## Without Law7
 
 AI assistants rely on outdated training data for laws:

@@ -329,8 +329,8 @@ def _exempt_spans(meaning: str) -> list[tuple[int, int]]:
 
 def find_number_violations(meaning: str) -> list[str]:
     """No-numbers rule: flag integers >= 1000 written as digits, and
-    percentages, in the Meaning column -- except dates, citation years and
-    arXiv ids."""
+    percentages, in the Meaning column -- except dates, bare years (1900-2100),
+    citation years and arXiv ids."""
     problems: list[str] = []
     exempt = _exempt_spans(meaning)
 
@@ -349,7 +349,10 @@ def find_number_violations(meaning: str) -> list[str]:
             continue
         if is_exempt(span):
             continue
-        if int(m.group(0)) >= 1000:
+        value = int(m.group(0))
+        if len(m.group(0)) == 4 and 1900 <= value <= 2100:
+            continue  # a bare year, not a count
+        if value >= 1000:
             problems.append(f"number '{m.group(0)}' (>= 1000) in Meaning column")
 
     for m in _PERCENT_RE.finditer(meaning):
