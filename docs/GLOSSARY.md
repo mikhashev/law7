@@ -80,6 +80,7 @@ Every row links to the document that owns it. If that document does not exist ye
 | **article version** | One dated state of one article, produced by consolidation. The answer to "what was in force on date D" is a row from here, or an explicit refusal. | [`../docker/postgres/init.sql`](../docker/postgres/init.sql) — `code_article_versions` |
 | **anchor horizon** | The date before which a jurisdiction offers no official machine-readable artefact of an act, so nothing earlier can be anchored to the source — only assumed. A property of each country adapter, not of the project. | [SCOPE.md](SCOPE.md) |
 | **available / signed** (states of an official artefact) | Two independent properties of an official artefact: *available* — its bytes can be fetched from the source and a hash shown (integrity); *signed* — a signature over those bytes can be fetched and checked (authorship). An artefact can be available and unsigned; "anchored" without saying which is a claim without a referent. | [SCOPE.md](SCOPE.md) |
+| **`Phase 1` / `Phase 2`** | The two product phases of [VISION.md](VISION.md): `Phase 1` — a single jurisdiction (Russia) as the proof of concept, centralised; `Phase 2` — the international layer with country adapters and distributed verification. The working plan's *stages* are the execution units inside `Phase 1`. The labels `Phase 0 / 1 / 7A / 7C` that appear in `scripts/country_modules/` name historical import batches of the code, not phases of the project; they are not used in new text. Decided by the project owner on 2026-09-14. | [VISION.md](VISION.md) |
 | **`code_id`** | The private identifier of a consolidated code in our schema — the vocabulary `ELI` is meant to replace, because an identifier a stranger cannot resolve makes federation impossible. | [`../docker/postgres/init.sql`](../docker/postgres/init.sql) — `consolidated_codes`; see §3 `ELI` |
 
 ## 3. Words borrowed from an outside document
@@ -112,7 +113,6 @@ that owns it.
 | **verification coverage** | The share of units extracted against the number the source itself declares. Named in the reconnaissance of 2026-09-14 and needed by the manifest, but no document in this repository defines how it is computed — so its re-measurable form has to land in `SCOPE.md` before it becomes our word. |
 | **effect of a written clarification** | Whether a written explanation changes liability, and with what force. Practitioners rely on them; no citation to that effect is written down here. |
 | **`PoC`** | Used as a unit of scope in decisions ("this repository is a PoC"), with no acceptance criterion written anywhere — so it currently means whatever the speaker does. A candidate criterion exists in the working plan (a checkout on a date for one codex, with a verifiable chain to the source); until the project owner confirms it, the word stays here. |
-| **`Phase 1` / `Phase 2`** | Two incompatible phase vocabularies coexist in this repository: the vision's `Phase 1 → Phase 2` and the code's `Phase 0 / 1 / 7A / 7C`. A glossary cannot hold two meanings for one word; this is resolved by the project owner, not by this file. |
 
 ## 5. How this file is checked
 
