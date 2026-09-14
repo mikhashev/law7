@@ -19,7 +19,11 @@ from pathlib import Path
 import pytest
 
 from scripts.tools.check_glossary import (
+    STANDARD_NAMES,
+    STANDARD_URL_HOSTS,
     check_glossary,
+    find_number_violations,
+    find_standard_host_violations,
     github_slug,
 )
 
@@ -96,6 +100,29 @@ def test_act_citation_missing_number_is_flagged():
     assert any("no recognized citation" in m for m in messages), messages
 
 
+def test_small_count_number_in_meaning_is_flagged():
+    # "22 codes" is well under the old >= 1000 threshold; it must still be
+    # caught because it names OUR coverage (a count noun), not because of
+    # its magnitude.
+    path = FIXTURES_DIR / "bad_small_count_number" / "GLOSSARY.md"
+    messages = _violation_messages(path)
+    assert any("'22'" in m and "count noun 'codes'" in m for m in messages), messages
+
+
+def test_act_citation_missing_title_is_flagged():
+    path = FIXTURES_DIR / "bad_missing_act_title" / "GLOSSARY.md"
+    messages = _violation_messages(path)
+    assert any("No. 5-FZ" in m and "missing its quoted title" in m for m in messages), messages
+
+
+def test_standard_cited_with_foreign_host_is_flagged():
+    path = FIXTURES_DIR / "bad_standard_foreign_host" / "GLOSSARY.md"
+    messages = _violation_messages(path)
+    assert any(
+        "URL host example.org is not a known home of standard ELI" in m for m in messages
+    ), messages
+
+
 @pytest.mark.parametrize(
     "fixture_name",
     [
@@ -104,6 +131,9 @@ def test_act_citation_missing_number_is_flagged():
         "bad_section1_repo_only",
         "bad_number_meaning",
         "bad_missing_number",
+        "bad_small_count_number",
+        "bad_missing_act_title",
+        "bad_standard_foreign_host",
     ],
 )
 def test_bad_fixtures_cli_exits_one(fixture_name):
@@ -147,6 +177,80 @@ def test_github_slug_is_idempotent_on_bare_text():
     # Passing the already-slugified text back in should be a no-op.
     slug = github_slug("## 1. Two columns")
     assert github_slug(slug) == slug
+
+
+# ---------------------------------------------------------------------------
+# 3b. Numbers rule: frame of reference, not magnitude
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "meaning",
+    [
+        "The pipeline currently imports 22 codes.",
+        "There are 19 codes today, down from 16 codes last year.",
+        "We ship 13 tools and run 7 tests, 104 tests in the full suite.",
+        "The corpus holds 6,232 articles as of today.",
+        "Coverage stands at 22 of 23 codes so far.",
+    ],
+)
+def test_our_coverage_numbers_are_flagged_regardless_of_size(meaning):
+    problems = find_number_violations(meaning)
+    assert problems, meaning
+
+
+@pytest.mark.parametrize(
+    "meaning",
+    [
+        "Published on 14.06.1994 under Federal Law No. 5-FZ.",
+        "Measured on 2026-09-14, see the reconnaissance note.",
+        "See Constitution of the Russian Federation, art. 54(1) and 54(2).",
+        "OASIS LegalDocML, Akoma Ntoso v1.0, Part 2: Specifications.",
+        "Superseded as a model by IFLA LRM (2017).",
+        "See arXiv 2605.23497 (2026) for the measurement.",
+    ],
+)
+def test_citation_numbers_are_not_flagged(meaning):
+    assert find_number_violations(meaning) == [], meaning
+
+
+def test_percentage_is_flagged():
+    problems = find_number_violations("Roughly 42% of the corpus is covered.")
+    assert any("42%" in p for p in problems), problems
+
+
+def test_n_of_m_pattern_is_flagged_even_with_no_noun():
+    problems = find_number_violations("It passes 22 of the 23 checks we run.")
+    assert any("N of M" in p for p in problems), problems
+
+
+def test_bare_large_number_without_noun_is_still_flagged():
+    # No count noun anywhere nearby, but still >= 1000 -- the fallback rule.
+    problems = find_number_violations("The figure quoted internally is 15000.")
+    assert any("15000" in p and ">= 1000" in p for p in problems), problems
+
+
+# ---------------------------------------------------------------------------
+# 3c. Standard URL host allowlist
+# ---------------------------------------------------------------------------
+
+
+def test_standard_url_hosts_covers_every_standard_name():
+    # Data-integrity check for the allowlist itself: every name the checker
+    # recognizes as a standard must have a host list, or the "unknown
+    # standard" fallback message would fire on every real citation of it.
+    assert set(STANDARD_NAMES) == set(STANDARD_URL_HOSTS)
+
+
+def test_matching_standard_host_has_no_violation():
+    cell = "ELI ontology — https://data.europa.eu/eli/ontology"
+    assert find_standard_host_violations(cell) == []
+
+
+def test_foreign_standard_host_is_flagged():
+    cell = "ELI ontology — https://example.org/eli-spec"
+    problems = find_standard_host_violations(cell)
+    assert any("example.org" in p and "ELI" in p for p in problems), problems
 
 
 # ---------------------------------------------------------------------------

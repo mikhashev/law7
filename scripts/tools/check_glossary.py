@@ -7,9 +7,23 @@ glossary's section 5 ("How this file is checked") mechanically:
 
   1. every ``Defined by`` cell in sections 1-3 must resolve to a link, an act
      citation, a standard citation, or the literal ``citation unresolved``;
+     a standard citation's URL must additionally resolve to a host on that
+     standard's allowlist (``STANDARD_URL_HOSTS``, below);
   2. section 1 (law) rows specifically must cite an act or say ``citation
-     unresolved`` -- a repository link alone does not count;
-  3. the ``Meaning`` column must not carry raw numbers >= 1000 or percentages;
+     unresolved`` -- a repository link alone does not count. An act citation
+     of a state-authority type (Federal Law, Federal Constitutional Law,
+     Presidential Decree, Government Decree) must give type + date + number
+     + a quoted title, once per distinct act number cited in the cell;
+     Constitution and Code citations need only an article reference, title
+     optional. The accepted date form is ``DD.MM.YYYY``; ISO ``YYYY-MM-DD``
+     is also accepted;
+  3. the ``Meaning`` column must not carry a digit describing *our own*
+     coverage: an integer of any size immediately followed (within two
+     tokens) by a count noun (documents, codes, articles, tools, ... --
+     see ``COUNT_NOUNS``), an "N of M" coverage fraction, or a percentage.
+     Bare integers >= 1000 outside a citation span (a date, an act/article
+     number, a version, a cited year, an arXiv id) are flagged too, even
+     with no count noun nearby;
   4. every relative markdown link in the file must resolve to an existing
      file (and heading anchor, if one is given).
 
@@ -210,6 +224,50 @@ STANDARD_NAMES = [
     "CLML",
 ]
 
+# Per-standard allowlist of expected URL hosts (form (d)). Each entry is
+# either a bare host ("ifla.org") or "host/path-prefix"
+# ("github.com/sigstore") when the host alone is shared by unrelated
+# projects. Data, not code: add a standard by adding a key here. A standard
+# name that appears in STANDARD_NAMES but has no entry here is itself a
+# violation (see find_standard_host_violations).
+STANDARD_URL_HOSTS: dict[str, list[str]] = {
+    "ELI": ["data.europa.eu", "op.europa.eu", "eur-lex.europa.eu"],
+    "ECLI": ["e-justice.europa.eu", "eur-lex.europa.eu"],
+    "Akoma Ntoso": ["docs.oasis-open.org", "oasis-open.org", "akomantoso.org"],
+    "LegalDocML": ["docs.oasis-open.org", "oasis-open.org", "akomantoso.org"],
+    "FRBR": ["ifla.org"],
+    "TUF": [
+        "theupdateframework.github.io",
+        "theupdateframework.io",
+        "github.com/openlawlibrary",
+    ],
+    "TAF": [
+        "theupdateframework.github.io",
+        "theupdateframework.io",
+        "github.com/openlawlibrary",
+    ],
+    "Sigstore": [
+        "docs.sigstore.dev",
+        "sigstore.dev",
+        "github.com/sigstore",
+        "transparency.dev",
+    ],
+    "Rekor": [
+        "docs.sigstore.dev",
+        "sigstore.dev",
+        "github.com/sigstore",
+        "transparency.dev",
+    ],
+    "Trillian": [
+        "docs.sigstore.dev",
+        "sigstore.dev",
+        "github.com/sigstore",
+        "transparency.dev",
+    ],
+    "USLM": ["github.com/usgpo", "xml.house.gov"],
+    "CLML": ["legislation.gov.uk", "github.com/legislation"],
+}
+
 ACT_TYPES_FULL = [
     "Federal Constitutional Law",
     "Federal Law",
@@ -217,21 +275,25 @@ ACT_TYPES_FULL = [
     "Government Decree",
 ]
 
-_DATE_RE = re.compile(r"\b\d{2}\.\d{2}\.\d{4}\b")
+# The accepted date forms in a citation: DD.MM.YYYY, and ISO YYYY-MM-DD as an
+# accepted alternative.
+_DATE_DMY_RE = re.compile(r"\b\d{2}\.\d{2}\.\d{4}\b")
+_DATE_YMD_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+_DATE_ANY_RE = re.compile(rf"(?:{_DATE_DMY_RE.pattern})|(?:{_DATE_YMD_RE.pattern})")
 _NUMBER_RE = re.compile(r"\bNo\.\s*[A-Za-z0-9\-]+")
 _ART_RE = re.compile(r"\bart\.\s*\d+")
 _CONST_RE = re.compile(r"\bConstitution of the Russian Federation\b")
 _CODE_RE = re.compile(
     r"\b[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*\s+Code(?:\s+of\s+the\s+Russian\s+Federation)?\b"
 )
-_TITLE_RE = re.compile(r"\xab([^\xbb]*)\xbb|“([^”]*)”")
+_TITLE_RE = re.compile(r"\xab([^\xbb]*)\xbb|\"([^\"]*)\"|“([^”]*)”")
 _URL_RE = re.compile(r"https?://[^\s)]+")
 
 
 def segment_matches_act_citation(segment: str) -> bool:
     """Form (b): type + date + number, or Constitution/Code + art. N."""
     has_full_type = any(t in segment for t in ACT_TYPES_FULL)
-    has_date = bool(_DATE_RE.search(segment))
+    has_date = bool(_DATE_ANY_RE.search(segment))
     has_number = bool(_NUMBER_RE.search(segment))
     if has_full_type and has_date and has_number:
         return True
@@ -242,12 +304,52 @@ def segment_matches_act_citation(segment: str) -> bool:
     return (has_const or has_code) and has_art
 
 
+def _segment_title(segment: str) -> str | None:
+    """Return the first non-empty quoted title («…», "…" or “…”) in
+    ``segment``, or None if it has none (empty markers don't count)."""
+    for m in _TITLE_RE.finditer(segment):
+        content = next((g for g in m.groups() if g is not None), None)
+        if content is not None and content.strip() != "":
+            return content.strip()
+    return None
+
+
 def segment_has_empty_title(segment: str) -> bool:
     for m in _TITLE_RE.finditer(segment):
-        content = m.group(1) if m.group(1) is not None else m.group(2)
+        content = next((g for g in m.groups() if g is not None), None)
         if content is not None and content.strip() == "":
             return True
     return False
+
+
+def find_missing_act_titles(cell: str) -> list[str]:
+    """Form (b), title requirement: a state-authority act citation (Federal
+    Law / Federal Constitutional Law / Presidential Decree / Government
+    Decree -- i.e. type + date + number) must be followed, somewhere in the
+    cell, by a non-empty quoted title -- at least once per distinct act
+    number the cell cites. The Constitution and Codes are exempt (article
+    reference is enough, title optional).
+
+    Returns the act-number strings (e.g. ``No. 5-FZ``) that have no title
+    anywhere in the cell.
+    """
+    segments = [s.strip() for s in cell.split(";") if s.strip()] or [cell.strip()]
+    has_title_by_number: dict[str, bool] = {}
+    order: list[str] = []
+    for seg in segments:
+        has_full_type = any(t in seg for t in ACT_TYPES_FULL)
+        has_date = bool(_DATE_ANY_RE.search(seg))
+        num_match = _NUMBER_RE.search(seg)
+        if not (has_full_type and has_date and num_match):
+            continue
+        number = num_match.group(0)
+        titled = _segment_title(seg) is not None
+        if number not in has_title_by_number:
+            has_title_by_number[number] = titled
+            order.append(number)
+        else:
+            has_title_by_number[number] = has_title_by_number[number] or titled
+    return [number for number in order if not has_title_by_number[number]]
 
 
 def has_citation_unresolved(cell: str) -> bool:
@@ -269,10 +371,55 @@ def cell_matches_standard_citation(cell: str) -> bool:
     return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
+def _url_host_allowed(url: str, allowlist: list[str]) -> bool:
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    path = parsed.path.lstrip("/")
+    for entry in allowlist:
+        entry_host, _, entry_prefix = entry.partition("/")
+        if host != entry_host:
+            continue
+        if not entry_prefix or path.startswith(entry_prefix):
+            return True
+    return False
+
+
+def find_standard_host_violations(cell: str) -> list[str]:
+    """Form (d), address requirement: the URL cited for a known standard
+    must resolve to a host on that standard's allowlist
+    (``STANDARD_URL_HOSTS``) -- citing the right standard's name next to
+    the wrong organization's URL is still a violation."""
+    problems: list[str] = []
+    for name in STANDARD_NAMES:
+        if not re.search(r"\b" + re.escape(name) + r"\b", cell):
+            continue
+        for m in _URL_RE.finditer(cell):
+            url = m.group(0)
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                continue
+            allowlist = STANDARD_URL_HOSTS.get(name)
+            if allowlist is None:
+                problems.append(
+                    f"standard '{name}' has no entry in STANDARD_URL_HOSTS -- "
+                    "add its expected hosts to the allowlist at the top of "
+                    "check_glossary.py"
+                )
+                continue
+            if not _url_host_allowed(url, allowlist):
+                problems.append(
+                    f"URL host {parsed.netloc} is not a known home of standard "
+                    f"{name} (expected one of: {', '.join(allowlist)})"
+                )
+    return problems
+
+
 @dataclass
 class RowCheck:
     forms: set = field(default_factory=set)
     empty_title: bool = False
+    missing_titles: list = field(default_factory=list)
+    standard_host_problems: list = field(default_factory=list)
 
 
 def evaluate_defined_by(cell: str, base_dir: Path, self_path: Path) -> RowCheck:
@@ -285,11 +432,14 @@ def evaluate_defined_by(cell: str, base_dir: Path, self_path: Path) -> RowCheck:
             if segment_has_empty_title(seg):
                 result.empty_title = True
 
+    result.missing_titles = find_missing_act_titles(cell)
+
     if has_citation_unresolved(cell):
         result.forms.add("c")
 
     if cell_matches_standard_citation(cell):
         result.forms.add("d")
+    result.standard_host_problems = find_standard_host_violations(cell)
 
     for _line, _text, url in find_links([cell]):
         ok, _reason = resolve_link(url, base_dir, self_path)
@@ -300,63 +450,155 @@ def evaluate_defined_by(cell: str, base_dir: Path, self_path: Path) -> RowCheck:
 
 
 # ---------------------------------------------------------------------------
-# No-numbers rule (Meaning column)
+# Numbers rule (Meaning column) -- frame of reference, not magnitude
 # ---------------------------------------------------------------------------
+#
+# Section 1 of the glossary forbids numbers that describe *our own* coverage
+# (counts of documents, codes, articles, ...) because those drift and
+# SCOPE.md is their one home. It does not forbid citing someone else's
+# object -- a date, an act or article number, a standard's version, a
+# paper's year. So the rule keys off what the digit is a count *of*, not how
+# big it is.
 
-_NUM_GROUPED_RE = re.compile(r"\b\d{1,3}(?:[,   ]\d{3})+\b")
+# Count nouns whose adjacent integer names OUR coverage. Singular/plural,
+# matched case-insensitively. Configurable: add a noun here to start
+# catching it.
+COUNT_NOUNS: dict[str, str] = {
+    "document": "documents",
+    "code": "codes",
+    "article": "articles",
+    "tool": "tools",
+    "vector": "vectors",
+    "test": "tests",
+    "row": "rows",
+    "line": "lines",
+    "file": "files",
+    "table": "tables",
+    "column": "columns",
+    "country": "countries",
+    "jurisdiction": "jurisdictions",
+    "version": "versions",
+    "amendment": "amendments",
+    "decision": "decisions",
+    "interpretation": "interpretations",
+    "server": "servers",
+    "repository": "repositories",
+    "commit": "commits",
+    "star": "stars",
+    "fork": "forks",
+    "hit": "hits",
+}
+_COUNT_NOUN_FORMS = {form.lower() for pair in COUNT_NOUNS.items() for form in pair}
+
+_NUM_GROUPED_RE = re.compile(r"\b\d{1,3}(?:[,\s]\d{3})+\b")
 _NUM_PLAIN_RE = re.compile(r"\b\d+\b")
 _PERCENT_RE = re.compile(r"\b\d+(?:[.,]\d+)?\s?%")
-_DATE_DMY_RE = re.compile(r"\b\d{2}\.\d{2}\.\d{4}\b")
-_DATE_YMD_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
-_ARXIV_RE = re.compile(r"\b\d{4}\.\d{5}\b")
-_CITATION_YEAR_RE = re.compile(
-    r"\b(?:Law|No\.|art\.)\b[^\d]{0,20}(\d{4})\b|\b(\d{4})\b[^\d]{0,20}\b(?:Law|No\.|art\.)\b",
+_N_OF_M_RE = re.compile(
+    r"\b\d[\d,]*\s+of\s+(?:the\s+)?\d[\d,]*\b",
     re.IGNORECASE,
+)
+_WORD_RE = re.compile(r"[A-Za-z]+")
+
+# Citation spans a number may legitimately sit inside without being a count
+# of ours: DD.MM.YYYY / YYYY-MM-DD dates (``_DATE_DMY_RE`` / ``_DATE_YMD_RE``,
+# defined above), "No. ..." act numbers, "art. ..." article references
+# (including "art. 54(1) and 54(2)" chains), "Part N", "v1.0"-style
+# versions, "(YYYY)" years, a year adjacent to a standard's name, and arXiv
+# ids.
+_ARXIV_RE = re.compile(r"\b\d{4}\.\d{5}\b")
+_ACT_NO_RE = re.compile(r"\bNo\.\s*[A-Za-z0-9\-]+", re.IGNORECASE)
+_ART_CHAIN_RE = re.compile(
+    r"\bart\.\s*\d+(?:\(\d+\))?(?:\s*(?:,|and)\s*\d+(?:\(\d+\))?)*",
+    re.IGNORECASE,
+)
+_PART_N_RE = re.compile(r"\bPart\s+\d+\b", re.IGNORECASE)
+_VERSION_RE = re.compile(r"\bv\d+(?:\.\d+)*\b", re.IGNORECASE)
+_YEAR_PAREN_RE = re.compile(r"\(\d{4}\)")
+_STANDARD_YEAR_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(n) for n in STANDARD_NAMES) + r")\b[^\d\n]{0,30}\d{4}\b"
+)
+
+_EXEMPT_SPAN_RES = (
+    _DATE_DMY_RE,
+    _DATE_YMD_RE,
+    _ARXIV_RE,
+    _ACT_NO_RE,
+    _ART_CHAIN_RE,
+    _PART_N_RE,
+    _VERSION_RE,
+    _YEAR_PAREN_RE,
+    _STANDARD_YEAR_RE,
 )
 
 
 def _exempt_spans(meaning: str) -> list[tuple[int, int]]:
     spans = []
-    for rx in (_DATE_DMY_RE, _DATE_YMD_RE, _ARXIV_RE):
+    for rx in _EXEMPT_SPAN_RES:
         spans.extend(m.span() for m in rx.finditer(meaning))
-    for m in _CITATION_YEAR_RE.finditer(meaning):
-        if m.group(1):
-            spans.append(m.span(1))
-        elif m.group(2):
-            spans.append(m.span(2))
     return spans
 
 
+def _next_tokens(text: str, start: int, count: int) -> list[str]:
+    tokens = []
+    for m in _WORD_RE.finditer(text, start):
+        tokens.append(m.group(0))
+        if len(tokens) >= count:
+            break
+    return tokens
+
+
 def find_number_violations(meaning: str) -> list[str]:
-    """No-numbers rule: flag integers >= 1000 written as digits, and
-    percentages, in the Meaning column -- except dates, bare years (1900-2100),
-    citation years and arXiv ids."""
+    """Numbers rule: flag an integer of any size that names OUR coverage --
+    followed within two tokens by a count noun (``COUNT_NOUNS``), or part of
+    an "N of M" coverage fraction, or a percentage. A bare integer >= 1000
+    with no count noun nearby is flagged too. Citation spans (dates, act and
+    article numbers, versions, cited years, arXiv ids) are exempt
+    throughout.
+    """
     problems: list[str] = []
     exempt = _exempt_spans(meaning)
 
     def is_exempt(span: tuple[int, int]) -> bool:
         return any(span[0] >= e[0] and span[1] <= e[1] for e in exempt)
 
-    grouped_spans = []
-    for m in _NUM_GROUPED_RE.finditer(meaning):
-        grouped_spans.append(m.span())
-        if not is_exempt(m.span()):
-            problems.append(f"number '{m.group(0)}' (>= 1000) in Meaning column")
-
-    for m in _NUM_PLAIN_RE.finditer(meaning):
-        span = m.span()
-        if any(span[0] >= g[0] and span[1] <= g[1] for g in grouped_spans):
-            continue
-        if is_exempt(span):
-            continue
-        value = int(m.group(0))
-        if len(m.group(0)) == 4 and 1900 <= value <= 2100:
-            continue  # a bare year, not a count
-        if value >= 1000:
-            problems.append(f"number '{m.group(0)}' (>= 1000) in Meaning column")
-
     for m in _PERCENT_RE.finditer(meaning):
         problems.append(f"percentage '{m.group(0)}' in Meaning column")
+
+    for m in _N_OF_M_RE.finditer(meaning):
+        span = m.span()
+        if is_exempt(span):
+            continue
+        problems.append(f"'{m.group(0)}' is an \"N of M\" coverage fraction in Meaning column")
+
+    grouped_spans = [m.span() for m in _NUM_GROUPED_RE.finditer(meaning)]
+
+    seen_spans: set[tuple[int, int]] = set()
+    for rx in (_NUM_GROUPED_RE, _NUM_PLAIN_RE):
+        for m in rx.finditer(meaning):
+            span = m.span()
+            if rx is _NUM_PLAIN_RE and any(
+                span[0] >= g[0] and span[1] <= g[1] for g in grouped_spans
+            ):
+                continue  # already covered as part of a grouped number
+            if span in seen_spans:
+                continue
+            seen_spans.add(span)
+
+            if is_exempt(span):
+                continue
+
+            tokens = _next_tokens(meaning, span[1], 2)
+            noun = next((t for t in tokens if t.lower() in _COUNT_NOUN_FORMS), None)
+            if noun is not None:
+                problems.append(
+                    f"number '{m.group(0)}' precedes count noun '{noun}' in Meaning "
+                    "column (a count of our own coverage belongs in SCOPE.md, not here)"
+                )
+                continue
+
+            value = int(m.group(0).replace(",", "").replace(" ", ""))
+            if value >= 1000:
+                problems.append(f"number '{m.group(0)}' (>= 1000) in Meaning column")
 
     return problems
 
@@ -433,6 +675,19 @@ def check_glossary(path: Path, base_dir: Path) -> tuple[list[Violation], list[di
                         f"'{term}': act citation has an empty title marker (\xab\xbb or “”)",
                     )
                 )
+
+            for number in check.missing_titles:
+                violations.append(
+                    Violation(
+                        line_no,
+                        f"'{term}': act citation '{number}' is missing its quoted title "
+                        "(Federal Law / Federal Constitutional Law / Presidential Decree / "
+                        "Government Decree citations require type + date + number + title)",
+                    )
+                )
+
+            for problem in check.standard_host_problems:
+                violations.append(Violation(line_no, f"'{term}': {problem}"))
 
             for problem in find_number_violations(meaning):
                 violations.append(Violation(line_no, f"'{term}': {problem}"))
